@@ -1,0 +1,278 @@
+@import "tailwindcss";
+
+/* -------------------------------------------------------------
+   MULTI-THEME SYSTEM VARIABLES & TOKENS
+   ------------------------------------------------------------- */
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f1f5f9;
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --accent-primary: #2563eb;
+  --accent-hover: #1d4ed8;
+  --button-bg: #2563eb;
+  --button-text: #ffffff;
+  --glass-bg: rgba(255, 255, 255, 0.95);
+  --glass-border: #e2e8f0;
+  --shadow-color: rgba(15, 23, 42, 0.08);
+}
+
+/* THEME 1 — LIGHT (Clean White & High Contrast) */
+html[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f1f5f9;
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --accent-primary: #2563eb;
+  --accent-hover: #1d4ed8;
+  --button-bg: #2563eb;
+  --button-text: #ffffff;
+  --glass-bg: rgba(255, 255, 255, 0.95);
+  --glass-border: #e2e8f0;
+  --shadow-color: rgba(15, 23, 42, 0.08);
+  color-scheme: light;
+}
+
+/* THEME 2 — DARK (Cinematic Deep Black) */
+html[data-theme="dark"] {
+  --bg-primary: #030712;
+  --bg-secondary: #090d16;
+  --bg-card: #0f172a;
+  --bg-card-hover: #1e293b;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --border-color: #1e293b;
+  --accent-primary: #3b82f6;
+  --accent-hover: #2563eb;
+  --button-bg: #2563eb;
+  --button-text: #ffffff;
+  --glass-bg: rgba(15, 23, 42, 0.85);
+  --glass-border: rgba(51, 65, 85, 0.7);
+  --shadow-color: rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+
+/* THEME 3 — NAVY BLUE (Deep Corporate Navy) */
+html[data-theme="navy"] {
+  --bg-primary: #0b1329;
+  --bg-secondary: #0a1122;
+  --bg-card: #132247;
+  --bg-card-hover: #1e325c;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --border-color: #1d3260;
+  --accent-primary: #3b82f6;
+  --accent-hover: #2563eb;
+  --button-bg: #2563eb;
+  --button-text: #ffffff;
+  --glass-bg: rgba(19, 34, 71, 0.9);
+  --glass-border: rgba(30, 50, 92, 0.8);
+  --shadow-color: rgba(3, 7, 18, 0.5);
+  color-scheme: dark;
+}
+
+/* THEME 4 — GLASS (Futuristic Translucent Glassmorphism) */
+html[data-theme="glass"] {
+  --bg-primary: #080c14;
+  --bg-secondary: #0e1626;
+  --bg-card: rgba(255, 255, 255, 0.05);
+  --bg-card-hover: rgba(255, 255, 255, 0.1);
+  --text-primary: #ffffff;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --border-color: rgba(255, 255, 255, 0.15);
+  --accent-primary: #38bdf8;
+  --accent-hover: #0284c7;
+  --button-bg: #0284c7;
+  --button-text: #ffffff;
+  --glass-bg: rgba(14, 22, 38, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --shadow-color: rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+/* THEME 5 — PREMIUM BLUE (Luxury Ice-Blue & Royal Blue Accents) */
+html[data-theme="premium-blue"] {
+  --bg-primary: #f0f7ff;
+  --bg-secondary: #e0f2fe;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f0f9ff;
+  --text-primary: #0f172a;
+  --text-secondary: #1e3a8a;
+  --text-muted: #475569;
+  --border-color: #bae6fd;
+  --accent-primary: #1d4ed8;
+  --accent-hover: #1e40af;
+  --button-bg: #1d4ed8;
+  --button-text: #ffffff;
+  --glass-bg: rgba(255, 255, 255, 0.92);
+  --glass-border: #93c5fd;
+  --shadow-color: rgba(29, 78, 216, 0.12);
+  color-scheme: light;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    overflow-x: hidden;
+    selection-background-color: var(--accent-primary);
+    selection-color: #ffffff;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    transition: background-color 300ms ease, color 300ms ease, border-color 300ms ease;
+  }
+}
+
+/* Smooth 300ms theme color transition on major elements */
+body, 
+section, 
+header, 
+nav, 
+footer, 
+.glass-panel, 
+.glass-card {
+  transition: background-color 300ms ease, color 300ms ease, border-color 300ms ease, box-shadow 300ms ease;
+}
+
+/* Dynamic Theme Card Rules */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 10px 30px -5px var(--shadow-color);
+  color: var(--text-primary);
+}
+
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 20px -2px var(--shadow-color);
+  color: var(--text-primary);
+}
+
+.glass-card-hover {
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card-hover:hover {
+  transform: translateY(-4px);
+  border-color: var(--accent-primary);
+  box-shadow: 0 20px 40px -10px var(--shadow-color), 0 0 15px rgba(37, 99, 235, 0.12);
+}
+
+/* Theme Contrast Protection for Dark/Navy Themes vs Light/Premium Themes */
+html[data-theme="dark"] .theme-adapt-text-dark,
+html[data-theme="navy"] .theme-adapt-text-dark,
+html[data-theme="glass"] .theme-adapt-text-dark {
+  color: #f8fafc !important;
+}
+
+html[data-theme="light"] .theme-adapt-text-dark,
+html[data-theme="premium-blue"] .theme-adapt-text-dark {
+  color: #0f172a !important;
+}
+
+/* Background overrides per theme */
+html[data-theme="light"] body {
+  background-color: #ffffff;
+}
+
+html[data-theme="dark"] body {
+  background-color: #030712;
+}
+
+html[data-theme="navy"] body {
+  background-color: #0b1329;
+}
+
+html[data-theme="glass"] body {
+  background-color: #080c14;
+}
+
+html[data-theme="premium-blue"] body {
+  background-color: #f0f7ff;
+}
+
+.glow-blue-ambient {
+  box-shadow: 0 0 80px -20px var(--shadow-color);
+}
+
+/* Premium Metallic Blue Section Divider */
+.section-divider-luxury {
+  position: relative;
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(90deg, transparent 0%, var(--border-color) 20%, var(--accent-primary) 50%, var(--border-color) 80%, transparent 100%);
+}
+
+.section-divider-luxury::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100px;
+  height: 2px;
+  background: var(--accent-primary);
+  box-shadow: 0 0 10px var(--accent-primary);
+  border-radius: 9999px;
+}
+
+/* Background Ambient Lighting Animations */
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.25; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.05); }
+}
+
+@keyframes floatParticle {
+  0% { transform: translateY(0px) rotate(0deg); opacity: 0.3; }
+  50% { transform: translateY(-15px) rotate(180deg); opacity: 0.6; }
+  100% { transform: translateY(0px) rotate(360deg); opacity: 0.3; }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 8s ease-in-out infinite;
+}
+
+.animate-float-particle {
+  animation: floatParticle 12s ease-in-out infinite;
+}
+
+/* Custom Scrollbar for luxury store feel */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+  border: 2px solid var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-primary);
+}
+

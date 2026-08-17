@@ -1,0 +1,306 @@
+[
+  {
+    "id": "prod-1786278579119",
+    "name": "Flush Tank",
+    "category": "Bathroom Accessories",
+    "categoryId": "bathroom-accessories",
+    "image": "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80",
+    "images": [],
+    "description": "Premium building material and sanitaryware.",
+    "price": "PKR Call for Price",
+    "features": [
+      "High Durability",
+      "10 Year Official Warranty",
+      "Precision Engineering"
+    ],
+    "specs": {
+      "Material": "Solid Brass / Porcelain",
+      "Origin": "Imported"
+    },
+    "badge": "LUXURY",
+    "brand": "Dura Max Pipes & Fittings",
+    "brandId": "duramax",
+    "stockStatus": "In Stock",
+    "stockQuantity": 50,
+    "hideStockBadge": false,
+    "isPriceOnRequest": false,
+    "hidePrice": false,
+    "isFeatured": true,
+    "videos": [],
+    "isHeroFeatured": true
+  },
+  {
+    "id": "prod-1",
+    "name": "Hansgrohe Axor Raindance Select 360 Thermostatic System",
+    "category": "Rain Showers",
+    "categoryId": "rain-showers",
+    "price": "PKR 185,000",
+    "image": "/src/assets/images/luxury_showroom_hero_1785655655475.jpg",
+    "description": "German-engineered overhead rain panel with integrated waterfall jet, concealed thermostatic brass cartridge, and anti-scald micro-sensors.",
+    "features": [
+      "AirPower Technology",
+      "Thermostatic 38°C Safety Lock",
+      "EasyClean Silicone Nozzles",
+      "12-Year Warranty"
+    ],
+    "specs": {
+      "Finish": "Matte Black & Rose Gold",
+      "Flow Rate": "14 L/min at 3 Bar",
+      "Material": "Solid Brass Body",
+      "Diverter": "3-Way Push Button Select"
+    },
+    "isFeatured": true,
+    "isNew": true,
+    "badge": "LUXURY",
+    "brand": "Hansgrohe / Axor",
+    "availableFinishes": [
+      "Matte Black",
+      "Brushed Gold",
+      "Chrome"
+    ],
+    "videos": [
+      {
+        "id": "vid-1a",
+        "title": "Hansgrohe Axor Raindance Live Demonstration",
+        "type": "youtube",
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+      },
+      {
+        "id": "vid-1b",
+        "title": "Thermostatic Water Flow & Pressure Testing",
+        "type": "mp4",
+        "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+      }
+    ],
+    "isHidden": true,
+    "isHeroFeatured": true
+  },
+  {
+    "id": "prod-2",
+    "name": "Porsche Design Waterfall Cascading Vessel Faucet",
+    "category": "Designer Faucets",
+    "categoryId": "designer-faucets",
+    "price": "PKR 42,500",
+    "image": "/src/assets/images/luxury_faucet_shower_1785655667949.jpg",
+    "description": "Single-lever tall countertop basin faucet featuring an open-channel waterfall stream and precise aerated flow control.",
+    "features": [
+      "Open Channel Waterfall",
+      "Ceramic Disc Cartridge",
+      "Fingerprint-Resistant PVD Coating"
+    ],
+    "specs": {
+      "Height": "320 mm",
+      "Spout Reach": "145 mm",
+      "Warranty": "10 Years Replacement"
+    },
+    "isFeatured": true,
+    "isNew": true,
+    "badge": "NEW",
+    "brand": "Kohler / Grohe",
+    "availableFinishes": [
+      "Matte Black",
+      "Brushed Brass",
+      "Polished Chrome"
+    ],
+    "videos": [
+      {
+        "id": "vid-2a",
+        "title": "Porsche Waterfall Faucet Stream & Finish Showcase",
+        "type": "mp4",
+        "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+      }
+    ],
+    "isHidden": true,
+    "isHeroFeatured": true
+  },
+  {
+    "id": "prod-3",
+    "name": "Royal Ceramic Wall-Hung Rimless WC Suite + Bidet Spray",
+    "category": "Toilets",
+    "categoryId": "toilets",
+    "price": "PKR 78,000",
+    "image": "https://images.unsplash.com/photo-1564540586988-aa4e53c3d799?auto=format&fit=crop&w=800&q=80",
+    "description": "Ultra-sleek wall-hung toilet with silent rimless dual-swirl flushing technology and anti-bacterial silver-ion glaze.",
+    "features": [
+      "Rimless Vortex Flush",
+      "UF Soft Close Quick-Release Seat",
+      "Concealed Pneumatic Cistern Included"
+    ],
+    "specs": {
+      "Dimensions": "540 x 360 x 350 mm",
+      "Water Consumption": "3L / 4.5L Dual Flush",
+      "Load Rating": "400 kg Tested"
+    },
+    "isFeatured": true,
+    "badge": "BESTSELLER",
+    "brand": "TOTO / Roca",
+    "availableFinishes": [
+      "Matte White",
+      "Gloss White",
+      "Matte Black"
+    ],
+    "videos": [
+      {
+        "id": "vid-3a",
+        "title": "TOTO Rimless Vortex Flush System Video",
+        "type": "youtube",
+        "url": "https://www.youtube.com/watch?v=LXb3EKWsInQ"
+      }
+    ],
+    "isHidden": true,
+    "isHeroFeatured": true
+  },
+  {
+    "id": "prod-4",
+    "name": "Italian Nero Marquina Marble Double Vanity Console",
+    "category": "Vanity Cabinets",
+    "categoryId": "vanity-cabinets",
+    "price": "PKR 245,000",
+    "image": "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80",
+    "description": "100% waterproof marine plywood vanity with quartz counter, dual under-mount ceramic sinks, and soft-close Blum drawers.",
+    "features": [
+      "Solid Quartz Countertop",
+      "Soft-Close Blum Hardware",
+      "Backlit Mirror Included",
+      "Zero Swelling Guarantee"
+    ],
+    "specs": {
+      "Width": "1800 mm (Custom sizes available)",
+      "Finish": "Nero Marquina / Walnut Wood",
+      "Hardware": "Brushed Gold Handles"
+    },
+    "isFeatured": true,
+    "badge": "LUXURY",
+    "brand": "Zafar Signature Custom",
+    "videos": [
+      {
+        "id": "vid-4a",
+        "title": "Waterproof Vanity Craftsmanship & Blum Drawer Testing",
+        "type": "mp4",
+        "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
+      }
+    ],
+    "isHidden": true,
+    "isHeroFeatured": true
+  },
+  {
+    "id": "prod-5",
+    "name": "Master Weather-Shield Anti-Fungal Exterior Luxury Emulsion",
+    "category": "Paints",
+    "categoryId": "paints",
+    "price": "PKR 16,500 / Bucket",
+    "image": "https://images.unsplash.com/photo-1562259949-e8e7689d7828?auto=format&fit=crop&w=800&q=80",
+    "description": "100% pure acrylic cross-linking exterior paint offering 15 years against UV fading, rain erosion, and algae growth.",
+    "features": [
+      "Flexi-Elastic Crack Bridging",
+      "High Heat Reflection",
+      "Eco VOC Compliant",
+      "Custom Tinting Available"
+    ],
+    "specs": {
+      "Pack Sizes": "4 Liters / 16 Liters",
+      "Coverage": "120-140 sq.ft per liter",
+      "Dry Time": "2 Hours"
+    },
+    "isFeatured": true,
+    "badge": "PREMIUM GRADE",
+    "brand": "Dulux / Master / Berger",
+    "videos": [
+      {
+        "id": "vid-5a",
+        "title": "Weather Shield Hydrophobic Rain Resistance Demo",
+        "type": "mp4",
+        "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
+      }
+    ],
+    "isHidden": true,
+    "isHeroFeatured": true
+  },
+  {
+    "id": "prod-6",
+    "name": "FlowGuard Gold CPVC Schedule 80 Hot & Cold Piping System",
+    "category": "CPVC Pipes",
+    "categoryId": "cpvc-pipes",
+    "price": "Call for Wholesale Rate",
+    "image": "/src/assets/images/building_materials_display_1785655681621.jpg",
+    "description": "High-temperature resistant NSF-certified CPVC pipes & heavy brass fittings engineered for zero scaling and zero corrosion.",
+    "features": [
+      "Resists Up to 93°C",
+      "NSF-61 Drinking Water Certified",
+      "Solvent-Welded Leak Proof"
+    ],
+    "specs": {
+      "Sizes": "1/2 inch to 3 inch SDR 11 & Sch 80",
+      "Pressure Rating": "400 PSI @ 23°C",
+      "Life Expectancy": "50+ Years"
+    },
+    "isFeatured": true,
+    "badge": "IMPACT RESISTANT",
+    "brand": "FlowGuard / Master Pipe",
+    "videos": [
+      {
+        "id": "vid-6a",
+        "title": "CPVC Pressure Testing & Solvent Weld Video",
+        "type": "mp4",
+        "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"
+      }
+    ],
+    "isHidden": true
+  },
+  {
+    "id": "prod-7",
+    "name": "Ordinary Portland Cement OPC Grade 53 (Fresh Factory Batch)",
+    "category": "Cement",
+    "categoryId": "cement",
+    "price": "Wholesale Rate on Request",
+    "image": "https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=800&q=80",
+    "description": "High compressive strength cement ideal for multi-story slab casting, columns, beams, and pre-stressed concrete structures.",
+    "features": [
+      "Rapid Strength Gain",
+      "Low Heat of Hydration",
+      "Fresh Daily Supply Guaranteed"
+    ],
+    "specs": {
+      "Weight": "50 kg Paper / PP Bag",
+      "Standard": "PSQCA / ASTM C150 Type I",
+      "Compressive Strength": "> 53 MPa at 28 days"
+    },
+    "isFeatured": true,
+    "badge": "BESTSELLER",
+    "brand": "Bestway / Maple Leaf / Pioneer",
+    "videos": [],
+    "isHidden": true
+  },
+  {
+    "id": "prod-8",
+    "name": "Thermostatic 3-Way Concealed Body Jet Shower Set",
+    "category": "Shower Systems",
+    "categoryId": "shower-systems",
+    "price": "PKR 125,000",
+    "image": "https://images.unsplash.com/photo-1507652313519-d4e9174996dd?auto=format&fit=crop&w=800&q=80",
+    "description": "Concealed wall-mount valve with 6 directional swivel massage body jets, hand shower, and overhead waterfall spout.",
+    "features": [
+      "6 Swivel Massage Body Jets",
+      "Scald Protection Ceramic Core",
+      "Ultra-Slim Stainless Overhead Panel"
+    ],
+    "specs": {
+      "Inlet Size": "1/2 inch NPT",
+      "Working Pressure": "0.15 - 0.6 MPa",
+      "Finish": "Brushed Titanium Black"
+    },
+    "isFeatured": true,
+    "isNew": true,
+    "badge": "NEW",
+    "brand": "Grohe / Hansgrohe",
+    "videos": [
+      {
+        "id": "vid-8a",
+        "title": "Thermostatic Body Jet Spa Installation Video",
+        "type": "mp4",
+        "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreet.mp4"
+      }
+    ],
+    "isHidden": true
+  }
+]
