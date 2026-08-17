@@ -10,6 +10,7 @@ interface AdvancedSearchModalProps {
   categories: ProductCategory[];
   brands: ProductBrand[];
   onSelectProduct: (product: Product) => void;
+  onSelectCategory?: (category: ProductCategory | string) => void;
   onAddToCart?: (product: Product) => void;
   initialQuery?: string;
 }
@@ -21,6 +22,7 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
   categories,
   brands,
   onSelectProduct,
+  onSelectCategory,
   onAddToCart,
   initialQuery = ''
 }) => {

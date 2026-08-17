@@ -3,7 +3,7 @@ import {
   customerReviews, 
   faqItems 
 } from './data/storeData';
-import { BusinessConfig, Product, ProductCategory, GalleryItem, Review, ProductBrand, StatCounter, AiDesignerConfig, CartItem, CheckoutSettings, HeroSettings, BuildMaterialEstimatorConfig } from './types';
+import { BusinessConfig, Product, ProductCategory, GalleryItem, Review, ProductBrand, StatCounter, AiDesignerConfig, CartItem, CheckoutSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, SmartToolId } from './types';
 import { 
   loadStoredConfig, 
   saveStoredConfig, 
@@ -25,6 +25,8 @@ import {
   saveBuildMaterialEstimatorConfig,
   loadAiAssistantConfig,
   saveAiAssistantConfig,
+  loadSmartToolsSettings,
+  saveSmartToolsSettings,
   syncWithServerCMS,
   loadStoredContacts,
   saveStoredContacts,
@@ -54,8 +56,8 @@ import {
 import { Navbar } from './components/Navbar';
 import { HeroSection } from './components/HeroSection';
 import { FeatureBar } from './components/FeatureBar';
-import { BathroomPlanner } from './components/BathroomPlanner';
-import { BuildMaterialEstimator } from './components/BuildMaterialEstimator';
+import { SmartToolsSection } from './components/SmartToolsSection';
+import { SmartToolsModal } from './components/SmartToolsModal';
 import { AboutSection } from './components/AboutSection';
 import { CategoriesSection } from './components/CategoriesSection';
 import { BrandsSection } from './components/BrandsSection';
@@ -113,6 +115,8 @@ export default function App() {
   const [plannerConfig, setPlannerConfig] = useState<AiDesignerConfig>(() => loadPlannerConfig());
   const [estimatorConfig, setEstimatorConfig] = useState<BuildMaterialEstimatorConfig>(() => loadBuildMaterialEstimatorConfig());
   const [aiAssistantConfig, setAiAssistantConfig] = useState<AiAssistantConfig>(() => loadAiAssistantConfig());
+  const [smartToolsSettings, setSmartToolsSettings] = useState<SmartToolsSettings>(() => loadSmartToolsSettings());
+  const [activeToolId, setActiveToolId] = useState<SmartToolId | 'hub' | null>(null);
   const [heroSettings, setHeroSettings] = useState<HeroSettings>(() => loadHeroSettings());
   const [themeSettings, setThemeSettings] = useState<ThemeSettings>(() => loadThemeSettings());
   const [activeTheme, setActiveThemeState] = useState<string>(() => getActiveTheme(loadThemeSettings().defaultTheme));
@@ -192,6 +196,7 @@ export default function App() {
       setPlannerConfig,
       setEstimatorConfig,
       setAiAssistantConfig,
+      setSmartToolsSettings,
       setThemeSettings,
       setHeroSettings,
       setOrders: setCustomerOrders,
@@ -482,6 +487,7 @@ export default function App() {
         onSearchClick={() => setSearchModalOpen(true)}
         onOpenOrderTracking={() => setOrderTrackingOpen(true)}
         onSelectCategory={handleSelectCategory}
+        onOpenSmartTool={(toolId) => setActiveToolId(toolId)}
       />
 
       {/* Main Page Sections */}
@@ -532,22 +538,10 @@ export default function App() {
           selectedCategoryFilter={selectedCategoryFilter}
         />
 
-        {/* SECONDARY UTILITY TOOLS (Accessible via Navbar / Quick Links) */}
-        {/* Estimated Cement Required Section */}
-        <BuildMaterialEstimator
-          products={products}
-          config={config}
-          estimatorConfig={estimatorConfig}
-          onOpenQuickView={handleQuickViewProduct}
-        />
-
-        {/* Easy Bathroom Planner Section */}
-        <BathroomPlanner
-          products={products}
-          config={plannerConfig}
-          whatsappNumber={config.phone || "923108002863"}
-          onAddToCart={handleAddToCart}
-          onViewProduct={handleQuickViewProduct}
+        {/* COMPACT SMART TOOLS HUB (Cement Calculator, Bathroom Planner, Material Estimator, Budget Finder, Water Tank & Pump Guide) */}
+        <SmartToolsSection
+          settings={smartToolsSettings}
+          onOpenTool={(toolId) => setActiveToolId(toolId)}
         />
 
         <StatsSection stats={stats} />
@@ -584,8 +578,7 @@ export default function App() {
           if (el) el.scrollIntoView({ behavior: 'smooth' });
         }}
         onOpenPlanner={() => {
-          const el = document.getElementById('bathroom-planner');
-          if (el) el.scrollIntoView({ behavior: 'smooth' });
+          setActiveToolId('bathroom-planner');
         }}
       />
 
@@ -699,7 +692,8 @@ export default function App() {
           setSelectedProduct(prod);
           setSearchModalOpen(false);
         }}
-        onSelectCategory={(catId) => {
+        onSelectCategory={(cat) => {
+          const catId = typeof cat === 'string' ? cat : (cat as any)?.id || '';
           handleSelectCategory(catId);
           setSearchModalOpen(false);
         }}
@@ -739,6 +733,7 @@ export default function App() {
           gallery={gallery}
           contacts={contacts}
           heroSettings={heroSettings}
+          smartToolsSettings={smartToolsSettings}
           onSaveProducts={handleSaveProductsState}
           onSaveCategories={handleSaveCategoriesState}
           onSaveBrands={handleSaveBrandsState}
@@ -749,6 +744,10 @@ export default function App() {
           onSaveHeroSettings={(hs) => {
             setHeroSettings(hs);
             saveHeroSettings(hs);
+          }}
+          onSaveSmartToolsSettings={(st) => {
+            setSmartToolsSettings(st);
+            saveSmartToolsSettings(st);
           }}
           onLogout={handleAdminLogout}
           onClose={() => setAdminDashboardOpen(false)}
@@ -776,6 +775,19 @@ export default function App() {
         themeSettings={themeSettings}
         activeThemeId={activeTheme}
         onSelectTheme={handleSelectTheme}
+      />
+
+      {/* Smart Construction & Sanitary Tools Modal */}
+      <SmartToolsModal
+        toolId={activeToolId}
+        products={products}
+        config={config}
+        estimatorConfig={estimatorConfig}
+        plannerConfig={plannerConfig}
+        smartToolsSettings={smartToolsSettings}
+        onClose={() => setActiveToolId(null)}
+        onOpenQuickView={(prod) => setSelectedProduct(prod)}
+        onAddToCart={handleAddToCart}
       />
     </div>
   );

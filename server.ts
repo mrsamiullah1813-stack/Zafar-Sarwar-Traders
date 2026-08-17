@@ -1,12 +1,8 @@
 import express from "express";
 import path from "path";
-import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Initialize Supabase Service Role DB Client for server proxy
 const rawSupabaseUrl = (process.env.VITE_SUPABASE_URL || "").trim();

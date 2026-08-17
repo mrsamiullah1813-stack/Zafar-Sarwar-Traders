@@ -4,7 +4,8 @@ import { ProductBrand, Product } from '../types';
 
 interface BrandDetailsModalProps {
   brand: ProductBrand | null;
-  brandProducts: Product[];
+  brandProducts?: Product[];
+  products?: Product[];
   onSelectProduct: (product: Product) => void;
   onClose: () => void;
 }
@@ -12,6 +13,7 @@ interface BrandDetailsModalProps {
 export const BrandDetailsModal: React.FC<BrandDetailsModalProps> = ({
   brand,
   brandProducts,
+  products,
   onSelectProduct,
   onClose
 }) => {
@@ -25,7 +27,10 @@ export const BrandDetailsModal: React.FC<BrandDetailsModalProps> = ({
     window.open(`https://wa.me/${targetWhatsAppNumber}?text=${encoded}`, '_blank');
   };
 
-  const safeBrandProducts = Array.isArray(brandProducts) ? brandProducts : [];
+  const listToFilter = brandProducts || products || [];
+  const safeBrandProducts = Array.isArray(listToFilter) 
+    ? listToFilter.filter(p => p && (p.brand === brand.name || p.brandId === brand.id || (brandProducts && brandProducts.length > 0)))
+    : [];
   const featuredBrandProducts = safeBrandProducts.filter(p => p && p.isFeatured);
 
   return (

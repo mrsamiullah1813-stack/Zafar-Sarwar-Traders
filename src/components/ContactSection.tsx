@@ -243,7 +243,7 @@ Inquiry from Website:
               </a>
 
               <button
-                onClick={handleWhatsAppDirect}
+                onClick={() => handleWhatsAppDirect()}
                 className="p-5 rounded-3xl glass-card border border-emerald-500/30 hover:border-emerald-500/60 transition-all flex items-center gap-3 text-left shadow-xl"
               >
                 <div className="p-2.5 rounded-2xl bg-emerald-950 border border-emerald-800 text-emerald-400">

@@ -4,18 +4,21 @@ import { AnnouncementBarSettings, AnnouncementItem } from '../types';
 import { defaultAnnouncementSettings, saveAnnouncementSettings } from '../utils/storage';
 
 interface AdminAnnouncementManagerProps {
-  settings: AnnouncementBarSettings;
-  onSaveSettings: (newSettings: AnnouncementBarSettings) => void;
+  settings?: AnnouncementBarSettings;
+  onSaveSettings?: (newSettings: AnnouncementBarSettings) => void;
+  onShowToast?: (msg: string) => void;
 }
 
 export const AdminAnnouncementManager: React.FC<AdminAnnouncementManagerProps> = ({
   settings,
   onSaveSettings,
+  onShowToast,
 }) => {
-  const [formState, setFormState] = useState<AnnouncementBarSettings>(settings || defaultAnnouncementSettings);
+  const [formState, setFormState] = useState<AnnouncementBarSettings>(() => settings || defaultAnnouncementSettings);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
+    if (onShowToast) onShowToast(msg);
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };

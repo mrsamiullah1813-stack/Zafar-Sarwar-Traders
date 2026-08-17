@@ -65,8 +65,9 @@ import { AdminAnnouncementManager } from './AdminAnnouncementManager';
 import { AdminHeroManager } from './AdminHeroManager';
 import { Megaphone, Palette, HardHat } from 'lucide-react';
 import { AdminThemeManager } from './AdminThemeManager';
-import { Product, ProductCategory, ProductVideo, BusinessConfig, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, ThemeSettings, HeroSettings, BuildMaterialEstimatorConfig } from '../types';
-import { getAdminPin, setAdminPin, loadPlannerConfig, savePlannerConfig, loadBuildMaterialEstimatorConfig, saveBuildMaterialEstimatorConfig, loadAiAssistantConfig, saveAiAssistantConfig, loadThemeSettings, saveThemeSettings, loadHeroSettings, saveHeroSettings, deleteProductFromStorage, saveStoredProducts, deleteCategoryFromStorage, deleteBrandFromStorage } from '../utils/storage';
+import { AdminSmartToolsManager } from './AdminSmartToolsManager';
+import { Product, ProductCategory, ProductVideo, BusinessConfig, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, ThemeSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings } from '../types';
+import { getAdminPin, setAdminPin, loadPlannerConfig, savePlannerConfig, loadBuildMaterialEstimatorConfig, saveBuildMaterialEstimatorConfig, loadAiAssistantConfig, saveAiAssistantConfig, loadThemeSettings, saveThemeSettings, loadHeroSettings, saveHeroSettings, loadSmartToolsSettings, saveSmartToolsSettings, deleteProductFromStorage, saveStoredProducts, deleteCategoryFromStorage, deleteBrandFromStorage } from '../utils/storage';
 
 interface AdminDashboardProps {
   products: Product[];
@@ -77,6 +78,7 @@ interface AdminDashboardProps {
   config: BusinessConfig;
   gallery: GalleryItem[];
   heroSettings?: HeroSettings;
+  smartToolsSettings?: SmartToolsSettings;
   onSaveProducts: (products: Product[]) => Promise<{ success: boolean; error?: string }> | void;
   onSaveCategories: (categories: ProductCategory[]) => Promise<{ success: boolean; error?: string }> | void;
   onSaveBrands: (brands: ProductBrand[]) => Promise<{ success: boolean; error?: string }> | void;
@@ -85,6 +87,7 @@ interface AdminDashboardProps {
   onSaveConfig: (config: BusinessConfig) => void;
   onSaveGallery: (gallery: GalleryItem[]) => void;
   onSaveHeroSettings?: (hs: HeroSettings) => void;
+  onSaveSmartToolsSettings?: (st: SmartToolsSettings) => void;
   onLogout: () => void;
   onClose: () => void;
 }
@@ -98,6 +101,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   config,
   gallery,
   heroSettings,
+  smartToolsSettings,
   onSaveProducts,
   onSaveCategories,
   onSaveBrands,
@@ -106,15 +110,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onSaveConfig,
   onSaveGallery,
   onSaveHeroSettings,
+  onSaveSmartToolsSettings,
   onLogout,
   onClose
 }) => {
-  const [activeTab, setActiveTab] = useState<'analytics' | 'hero' | 'announcements' | 'orders' | 'delivery' | 'products' | 'categories' | 'brands' | 'contacts' | 'statistics' | 'banners_seo' | 'gallery' | 'planner' | 'estimator' | 'ai_assistant' | 'themes'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'hero' | 'announcements' | 'orders' | 'customers' | 'delivery' | 'products' | 'categories' | 'brands' | 'contacts' | 'statistics' | 'banners_seo' | 'gallery' | 'smart_tools' | 'planner' | 'estimator' | 'ai_assistant' | 'themes'>('analytics');
   const [plannerConfig, setPlannerConfig] = useState<AiDesignerConfig>(loadPlannerConfig());
   const [estimatorConfig, setEstimatorConfig] = useState<BuildMaterialEstimatorConfig>(loadBuildMaterialEstimatorConfig());
   const [aiAssistantConfig, setAiAssistantConfig] = useState<AiAssistantConfig>(loadAiAssistantConfig());
   const [themeSettings, setThemeSettings] = useState<ThemeSettings>(loadThemeSettings());
   const [heroSettingsState, setHeroSettingsState] = useState<HeroSettings>(heroSettings || loadHeroSettings());
+  const [smartToolsSettingsState, setSmartToolsSettingsState] = useState<SmartToolsSettings>(smartToolsSettings || loadSmartToolsSettings());
   const [searchQuery, setSearchQuery] = useState('');
   const [brandSearch, setBrandSearch] = useState('');
   const [editingBrand, setEditingBrand] = useState<ProductBrand | null>(null);
@@ -860,6 +866,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <span className="px-2 py-0.5 rounded-full bg-slate-950 text-[10px] text-slate-300 font-mono">
                 {gallery.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('smart_tools')}
+              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all ${
+                activeTab === 'smart_tools'
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-950'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Sparkles className="w-4 h-4 text-cyan-400" />
+                <span>Smart Tools Hub (5 Tools)</span>
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                smartToolsSettingsState.isEnabled ? 'bg-emerald-950 text-emerald-300' : 'bg-rose-950 text-rose-300'
+              }`}>
+                {smartToolsSettingsState.isEnabled ? 'Active' : 'OFF'}
               </span>
             </button>
 
@@ -2455,6 +2480,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 ))}
               </div>
             </div>
+          )}
+
+          {/* TAB: SMART TOOLS HUB (5 TOOLS) */}
+          {activeTab === 'smart_tools' && (
+            <AdminSmartToolsManager
+              settings={smartToolsSettingsState}
+              onSaveSettings={async (updated) => {
+                setSmartToolsSettingsState(updated);
+                await saveSmartToolsSettings(updated);
+                if (onSaveSmartToolsSettings) onSaveSmartToolsSettings(updated);
+                showToast('Smart Tools configuration updated permanently in Supabase!');
+              }}
+            />
           )}
 
           {/* TAB: EASY BATHROOM PLANNER */}

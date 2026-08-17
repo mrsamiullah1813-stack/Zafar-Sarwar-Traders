@@ -58,10 +58,10 @@ I used your AI Material & Bathroom Estimator for my project.
 Project: ${projectType} (${roomsCount} Bathrooms)
 Style: ${aestheticStyle}
 
-Recommended Categories: ${result.recommendedCategories.join(', ')}
+Recommended Categories: ${(result.recommendedCategories || []).join(', ')}
 
 WhatsApp Summary:
-${result.whatsappSummary}
+${result.whatsappSummary || result.summary || ''}
 
 Please share complete itemized pricing for these recommended specs!`;
 
@@ -201,34 +201,40 @@ Please share complete itemized pricing for these recommended specs!`;
               </p>
             </div>
 
-            <div>
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Recommended Product Categories:</span>
-              <div className="flex flex-wrap gap-2">
-                {result.recommendedCategories.map((cat, idx) => (
-                  <span key={idx} className="px-3 py-1 rounded-lg bg-slate-950 border border-slate-800 text-blue-300 text-xs font-medium">
-                    ✔ {cat}
-                  </span>
-                ))}
+            {result.recommendedCategories && result.recommendedCategories.length > 0 && (
+              <div>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Recommended Product Categories:</span>
+                <div className="flex flex-wrap gap-2">
+                  {result.recommendedCategories.map((cat, idx) => (
+                    <span key={idx} className="px-3 py-1 rounded-lg bg-slate-950 border border-slate-800 text-blue-300 text-xs font-medium">
+                      ✔ {cat}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="space-y-2">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Key Suggested Fittings & Supplies:</span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {result.keyProducts.map((prod, idx) => (
-                  <div key={idx} className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs">
-                    <div className="text-white font-bold">{prod.name}</div>
-                    <div className="text-blue-400 text-[11px] mt-0.5">{prod.whyItFits}</div>
-                    <div className="text-slate-400 text-[10px] mt-1">{prod.estimatedSpecs}</div>
-                  </div>
-                ))}
+            {result.keyProducts && result.keyProducts.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Key Suggested Fittings & Supplies:</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {result.keyProducts.map((prod, idx) => (
+                    <div key={idx} className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                      <div className="text-white font-bold">{prod.name}</div>
+                      <div className="text-blue-400 text-[11px] mt-0.5">{prod.whyItFits}</div>
+                      <div className="text-slate-400 text-[10px] mt-1">{prod.estimatedSpecs}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
-              <span className="font-bold text-amber-400 block mb-0.5">💡 Expert Tip:</span>
-              {result.estimatedMaterialTip}
-            </div>
+            {result.estimatedMaterialTip && (
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
+                <span className="font-bold text-amber-400 block mb-0.5">💡 Expert Tip:</span>
+                {result.estimatedMaterialTip}
+              </div>
+            )}
 
             <div className="pt-3 border-t border-slate-800 flex flex-col sm:flex-row gap-3">
               <button

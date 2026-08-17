@@ -85,7 +85,7 @@ export function calculateWaterTankAndPump(
     dailyWaterRequirementGallons: dailyGallons,
     recommendedOverheadTankLiters: recommendedTankLiters,
     recommendedOverheadTankGallons: recommendedTankGallons,
-    recommendedUndergroundTankLiters,
+    recommendedUndergroundTankLiters: recommendedUndergroundLiters,
     recommendedPumpHorsepower: pumpHp,
     recommendedPipeSizeInches: pipeSize,
     summaryText,

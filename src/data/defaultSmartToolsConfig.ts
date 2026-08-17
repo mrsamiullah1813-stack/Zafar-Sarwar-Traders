@@ -2,10 +2,36 @@ import { SmartToolsSettings } from '../types';
 
 export const defaultSmartToolsSettings: SmartToolsSettings = {
   isEnabled: true,
-  sectionTitle: "Smart Construction & Bathroom Tools",
-  sectionUrduTitle: "اسمارٹ اسٹور ٹولز — آن لائن کیلکولیٹر اور گائیڈ",
-  sectionSubtitle: "Calculate accurate cement bags, plan complete bathroom fixture packages, check water tank & pump capacities, or match products to your exact budget.",
-  sectionBadge: "Interactive Store Utilities",
+  sectionTitle: "Smart Tools",
+  sectionUrduTitle: "اسمارٹ ٹولز — آن لائن کیلکولیٹر اور گائیڈ",
+  sectionSubtitle: "Simple tools to help you plan your bathroom, home and construction project.",
+  sectionBadge: "Store Utilities",
+  brickSettings: {
+    bricksPerCft: 13.5,
+    singleWallBricksPerSqFt: 4.5, // 4.5" wall
+    doubleWallBricksPerSqFt: 9.0, // 9" wall
+    cementBagsPer1000Bricks: 3.2,
+    sandCftPer1000Bricks: 15.0,
+    defaultWastagePercent: 5
+  },
+  paintSettings: {
+    sqFtPerLitrePerCoat: 130,
+    sqFtPerGallonPerCoat: 450,
+    defaultDoorAreaSqFt: 21,
+    defaultWindowAreaSqFt: 15,
+    defaultWastagePercent: 5
+  },
+  constructionCostSettings: {
+    greyStructureBasicPerSqFt: 2100,
+    greyStructureStandardPerSqFt: 2500,
+    greyStructurePremiumPerSqFt: 2900,
+    finishingBasicPerSqFt: 1800,
+    finishingStandardPerSqFt: 2600,
+    finishingPremiumPerSqFt: 3900,
+    completeBasicPerSqFt: 3900,
+    completeStandardPerSqFt: 5100,
+    completePremiumPerSqFt: 6800
+  },
   tools: [
     {
       id: "cement-calculator",
@@ -13,69 +39,126 @@ export const defaultSmartToolsSettings: SmartToolsSettings = {
       urduTitle: "سیمنٹ کیلکولیٹر",
       tagline: "Estimate approximate cement requirement for your home or project.",
       description: "Quickly estimate total cement bags needed based on Pakistani house size (Marla / Kanal), covered area, and single or double storey construction.",
-      badge: "Pakistani Marla Presets",
+      badge: "Marla Presets",
       iconName: "HardHat",
-      buttonText: "Open Cement Calculator",
+      buttonText: "Open Tool",
       isEnabled: true,
       showOnHomepage: true,
       displayOrder: 1,
-      disclaimer: "Ye sirf general estimate hai. Actual requirement design, structure, foundation, slab, walls, concrete ratio, steel quantity, soil condition, construction method aur site requirements ke mutabiq kam ya zyada ho sakti hai. Final quantity ke liye qualified engineer/contractor se confirm karein."
-    },
-    {
-      id: "bathroom-planner",
-      title: "Bathroom Planner",
-      urduTitle: "باتھ روم پلانر",
-      tagline: "Plan fixtures, styles, and full bathroom packages easily.",
-      description: "Select your bathroom type (Master, Guest, Standard), required items (Toilet, Basin, Shower, Faucets), style & finishes to get a complete curated package.",
-      badge: "Visual Package Builder",
-      iconName: "ShowerHead",
-      buttonText: "Open Bathroom Planner",
-      isEnabled: true,
-      showOnHomepage: true,
-      displayOrder: 2,
-      disclaimer: "Product rates are based on current showroom catalog. Final plumbing installation accessories and labor are estimated separately."
+      disclaimer: "This is only an approximate estimate. Actual cement requirement can be lower or higher depending on structural design, foundation, slab thickness, architectural design, soil conditions, construction method and wastage. ESTIMATE ONLY — NOT A STRUCTURAL ENGINEERING CALCULATION."
     },
     {
       id: "material-estimator",
       title: "Material Estimator",
       urduTitle: "میٹیریل تخمینہ",
       tagline: "Estimate approximate construction materials.",
-      description: "Comprehensive estimator covering Grey Structure materials including Bricks, Sand (Chenab/Ravi), Crush (Margalla/Sargodha), Steel (Grade 60), and Cement.",
-      badge: "Grey Structure Breakdown",
+      description: "Comprehensive estimator covering Grey Structure materials including Bricks, Sand (Chenab/Ravi), Crush (Bajri), Steel (Grade 60), and Cement in Pakistani units.",
+      badge: "Civil Breakdown",
       iconName: "Calculator",
-      buttonText: "Open Material Estimator",
+      buttonText: "Open Tool",
+      isEnabled: true,
+      showOnHomepage: true,
+      displayOrder: 2,
+      disclaimer: "Construction material rates and quantities fluctuate based on architectural drawings, RCC slab thickness, and soil bearing capacity. Estimate only."
+    },
+    {
+      id: "bathroom-planner",
+      title: "Bathroom Planner",
+      urduTitle: "باتھ روم پلانر",
+      tagline: "Plan fixtures, styles, and full bathroom packages easily.",
+      description: "A simple 5-step wizard to plan new bathrooms or renovations, select required fixtures, choose your budget tier, and view matching showroom products.",
+      badge: "5-Step Wizard",
+      iconName: "ShowerHead",
+      buttonText: "Open Tool",
       isEnabled: true,
       showOnHomepage: true,
       displayOrder: 3,
-      disclaimer: "Construction material rates and quantities fluctuate based on architectural drawings, RCC slab thickness, and soil bearing capacity."
+      disclaimer: "All recommended products come directly from our current store database. Final plumbing installation accessories and labor are estimated separately."
     },
     {
-      id: "bathroom-budget-finder",
-      title: "Bathroom Budget Finder",
-      urduTitle: "باتھ روم بجٹ فائنڈر",
-      tagline: "Find suitable bathroom products according to your budget.",
-      description: "Tell us your budget (e.g. Rs. 50k, 100k, 200k+) and bathroom type to instantly match with real in-stock vanity sets, commodes, faucets, and showers.",
-      badge: "Budget-Friendly Matcher",
-      iconName: "DollarSign",
-      buttonText: "Open Budget Finder",
+      id: "product-finder",
+      title: "Smart Product Finder",
+      urduTitle: "اسمارٹ پراڈکٹ فائنڈر",
+      tagline: "Help customers find the right products quickly.",
+      description: "Filter by item category (Toilet, Basin, Shower, Taps, Tanks, Pipes), exact budget, and quality preference to instantly find in-stock products.",
+      badge: "Quick Search",
+      iconName: "Search",
+      buttonText: "Open Tool",
       isEnabled: true,
       showOnHomepage: true,
       displayOrder: 4,
-      disclaimer: "All package recommendations query live store prices. Options can be customized or added directly to cart / WhatsApp order."
+      disclaimer: "All products and live prices are synchronized directly with our Supabase store catalog."
     },
     {
-      id: "water-tank-pump-guide",
-      title: "Water Tank & Pump Guide",
-      urduTitle: "پانی کا ٹینک اور پمپ گائیڈ",
-      tagline: "Get an approximate tank and pump recommendation.",
-      description: "Calculate optimal overhead water tank size (Gallons/Liters) and water pump / pressure motor horsepower (HP) based on family size and number of floors.",
-      badge: "Capacity & Motor Guide",
-      iconName: "Droplet",
-      buttonText: "Open Water Guide",
+      id: "construction-cost",
+      title: "House Construction Cost Estimator",
+      urduTitle: "گھر کی تعمیر کا تخمینہ لاگت",
+      tagline: "Get approximate Pakistani construction project cost ranges.",
+      description: "Select 3, 5, 7, 10 Marla or 1 Kanal, construction stage (Grey Structure vs Complete), and quality grade to get realistic PKR cost estimates.",
+      badge: "PKR Cost Range",
+      iconName: "Home",
+      buttonText: "Open Tool",
       isEnabled: true,
       showOnHomepage: true,
       displayOrder: 5,
-      disclaimer: "Final tank aur pump selection building height, water source, pipe length, pressure aur site conditions par depend karti hai. Final installation ke liye qualified plumber/engineer se confirm karein."
+      disclaimer: "This is an approximate planning estimate only. Actual cost depends on covered area, structural design, material quality, labour rates, location, market prices and project specifications."
+    },
+    {
+      id: "budget-products",
+      title: "Budget-to-Products AI",
+      urduTitle: "بجٹ کے مطابق پراڈکٹس AI",
+      tagline: "Customer gives a budget and project requirement.",
+      description: "Enter your budget in PKR (e.g. Rs. 100,000 for 1 bathroom) and our intelligent system curates a complete shopping list of real store items within your limit.",
+      badge: "AI Inventory Matcher",
+      iconName: "Bot",
+      buttonText: "Open Tool",
+      isEnabled: true,
+      showOnHomepage: true,
+      displayOrder: 6,
+      disclaimer: "AI matches genuine showroom items and prices directly from Supabase. No fake products or prices are ever generated."
+    },
+    {
+      id: "bricks",
+      title: "Bricks Estimator",
+      urduTitle: "اینٹوں کا تخمینہ کیلکولیٹر",
+      tagline: "Calculate approximate brick requirements with openings and wastage.",
+      description: "Enter wall length, height, and thickness (4.5\" or 9\" standard double leaf) with door and window openings deduction to find exact brick quantities.",
+      badge: "Masonry Tool",
+      iconName: "Boxes",
+      buttonText: "Open Tool",
+      isEnabled: true,
+      showOnHomepage: true,
+      displayOrder: 7,
+      disclaimer: "Actual brick requirement depends on brick size, wall thickness, mortar joints, openings such as doors/windows and construction method."
+    },
+    {
+      id: "paint",
+      title: "Paint Quantity Calculator",
+      urduTitle: "پینٹ کی مقدار کا کیلکولیٹر",
+      tagline: "Calculate paint litres, gallons, and drums for walls and ceilings.",
+      description: "Enter room length, width, height, and openings to calculate paintable surface area and required paint in Litres, Gallons, and Drums.",
+      badge: "Room & Wall Coverage",
+      iconName: "Palette",
+      buttonText: "Open Tool",
+      isEnabled: true,
+      showOnHomepage: true,
+      displayOrder: 8,
+      disclaimer: "Approximate estimate only. Actual coverage depends on paint brand, surface condition, primer, number of coats, and application method."
+    },
+    {
+      id: "water-tank",
+      title: "Water Tank Calculator",
+      urduTitle: "پانی کا ٹینک اور پمپ کیلکولیٹر",
+      tagline: "Calculate recommended water tank capacity and motor horsepower.",
+      description: "Calculate optimal overhead and underground water tank volume in Litres/Gallons and pump HP based on residents and building storeys.",
+      badge: "Liters & Gallons Guide",
+      iconName: "Droplet",
+      buttonText: "Open Tool",
+      isEnabled: true,
+      showOnHomepage: true,
+      displayOrder: 9,
+      disclaimer: "Final tank and pump selection depends on building height, water source, pipe length, pressure and site conditions."
     }
   ]
 };
+

@@ -22,7 +22,7 @@ import {
   Send,
   Plus
 } from 'lucide-react';
-import { CustomerOrder, CheckoutSettings } from '../types';
+import { CustomerOrder, CheckoutSettings, OrderStatus, OrderStatusHistoryItem } from '../types';
 import { loadStoredOrders, saveStoredOrders, loadCheckoutSettings, saveCheckoutSettings } from '../utils/storage';
 import { fetchOrdersFromSupabase, updateOrderStatusInSupabase, isSupabaseConfigured } from '../services/supabaseService';
 import { supabase } from '../lib/supabase';
@@ -91,18 +91,18 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
     }
 
     const nowStr = new Date().toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' });
-    const updated = orders.map(o => {
+    const updated: CustomerOrder[] = orders.map(o => {
       if (o.id === orderId) {
         const existingHistory = o.statusHistory || [];
-        const newHistoryItem = {
-          status: newStatus,
+        const newHistoryItem: OrderStatusHistoryItem = {
+          status: newStatus as OrderStatus,
           timestamp: nowStr,
           note: note || `Status updated to ${newStatus} by Admin`,
           updatedBy: 'Admin'
         };
         return {
           ...o,
-          status: newStatus as any,
+          status: newStatus as OrderStatus,
           statusHistory: [...existingHistory, newHistoryItem]
         };
       }

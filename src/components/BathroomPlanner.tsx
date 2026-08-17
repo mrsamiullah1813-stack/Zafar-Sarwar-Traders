@@ -52,8 +52,6 @@ export const BathroomPlanner: React.FC<BathroomPlannerProps> = ({
     ...(config || {})
   };
 
-  if (!plannerConfig.isEnabled) return null;
-
   // Wizard state: Step 1 to 4, then Step 5 is the Result Package
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [isGenerated, setIsGenerated] = useState<boolean>(false);

@@ -372,11 +372,17 @@ export interface EasyBathroomPlannerResult {
 }
 
 export interface AiRecommendationResponse {
-  summary: string;
-  recommendedBrands: string[];
-  suggestedItems: string[];
-  estimatedPackagePrice: string;
-  advice: string;
+  summary?: string;
+  headline?: string;
+  overview?: string;
+  recommendedCategories?: string[];
+  recommendedBrands?: string[];
+  suggestedItems?: string[];
+  keyProducts?: { name: string; whyItFits: string; estimatedSpecs: string }[];
+  estimatedMaterialTip?: string;
+  whatsappSummary?: string;
+  estimatedPackagePrice?: string;
+  advice?: string;
 }
 
 export interface AiCustomKnowledge {
@@ -498,7 +504,7 @@ export interface OrderItem {
 export type OrderStatus = 'Order Received' | 'New' | 'Confirmed' | 'Preparing' | 'Ready for Delivery' | 'Out for Delivery' | 'Delivered' | 'On Hold' | 'Cancelled' | 'Pending' | 'Processing';
 
 export interface OrderStatusHistoryItem {
-  status: OrderStatus;
+  status: OrderStatus | string;
   timestamp: string;
   note?: string;
   updatedBy?: string;
@@ -533,7 +539,9 @@ export interface CustomerOrder {
   customerId?: string; // e.g. 'ZFT-CUST-1001'
   customerName: string;
   phoneNumber: string;
+  customerPhone?: string;
   whatsappNumber?: string;
+  email?: string;
   city: string;
   areaLocality?: string;
   deliveryAddress: string;
@@ -586,6 +594,7 @@ export interface CheckoutSettings {
   taxRatePercent: number;
   enableTaxes: boolean;
   freeDeliveryThreshold?: number;
+  whatsappNumber?: string;
   whatsappNumberOverride?: string;
 }
 
@@ -775,12 +784,36 @@ export interface BuildMaterialEstimatorInputs {
   bathroomsCount?: number;
 }
 
+export interface BuildMaterialEstimationResult {
+  inputs: BuildMaterialEstimatorInputs;
+  coveredAreaSqFt: number;
+  baseEstimatedBags: number;
+  minEstimatedBags: number;
+  maxEstimatedBags: number;
+  recommendedBags: number;
+  summaryText: string;
+  appliedMultipliers: {
+    baseRate: number;
+    constructionType: { name: string; multiplier: number };
+    floors: { name: string; multiplier: number };
+    quality: { name: string; multiplier: number };
+    optionalAdjustmentsTotalPercentage: number;
+    bathroomBags: number;
+  };
+}
+
 export type SmartToolId = 
   | 'cement-calculator' 
-  | 'bathroom-planner' 
   | 'material-estimator' 
-  | 'bathroom-budget-finder' 
-  | 'water-tank-pump-guide';
+  | 'bathroom-planner' 
+  | 'product-finder' 
+  | 'construction-cost' 
+  | 'budget-products' 
+  | 'bricks' 
+  | 'paint' 
+  | 'water-tank'
+  | 'bathroom-budget-finder' // backward compatibility alias
+  | 'water-tank-pump-guide'; // backward compatibility alias
 
 export interface SmartToolCardConfig {
   id: SmartToolId;
@@ -789,7 +822,7 @@ export interface SmartToolCardConfig {
   tagline: string;
   description: string;
   badge?: string;
-  iconName: string; // 'HardHat' | 'ShowerHead' | 'Calculator' | 'DollarSign' | 'Droplet'
+  iconName: string; // 'HardHat' | 'ShowerHead' | 'Calculator' | 'Search' | 'Home' | 'Bot' | 'Boxes' | 'Palette' | 'Droplet' | 'DollarSign'
   buttonText: string;
   isEnabled: boolean;
   showOnHomepage: boolean;
@@ -804,6 +837,200 @@ export interface SmartToolsSettings {
   sectionSubtitle: string;
   sectionBadge: string;
   tools: SmartToolCardConfig[];
+  // Global calculation assumptions (Admin configurable)
+  brickSettings?: {
+    bricksPerCft: number; // default ~13.5
+    singleWallBricksPerSqFt: number; // 4.5" wall default ~4.5
+    doubleWallBricksPerSqFt: number; // 9" wall default ~9.0
+    cementBagsPer1000Bricks: number; // default ~3.0
+    sandCftPer1000Bricks: number; // default ~15.0
+    defaultWastagePercent: number; // default 5%
+  };
+  paintSettings?: {
+    sqFtPerLitrePerCoat: number; // default ~130
+    sqFtPerGallonPerCoat: number; // default ~450
+    defaultDoorAreaSqFt: number; // default 21
+    defaultWindowAreaSqFt: number; // default 15
+    defaultWastagePercent: number; // default 5%
+  };
+  constructionCostSettings?: {
+    greyStructureBasicPerSqFt: number; // PKR ~2,100
+    greyStructureStandardPerSqFt: number; // PKR ~2,500
+    greyStructurePremiumPerSqFt: number; // PKR ~2,900
+    finishingBasicPerSqFt: number; // PKR ~1,800
+    finishingStandardPerSqFt: number; // PKR ~2,500
+    finishingPremiumPerSqFt: number; // PKR ~3,800
+    completeBasicPerSqFt: number; // PKR ~3,900
+    completeStandardPerSqFt: number; // PKR ~5,000
+    completePremiumPerSqFt: number; // PKR ~6,700
+  };
+}
+
+// ---------------------------------------------------------
+// 1. HOUSE CONSTRUCTION COST ESTIMATOR TYPES
+// ---------------------------------------------------------
+export interface HouseConstructionInputs {
+  houseSizePreset: '3-marla' | '5-marla' | '7-marla' | '10-marla' | '1-kanal' | 'custom';
+  customMarla?: number;
+  customSqFt?: number;
+  storeys: 'single' | 'double' | 'triple' | 'custom';
+  customStoreysCount?: number;
+  stage: 'grey-structure' | 'finishing' | 'complete-house';
+  quality: 'basic' | 'standard' | 'premium';
+  bathroomsCount?: number;
+  kitchensCount?: number;
+  hasBasement?: boolean;
+}
+
+export interface ConstructionCostCategoryItem {
+  id: string;
+  name: string;
+  urduName?: string;
+  percentage: number;
+  estimatedMinPkr: number;
+  estimatedMaxPkr: number;
+  approxQuantity?: string;
+  description: string;
+  relatedCategorySlug?: string;
+}
+
+export interface HouseConstructionResult {
+  inputs: HouseConstructionInputs;
+  coveredAreaSqFt: number;
+  ratePerSqFtMin: number;
+  ratePerSqFtMax: number;
+  totalCostMinPkr: number;
+  totalCostMaxPkr: number;
+  recommendedBudgetPkr: number;
+  stageLabel: string;
+  qualityLabel: string;
+  categories: ConstructionCostCategoryItem[];
+  disclaimer: string;
+}
+
+// ---------------------------------------------------------
+// 2. BUDGET-TO-PRODUCTS AI TYPES
+// ---------------------------------------------------------
+export interface BudgetProductsAiInputs {
+  budgetAmountPkr: number;
+  projectType: 'bathroom' | 'plumbing' | 'kitchen' | 'paint' | 'complete-house-sanitary' | 'custom';
+  bathroomCount?: number;
+  preferredQuality: 'budget' | 'standard' | 'premium';
+  selectedPriorities: string[]; // e.g. ['toilets', 'faucets', 'showers', 'vanities', 'accessories', 'plumbing-pipes']
+  additionalNotes?: string;
+}
+
+export interface BudgetRecommendedItem {
+  categoryKey: string;
+  categoryLabel: string;
+  product: Product;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  isEssential: boolean;
+  matchScore?: number;
+}
+
+export interface BudgetProductsAiResult {
+  inputs: BudgetProductsAiInputs;
+  targetBudgetPkr: number;
+  totalEstimatedPkr: number;
+  remainingBudgetPkr: number;
+  isWithinBudget: boolean;
+  recommendations: BudgetRecommendedItem[];
+  aiAdvice: string;
+  urduAdvice?: string;
+}
+
+// ---------------------------------------------------------
+// 3. BRICKS ESTIMATOR TYPES
+// ---------------------------------------------------------
+export interface OpeningItem {
+  id: string;
+  type: 'door' | 'window' | 'custom';
+  name: string;
+  widthFeet: number;
+  heightFeet: number;
+  quantity: number;
+}
+
+export interface BricksEstimatorInputs {
+  wallLengthFeet: number;
+  wallHeightFeet: number;
+  wallThicknessType: '4.5-inch' | '9-inch' | '13.5-inch' | 'custom';
+  customThicknessInches?: number;
+  openings: OpeningItem[];
+  wastagePercent: number; // default 5%
+}
+
+export interface BricksEstimatorResult {
+  inputs: BricksEstimatorInputs;
+  grossWallAreaSqFt: number;
+  openingsAreaSqFt: number;
+  netWallAreaSqFt: number;
+  wallVolumeCft: number;
+  rawBricksCount: number;
+  wastageBricksCount: number;
+  totalBricksMin: number;
+  totalBricksMax: number;
+  recommendedBricks: number;
+  approxCementBags: number;
+  approxSandCft: number;
+  summaryText: string;
+  urduSummaryText: string;
+  disclaimer: string;
+}
+
+// ---------------------------------------------------------
+// 4. PAINT QUANTITY CALCULATOR TYPES
+// ---------------------------------------------------------
+export interface PaintEstimatorInputs {
+  roomLengthFeet: number;
+  roomWidthFeet: number;
+  wallHeightFeet: number;
+  doorsCount: number;
+  windowsCount: number;
+  numberOfCoats: number; // 1, 2, 3
+  includeCeiling: boolean;
+  surfaceType: 'smooth-plaster' | 'rough-plaster' | 'repaint' | 'drywall';
+}
+
+export interface PaintEstimatorResult {
+  inputs: PaintEstimatorInputs;
+  wallsAreaSqFt: number;
+  ceilingAreaSqFt: number;
+  openingsDeductionSqFt: number;
+  netPaintableAreaSqFt: number;
+  totalCoatsAreaSqFt: number;
+  estimatedLitresMin: number;
+  estimatedLitresMax: number;
+  recommendedLitres: number;
+  approxGallons: number; // ~3.785 litres / imp gallon ~4.54L in PK
+  approxDrums: number; // 14-16 Litre drums
+  matchedPaintProducts: Product[];
+  summaryText: string;
+  urduSummaryText: string;
+  disclaimer: string;
+}
+
+// ---------------------------------------------------------
+// 5. SMART PRODUCT FINDER TYPES
+// ---------------------------------------------------------
+export interface SmartProductFinderInputs {
+  lookingFor: string; // 'all' | 'toilet' | 'basin' | 'shower' | 'shower-set' | 'tap' | 'accessories' | 'water-tank' | 'pump' | 'pipes' | 'paint' | 'vanity' | 'mirror' | 'geyser'
+  budgetTier: 'all' | 'under-10k' | '10k-25k' | '25k-50k' | '50k-plus' | 'custom';
+  customMinPrice?: number;
+  customMaxPrice?: number;
+  qualityPreference: 'all' | 'budget' | 'standard' | 'premium';
+  selectedBrand?: string;
+  selectedColor?: string;
+  searchQuery?: string;
+}
+
+export interface SmartProductFinderResult {
+  inputs: SmartProductFinderInputs;
+  matchedProducts: Product[];
+  totalMatches: number;
 }
 
 // Bathroom Budget Finder Types

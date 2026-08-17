@@ -63,11 +63,6 @@ export const BuildMaterialEstimator: React.FC<BuildMaterialEstimatorProps> = ({
   const [copied, setCopied] = useState(false);
   const [showFactorsBreakdown, setShowFactorsBreakdown] = useState(false);
 
-  // If estimator is explicitly disabled in admin settings, do not render
-  if (currentConfig.isEnabled === false) {
-    return null;
-  }
-
   // Deterministic calculation
   const result = useMemo(() => {
     return calculateCementEstimate(inputs, currentConfig);

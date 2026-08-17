@@ -101,10 +101,10 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   };
 
   const handleWhatsAppOrderInquiry = (order: CustomerOrder) => {
-    const rawPhone = config.whatsappNumber || '923001234567';
+    const rawPhone = config.whatsapp || config.phone || '923001234567';
     const cleanPhone = rawPhone.replace(/\D/g, '');
     const message = encodeURIComponent(
-      `Hello ${config.companyName || 'Zafar Sarwar Traders'},\n\nI want an update about my Order #${order.orderNumber || order.id}.\nCustomer ID: ${profile.customerId}\nName: ${profile.fullName || order.customerName}\nCurrent Status: ${order.status}\n\nThank you!`
+      `Hello ${config.name || 'Zafar Sarwar Traders'},\n\nI want an update about my Order #${order.orderNumber || order.id}.\nCustomer ID: ${profile.customerId}\nName: ${profile.fullName || order.customerName}\nCurrent Status: ${order.status}\n\nThank you!`
     );
     window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
   };
@@ -406,16 +406,16 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                     <div className="space-y-2 pt-2">
                       <h4 className="text-xs font-bold uppercase text-slate-400 tracking-wider">Order Items</h4>
                       <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                        {selectedOrder.items?.map(item => (
-                          <div key={item.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-900/90 border border-slate-800/80 text-xs">
+                        {selectedOrder.items?.map((item, idx) => (
+                          <div key={item.productId || idx} className="flex items-center justify-between p-3 rounded-xl bg-slate-900/90 border border-slate-800/80 text-xs">
                             <div className="flex items-center gap-3">
-                              <img src={item.image} alt={item.name} className="w-10 h-10 object-contain bg-slate-950 rounded-lg p-1 border border-slate-800" />
+                              <img src={item.image || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=200'} alt={item.productName} className="w-10 h-10 object-contain bg-slate-950 rounded-lg p-1 border border-slate-800" />
                               <div>
-                                <p className="font-bold text-white">{item.name}</p>
-                                <p className="text-[10px] text-slate-400">Qty: {item.quantity} × Rs. {(item.price ?? 0).toLocaleString()}</p>
+                                <p className="font-bold text-white">{item.productName}</p>
+                                <p className="text-[10px] text-slate-400">Qty: {item.quantity} × Rs. {(item.numericPrice ?? 0).toLocaleString()}</p>
                               </div>
                             </div>
-                            <span className="font-bold text-cyan-300">Rs. {((item.price || 0) * (item.quantity || 1)).toLocaleString()}</span>
+                            <span className="font-bold text-cyan-300">Rs. {((item.numericPrice || 0) * (item.quantity || 1)).toLocaleString()}</span>
                           </div>
                         ))}
                       </div>

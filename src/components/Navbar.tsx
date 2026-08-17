@@ -41,6 +41,7 @@ interface NavbarProps {
   onSearchClick: () => void;
   onOpenOrderTracking?: () => void;
   onSelectCategory: (categoryId: string) => void;
+  onOpenSmartTool?: (toolId: any) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -60,7 +61,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenConfigModal,
   onSearchClick,
   onOpenOrderTracking,
-  onSelectCategory
+  onSelectCategory,
+  onOpenSmartTool
 }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -332,20 +334,46 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           <div className="ml-auto flex items-center gap-2 shrink-0">
-            <a
-              href="#cement-estimator"
+            <button
+              onClick={() => {
+                if (onOpenSmartTool) onOpenSmartTool('cement-calculator');
+                else {
+                  const el = document.getElementById('smart-tools');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }
+              }}
               className="text-xs font-bold text-amber-800 bg-amber-100/90 hover:bg-amber-200 hover:text-amber-900 flex items-center gap-1.5 px-3 py-1 rounded-lg transition-colors border border-amber-300/60"
             >
               <span>Cement Required</span>
-            </a>
+            </button>
 
-            <a
-              href="#bathroom-planner"
+            <button
+              onClick={() => {
+                if (onOpenSmartTool) onOpenSmartTool('bathroom-planner');
+                else {
+                  const el = document.getElementById('smart-tools');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }
+              }}
               className="text-xs font-bold text-emerald-800 bg-emerald-100/90 hover:bg-emerald-200 hover:text-emerald-900 flex items-center gap-1 px-3 py-1 rounded-lg transition-colors border border-emerald-300/60"
             >
               <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
               <span>Easy Bathroom Planner</span>
-            </a>
+            </button>
+
+            <button
+              onClick={() => {
+                if (onOpenSmartTool) onOpenSmartTool('hub');
+                else {
+                  const el = document.getElementById('smart-tools');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }
+              }}
+              className="text-xs font-bold text-blue-800 bg-blue-100/90 hover:bg-blue-200 hover:text-blue-900 hidden lg:flex items-center gap-1 px-2.5 py-1 rounded-lg transition-colors border border-blue-300/60"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+              <span>Smart Tools Hub (9 Tools)</span>
+            </button>
           </div>
 
         </div>
@@ -382,22 +410,49 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
-            <a
-              href="#cement-estimator"
-              onClick={() => setMobileMenuOpen(false)}
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                if (onOpenSmartTool) onOpenSmartTool('cement-calculator');
+                else {
+                  const el = document.getElementById('smart-tools');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }
+              }}
               className="w-full py-2.5 rounded-xl bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs flex items-center justify-center gap-2"
             >
               <span>Estimated Cement Required</span>
-            </a>
+            </button>
 
-            <a
-              href="#bathroom-planner"
-              onClick={() => setMobileMenuOpen(false)}
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                if (onOpenSmartTool) onOpenSmartTool('bathroom-planner');
+                else {
+                  const el = document.getElementById('smart-tools');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }
+              }}
               className="w-full py-2.5 rounded-xl bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs flex items-center justify-center gap-2"
             >
               <Sparkles className="w-4 h-4 text-emerald-700" />
               <span>Easy Bathroom Planner</span>
-            </a>
+            </button>
+
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                if (onOpenSmartTool) onOpenSmartTool('hub');
+                else {
+                  const el = document.getElementById('smart-tools');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }
+              }}
+              className="w-full py-2.5 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold text-xs flex items-center justify-center gap-2"
+            >
+              <Sparkles className="w-4 h-4 text-blue-600" />
+              <span>Explore All 9 Smart Tools Hub</span>
+            </button>
 
             <button
               onClick={() => { handleWhatsAppClick(); setMobileMenuOpen(false); }}

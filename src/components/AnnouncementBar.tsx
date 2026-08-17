@@ -3,7 +3,7 @@ import { Truck, Flame, Gift, Package, Sparkles, Megaphone, Tag, AlertCircle, Che
 import { AnnouncementBarSettings, AnnouncementItem } from '../types';
 
 interface AnnouncementBarProps {
-  settings: AnnouncementBarSettings;
+  settings?: AnnouncementBarSettings;
 }
 
 export const AnnouncementBar: React.FC<AnnouncementBarProps> = ({ settings }) => {
