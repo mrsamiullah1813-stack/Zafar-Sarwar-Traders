@@ -190,7 +190,44 @@ export function mapProductToDb(product: Product): any {
 export async function fetchProductsFromSupabase(): Promise<Product[] | null> {
   await initializeSupabaseRuntime();
 
-  // Try server proxy first if running under full-stack Node server
+  if (isSupabaseConfigured) {
+    try {
+      // 1. Try standard query with ordering
+      let { data, error, status, statusText } = await supabase
+        .from('products')
+        .select('*')
+        .order('display_order', { ascending: true })
+        .order('created_at', { ascending: false });
+
+      // If ordering failed due to missing columns, retry with simple select
+      if (error && (error.code === '42703' || error.message?.toLowerCase().includes('column'))) {
+        console.warn('[Supabase Diagnostic] Table: products | Retrying query without column ordering');
+        const fallbackRes = await supabase.from('products').select('*');
+        data = fallbackRes.data;
+        error = fallbackRes.error;
+        status = fallbackRes.status;
+        statusText = fallbackRes.statusText;
+      }
+
+      if (error) {
+        if (status === 404 || error.code === 'PGRST205' || error.message?.includes('schema cache') || error.code === '42P01') {
+          console.error(`[Supabase Diagnostic] Table: products | Status: 404 NOT FOUND | Error Code: ${error.code} | Cause: Table 'public.products' does not exist in the connected Supabase project or is not exposed in the API schema cache. | HTTP: ${status}`);
+        } else {
+          console.error(`[Supabase Diagnostic] Table: products | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
+        }
+        return null;
+      }
+
+      const rowCount = data ? data.length : 0;
+      console.log(`[Supabase Diagnostic] Table: products | Status: SUCCESS | Rows returned: ${rowCount} | HTTP: ${status || 200}`);
+      return data ? data.map(mapDbProductToProduct) : [];
+    } catch (err: any) {
+      console.error(`[Supabase Diagnostic] Table: products | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
+      return null;
+    }
+  }
+
+  // Fallback: try server proxy only if direct Supabase client is not configured
   try {
     const apiRes = await fetch('/api/db/products');
     const contentType = apiRes.headers.get('content-type') || '';
@@ -201,34 +238,10 @@ export async function fetchProductsFromSupabase(): Promise<Product[] | null> {
         return json.data.map(mapDbProductToProduct);
       }
     }
-  } catch (e) {
-    // Proxy unavailable (e.g. static hosting), proceed to direct SDK
-  }
+  } catch (e) {}
 
-  if (!isSupabaseConfigured) {
-    console.warn('[Supabase Diagnostic] Table: products | Status: SKIPPED | Reason: Supabase client not configured');
-    return null;
-  }
-
-  try {
-    const { data, error, status, statusText } = await supabase
-      .from('products')
-      .select('*')
-      .order('display_order', { ascending: true })
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error(`[Supabase Diagnostic] Table: products | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
-      return null;
-    }
-
-    const rowCount = data ? data.length : 0;
-    console.log(`[Supabase Diagnostic] Table: products | Status: SUCCESS | Rows returned: ${rowCount} | HTTP: ${status || 200}`);
-    return data ? data.map(mapDbProductToProduct) : [];
-  } catch (err: any) {
-    console.error(`[Supabase Diagnostic] Table: products | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
-    return null;
-  }
+  console.warn('[Supabase Diagnostic] Table: products | Status: SKIPPED | Reason: Supabase client not configured');
+  return null;
 }
 
 export async function upsertProductInSupabase(product: Product | Product[]): Promise<{ success: boolean; error?: string }> {
@@ -301,6 +314,60 @@ export async function deleteProductFromSupabase(productId: string): Promise<{ su
 // ---------------------------------------------------------
 export async function fetchCategoriesFromSupabase(): Promise<ProductCategory[] | null> {
   await initializeSupabaseRuntime();
+
+  if (isSupabaseConfigured) {
+    try {
+      let { data, error, status, statusText } = await supabase
+        .from('categories')
+        .select('*')
+        .order('display_order', { ascending: true });
+
+      if (error && (error.code === '42703' || error.message?.toLowerCase().includes('column'))) {
+        const fallbackRes = await supabase.from('categories').select('*');
+        data = fallbackRes.data;
+        error = fallbackRes.error;
+        status = fallbackRes.status;
+        statusText = fallbackRes.statusText;
+      }
+
+      if (error) {
+        if (status === 404 || error.code === 'PGRST205' || error.message?.includes('schema cache') || error.code === '42P01') {
+          console.error(`[Supabase Diagnostic] Table: categories | Status: 404 NOT FOUND | Error Code: ${error.code} | Cause: Table 'public.categories' does not exist in connected Supabase project or is not in API schema cache. | HTTP: ${status}`);
+        } else {
+          console.error(`[Supabase Diagnostic] Table: categories | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
+        }
+        return null;
+      }
+
+      const rowCount = data ? data.length : 0;
+      console.log(`[Supabase Diagnostic] Table: categories | Status: SUCCESS | Rows returned: ${rowCount} | HTTP: ${status || 200}`);
+      return data ? data.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        slug: r.slug,
+        description: r.description || '',
+        fullDescription: r.full_description || undefined,
+        image: r.image || '',
+        iconImage: r.icon_image || undefined,
+        bannerImage: r.banner_image || undefined,
+        itemCount: Number(r.item_count ?? 0),
+        badge: r.badge || undefined,
+        iconName: r.icon || r.icon_name || 'Grid',
+        group: r.group_name || r.group || 'sanitary',
+        isFeatured: Boolean(r.featured ?? r.is_featured),
+        showOnHomepage: Boolean(r.show_on_homepage ?? true),
+        isActive: Boolean(r.is_active ?? true),
+        seoTitle: r.seo_title || undefined,
+        seoDescription: r.seo_description || undefined,
+        displayOrder: Number(r.display_order ?? 0)
+      })) : [];
+    } catch (err: any) {
+      console.error(`[Supabase Diagnostic] Table: categories | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
+      return null;
+    }
+  }
+
+  // Fallback: server proxy
   try {
     const apiRes = await fetch('/api/db/categories');
     const contentType = apiRes.headers.get('content-type') || '';
@@ -332,48 +399,8 @@ export async function fetchCategoriesFromSupabase(): Promise<ProductCategory[] |
     }
   } catch (e) {}
 
-  if (!isSupabaseConfigured) {
-    console.warn('[Supabase Diagnostic] Table: categories | Status: SKIPPED | Reason: Supabase client not configured');
-    return null;
-  }
-
-  try {
-    const { data, error, status, statusText } = await supabase
-      .from('categories')
-      .select('*')
-      .order('display_order', { ascending: true });
-
-    if (error) {
-      console.error(`[Supabase Diagnostic] Table: categories | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
-      return null;
-    }
-
-    const rowCount = data ? data.length : 0;
-    console.log(`[Supabase Diagnostic] Table: categories | Status: SUCCESS | Rows returned: ${rowCount} | HTTP: ${status || 200}`);
-    return data ? data.map((r: any) => ({
-      id: r.id,
-      name: r.name,
-      slug: r.slug,
-      description: r.description || '',
-      fullDescription: r.full_description || undefined,
-      image: r.image || '',
-      iconImage: r.icon_image || undefined,
-      bannerImage: r.banner_image || undefined,
-      itemCount: Number(r.item_count ?? 0),
-      badge: r.badge || undefined,
-      iconName: r.icon || r.icon_name || 'Grid',
-      group: r.group_name || r.group || 'sanitary',
-      isFeatured: Boolean(r.featured ?? r.is_featured),
-      showOnHomepage: Boolean(r.show_on_homepage ?? true),
-      isActive: Boolean(r.is_active ?? true),
-      seoTitle: r.seo_title || undefined,
-      seoDescription: r.seo_description || undefined,
-      displayOrder: Number(r.display_order ?? 0)
-    })) : [];
-  } catch (err: any) {
-    console.error(`[Supabase Diagnostic] Table: categories | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
-    return null;
-  }
+  console.warn('[Supabase Diagnostic] Table: categories | Status: SKIPPED | Reason: Supabase client not configured');
+  return null;
 }
 
 export async function upsertCategoryInSupabase(category: ProductCategory | ProductCategory[]): Promise<{ success: boolean; error?: string }> {
@@ -451,6 +478,52 @@ export async function deleteCategoryFromSupabase(categoryId: string): Promise<{ 
 // ---------------------------------------------------------
 export async function fetchBrandsFromSupabase(): Promise<ProductBrand[] | null> {
   await initializeSupabaseRuntime();
+
+  if (isSupabaseConfigured) {
+    try {
+      let { data, error, status, statusText } = await supabase
+        .from('brands')
+        .select('*')
+        .order('display_order', { ascending: true });
+
+      if (error && (error.code === '42703' || error.message?.toLowerCase().includes('column'))) {
+        const fallbackRes = await supabase.from('brands').select('*');
+        data = fallbackRes.data;
+        error = fallbackRes.error;
+        status = fallbackRes.status;
+        statusText = fallbackRes.statusText;
+      }
+
+      if (error) {
+        if (status === 404 || error.code === 'PGRST205' || error.message?.includes('schema cache') || error.code === '42P01') {
+          console.error(`[Supabase Diagnostic] Table: brands | Status: 404 NOT FOUND | Error Code: ${error.code} | Cause: Table 'public.brands' does not exist in connected Supabase project or is not in API schema cache. | HTTP: ${status}`);
+        } else {
+          console.error(`[Supabase Diagnostic] Table: brands | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
+        }
+        return null;
+      }
+
+      const rowCount = data ? data.length : 0;
+      console.log(`[Supabase Diagnostic] Table: brands | Status: SUCCESS | Rows returned: ${rowCount} | HTTP: ${status || 200}`);
+      return data ? data.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        slug: r.slug,
+        logo: r.logo || '',
+        bannerImage: r.banner_image || undefined,
+        description: r.description || '',
+        officialBadge: r.official_badge || undefined,
+        isFeatured: Boolean(r.featured ?? r.is_featured),
+        isActive: Boolean(r.enabled ?? r.is_active ?? true),
+        displayOrder: Number(r.display_order ?? 0)
+      })) : [];
+    } catch (err: any) {
+      console.error(`[Supabase Diagnostic] Table: brands | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
+      return null;
+    }
+  }
+
+  // Fallback: proxy
   try {
     const apiRes = await fetch('/api/db/brands');
     const contentType = apiRes.headers.get('content-type') || '';
@@ -474,40 +547,8 @@ export async function fetchBrandsFromSupabase(): Promise<ProductBrand[] | null> 
     }
   } catch (e) {}
 
-  if (!isSupabaseConfigured) {
-    console.warn('[Supabase Diagnostic] Table: brands | Status: SKIPPED | Reason: Supabase client not configured');
-    return null;
-  }
-
-  try {
-    const { data, error, status, statusText } = await supabase
-      .from('brands')
-      .select('*')
-      .order('display_order', { ascending: true });
-
-    if (error) {
-      console.error(`[Supabase Diagnostic] Table: brands | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
-      return null;
-    }
-
-    const rowCount = data ? data.length : 0;
-    console.log(`[Supabase Diagnostic] Table: brands | Status: SUCCESS | Rows returned: ${rowCount} | HTTP: ${status || 200}`);
-    return data ? data.map((r: any) => ({
-      id: r.id,
-      name: r.name,
-      slug: r.slug,
-      logo: r.logo || '',
-      bannerImage: r.banner_image || undefined,
-      description: r.description || '',
-      officialBadge: r.official_badge || undefined,
-      isFeatured: Boolean(r.featured ?? r.is_featured),
-      isActive: Boolean(r.enabled ?? r.is_active ?? true),
-      displayOrder: Number(r.display_order ?? 0)
-    })) : [];
-  } catch (err: any) {
-    console.error(`[Supabase Diagnostic] Table: brands | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
-    return null;
-  }
+  console.warn('[Supabase Diagnostic] Table: brands | Status: SKIPPED | Reason: Supabase client not configured');
+  return null;
 }
 
 export async function upsertBrandInSupabase(brand: ProductBrand | ProductBrand[]): Promise<{ success: boolean; error?: string }> {
@@ -579,6 +620,86 @@ export async function deleteBrandFromSupabase(brandId: string): Promise<{ succes
 // ---------------------------------------------------------
 export async function fetchHeroSettingsFromSupabase(): Promise<HeroSettings | null> {
   await initializeSupabaseRuntime();
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error, status, statusText } = await supabase
+        .from('hero_settings')
+        .select('*')
+        .eq('id', 'default')
+        .maybeSingle();
+
+      if (error) {
+        if (status === 404 || error.code === 'PGRST205' || error.message?.includes('schema cache') || error.code === '42P01') {
+          console.error(`[Supabase Diagnostic] Table: hero_settings | Status: 404 NOT FOUND | Error Code: ${error.code} | Cause: Table 'public.hero_settings' does not exist in connected Supabase project or is not in API schema cache. | HTTP: ${status}`);
+        } else {
+          console.error(`[Supabase Diagnostic] Table: hero_settings | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
+        }
+        return null;
+      }
+
+      if (!data) {
+        console.log(`[Supabase Diagnostic] Table: hero_settings | Status: SUCCESS (No default row found) | HTTP: ${status || 200}`);
+        return null;
+      }
+
+      console.log(`[Supabase Diagnostic] Table: hero_settings | Status: SUCCESS | Config Found: true | HTTP: ${status || 200}`);
+
+      const { data: slideData, error: slideErr } = await supabase
+        .from('hero_slides')
+        .select('*')
+        .eq('enabled', true)
+        .order('display_order', { ascending: true });
+
+      if (slideErr) {
+        console.warn(`[Supabase Diagnostic] Table: hero_slides | Status: FAILED | Message: ${slideErr.message}`);
+      } else {
+        console.log(`[Supabase Diagnostic] Table: hero_slides | Status: SUCCESS | Rows: ${slideData?.length || 0}`);
+      }
+
+      const enabledProductIds = slideData && slideData.length > 0
+        ? slideData.map((s: any) => s.product_id).filter(Boolean)
+        : [];
+
+      return {
+        isEnabled: Boolean(data.is_enabled ?? true),
+        badgeText: data.badge_text || 'DIRECT DISTRIBUTOR & SANITARY SPECIALIST',
+        heading: data.heading || 'INNOVATION & ELEGANCE IN SANITARYWARE',
+        subheading: data.subheading || 'Premium Faucets, Luxury Bathroom Suites, Smart Showers & Complete Building Solutions',
+        primaryBtnText: data.primary_btn_text || 'Explore Collection',
+        primaryBtnLink: data.primary_btn_link || '#products',
+        enablePrimaryBtn: Boolean(data.enable_primary_btn ?? true),
+        secondaryBtnText: data.secondary_btn_text || 'Contact Sales',
+        secondaryBtnLink: data.secondary_btn_link || '#contact',
+        enableSecondaryBtn: Boolean(data.enable_secondary_btn ?? true),
+        tertiaryBtnText: data.tertiary_btn_text || undefined,
+        tertiaryBtnLink: data.tertiary_btn_link || undefined,
+        enableTertiaryBtn: data.enable_tertiary_btn ? Boolean(data.enable_tertiary_btn) : undefined,
+        rotationDurationSeconds: Number(data.rotation_duration_seconds ?? data.slide_duration ? data.slide_duration / 1000 : 6),
+        transitionSpeedSeconds: Number(data.transition_speed_seconds ?? 0.8),
+        transitionStyle: data.transition_style || 'cinematic-depth',
+        autoPlay: Boolean(data.autoplay ?? true),
+        pauseOnHover: Boolean(data.pause_on_hover ?? true),
+        enableParallax: Boolean(data.enable_parallax ?? true),
+        parallaxStrength: Number(data.parallax_strength ?? 15),
+        glowIntensity: data.glow_intensity || 'medium',
+        bgType: data.bg_type || 'ambient-dark',
+        bgMediaUrl: data.bg_media_url || undefined,
+        bgVideoUrl: data.bg_video_url || undefined,
+        heroProductIds: Array.isArray(data.hero_product_ids) && data.hero_product_ids.length > 0 ? data.hero_product_ids : enabledProductIds,
+        heroMode: data.hero_mode || 'selected_or_featured',
+        productImageOverrides: typeof data.product_image_overrides === 'object' ? data.product_image_overrides : {},
+        productVideoOverrides: typeof data.product_video_overrides === 'object' ? data.product_video_overrides : {},
+        customProductOrder: Array.isArray(data.custom_product_order) ? data.custom_product_order : [],
+        isDraft: Boolean(data.is_draft)
+      };
+    } catch (err: any) {
+      console.error(`[Supabase Diagnostic] Table: hero_settings | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
+      return null;
+    }
+  }
+
+  // Fallback: proxy
   try {
     const apiRes = await fetch('/api/db/hero-settings');
     const contentType = apiRes.headers.get('content-type') || '';
@@ -623,82 +744,8 @@ export async function fetchHeroSettingsFromSupabase(): Promise<HeroSettings | nu
     }
   } catch (e) {}
 
-  if (!isSupabaseConfigured) {
-    console.warn('[Supabase Diagnostic] Table: hero_settings | Status: SKIPPED | Reason: Supabase client not configured');
-    return null;
-  }
-
-  try {
-    const { data, error, status, statusText } = await supabase
-      .from('hero_settings')
-      .select('*')
-      .eq('id', 'default')
-      .maybeSingle();
-
-    if (error) {
-      console.error(`[Supabase Diagnostic] Table: hero_settings | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
-      return null;
-    }
-
-    if (!data) {
-      console.log(`[Supabase Diagnostic] Table: hero_settings | Status: SUCCESS (No default row) | HTTP: ${status || 200}`);
-      return null;
-    }
-
-    console.log(`[Supabase Diagnostic] Table: hero_settings | Status: SUCCESS | Config Found: true | HTTP: ${status || 200}`);
-
-    const { data: slideData, error: slideErr } = await supabase
-      .from('hero_slides')
-      .select('*')
-      .eq('enabled', true)
-      .order('display_order', { ascending: true });
-
-    if (slideErr) {
-      console.warn(`[Supabase Diagnostic] Table: hero_slides | Status: FAILED | Message: ${slideErr.message}`);
-    } else {
-      console.log(`[Supabase Diagnostic] Table: hero_slides | Status: SUCCESS | Rows: ${slideData?.length || 0}`);
-    }
-
-    const enabledProductIds = slideData && slideData.length > 0
-      ? slideData.map((s: any) => s.product_id).filter(Boolean)
-      : [];
-
-    return {
-      isEnabled: Boolean(data.is_enabled ?? true),
-      badgeText: data.badge_text || 'DIRECT DISTRIBUTOR & SANITARY SPECIALIST',
-      heading: data.heading || 'INNOVATION & ELEGANCE IN SANITARYWARE',
-      subheading: data.subheading || 'Premium Faucets, Luxury Bathroom Suites, Smart Showers & Complete Building Solutions',
-      primaryBtnText: data.primary_btn_text || 'Explore Collection',
-      primaryBtnLink: data.primary_btn_link || '#products',
-      enablePrimaryBtn: Boolean(data.enable_primary_btn ?? true),
-      secondaryBtnText: data.secondary_btn_text || 'Contact Sales',
-      secondaryBtnLink: data.secondary_btn_link || '#contact',
-      enableSecondaryBtn: Boolean(data.enable_secondary_btn ?? true),
-      tertiaryBtnText: data.tertiary_btn_text || undefined,
-      tertiaryBtnLink: data.tertiary_btn_link || undefined,
-      enableTertiaryBtn: data.enable_tertiary_btn ? Boolean(data.enable_tertiary_btn) : undefined,
-      rotationDurationSeconds: Number(data.rotation_duration_seconds ?? data.slide_duration ? data.slide_duration / 1000 : 6),
-      transitionSpeedSeconds: Number(data.transition_speed_seconds ?? 0.8),
-      transitionStyle: data.transition_style || 'cinematic-depth',
-      autoPlay: Boolean(data.autoplay ?? true),
-      pauseOnHover: Boolean(data.pause_on_hover ?? true),
-      enableParallax: Boolean(data.enable_parallax ?? true),
-      parallaxStrength: Number(data.parallax_strength ?? 15),
-      glowIntensity: data.glow_intensity || 'medium',
-      bgType: data.bg_type || 'ambient-dark',
-      bgMediaUrl: data.bg_media_url || undefined,
-      bgVideoUrl: data.bg_video_url || undefined,
-      heroProductIds: Array.isArray(data.hero_product_ids) && data.hero_product_ids.length > 0 ? data.hero_product_ids : enabledProductIds,
-      heroMode: data.hero_mode || 'selected_or_featured',
-      productImageOverrides: typeof data.product_image_overrides === 'object' ? data.product_image_overrides : {},
-      productVideoOverrides: typeof data.product_video_overrides === 'object' ? data.product_video_overrides : {},
-      customProductOrder: Array.isArray(data.custom_product_order) ? data.custom_product_order : [],
-      isDraft: Boolean(data.is_draft)
-    };
-  } catch (err: any) {
-    console.error(`[Supabase Diagnostic] Table: hero_settings | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
-    return null;
-  }
+  console.warn('[Supabase Diagnostic] Table: hero_settings | Status: SKIPPED | Reason: Supabase client not configured');
+  return null;
 }
 
 export async function saveHeroSettingsToSupabase(settings: HeroSettings): Promise<{ success: boolean; error?: string }> {
@@ -766,6 +813,45 @@ const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4
 // ---------------------------------------------------------
 export async function fetchOrdersFromSupabase(customerId?: string): Promise<CustomerOrder[] | null> {
   await initializeSupabaseRuntime();
+
+  if (isSupabaseConfigured) {
+    try {
+      let query = supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false });
+      if (customerId) {
+        if (isUUID(customerId)) {
+          query = query.eq('customer_id', customerId);
+        } else {
+          query = query.or(`customer_phone.eq.${customerId},id.eq.${customerId}`);
+        }
+      }
+      let { data, error, status, statusText } = await query;
+
+      if (error && (error.code === '42703' || error.message?.toLowerCase().includes('column'))) {
+        const fallbackRes = await supabase.from('orders').select('*');
+        data = fallbackRes.data;
+        error = fallbackRes.error;
+        status = fallbackRes.status;
+        statusText = fallbackRes.statusText;
+      }
+
+      if (error) {
+        if (status === 404 || error.code === 'PGRST205' || error.message?.includes('schema cache') || error.code === '42P01') {
+          console.error(`[Supabase Diagnostic] Table: orders | Status: 404 NOT FOUND | Error Code: ${error.code} | Cause: Table 'public.orders' does not exist in connected Supabase project or is not in API schema cache. | HTTP: ${status}`);
+        } else {
+          console.error(`[Supabase Diagnostic] Table: orders | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
+        }
+        return null;
+      }
+      const count = data ? data.length : 0;
+      console.log(`[Supabase Diagnostic] Table: orders | Status: SUCCESS | Rows returned: ${count} | HTTP: ${status || 200}`);
+      return data ? data.map(mapDbOrderToCustomerOrder) : [];
+    } catch (err: any) {
+      console.error(`[Supabase Diagnostic] Table: orders | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
+      return null;
+    }
+  }
+
+  // Fallback: proxy
   try {
     const url = customerId ? `/api/db/orders?customerId=${encodeURIComponent(customerId)}` : '/api/db/orders';
     const apiRes = await fetch(url);
@@ -779,32 +865,8 @@ export async function fetchOrdersFromSupabase(customerId?: string): Promise<Cust
     }
   } catch (e) {}
 
-  if (!isSupabaseConfigured) {
-    console.warn('[Supabase Diagnostic] Table: orders | Status: SKIPPED | Reason: Supabase client not configured');
-    return null;
-  }
-
-  try {
-    let query = supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false });
-    if (customerId) {
-      if (isUUID(customerId)) {
-        query = query.eq('customer_id', customerId);
-      } else {
-        query = query.or(`customer_phone.eq.${customerId},id.eq.${customerId}`);
-      }
-    }
-    const { data, error, status, statusText } = await query;
-    if (error) {
-      console.error(`[Supabase Diagnostic] Table: orders | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
-      return null;
-    }
-    const count = data ? data.length : 0;
-    console.log(`[Supabase Diagnostic] Table: orders | Status: SUCCESS | Rows returned: ${count} | HTTP: ${status || 200}`);
-    return data ? data.map(mapDbOrderToCustomerOrder) : [];
-  } catch (err: any) {
-    console.error(`[Supabase Diagnostic] Table: orders | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
-    return null;
-  }
+  console.warn('[Supabase Diagnostic] Table: orders | Status: SKIPPED | Reason: Supabase client not configured');
+  return null;
 }
 
 function mapDbOrderToCustomerOrder(r: any): CustomerOrder {
@@ -959,6 +1021,50 @@ export async function updateOrderStatusInSupabase(orderId: string, status: Custo
 // ---------------------------------------------------------
 export async function fetchDeliveryCitiesFromSupabase(): Promise<CityDeliveryInfo[] | null> {
   await initializeSupabaseRuntime();
+
+  if (isSupabaseConfigured) {
+    try {
+      let { data, error, status, statusText } = await supabase
+        .from('delivery_cities')
+        .select('*')
+        .order('display_order', { ascending: true });
+
+      if (error && (error.code === '42703' || error.message?.toLowerCase().includes('column'))) {
+        const fallbackRes = await supabase.from('delivery_cities').select('*');
+        data = fallbackRes.data;
+        error = fallbackRes.error;
+        status = fallbackRes.status;
+        statusText = fallbackRes.statusText;
+      }
+
+      if (error) {
+        if (status === 404 || error.code === 'PGRST205' || error.message?.includes('schema cache') || error.code === '42P01') {
+          console.error(`[Supabase Diagnostic] Table: delivery_cities | Status: 404 NOT FOUND | Error Code: ${error.code} | Cause: Table 'public.delivery_cities' does not exist in connected Supabase project or is not in API schema cache. | HTTP: ${status}`);
+        } else {
+          console.error(`[Supabase Diagnostic] Table: delivery_cities | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
+        }
+        return null;
+      }
+      const count = data ? data.length : 0;
+      console.log(`[Supabase Diagnostic] Table: delivery_cities | Status: SUCCESS | Rows returned: ${count} | HTTP: ${status || 200}`);
+      return data ? data.map((r: any) => ({
+        id: r.id,
+        cityName: r.name || r.city_name || '',
+        deliveryFee: Number(r.delivery_fee ?? 0),
+        estimatedDays: r.estimated_days || '2-4 Days',
+        isEnabled: Boolean(r.enabled),
+        isSameDayAvailable: Boolean(r.same_day_available),
+        isNextDayAvailable: Boolean(r.next_day_available),
+        displayOrder: Number(r.display_order ?? 0),
+        notes: r.notes || undefined
+      })) : [];
+    } catch (err: any) {
+      console.error(`[Supabase Diagnostic] Table: delivery_cities | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
+      return null;
+    }
+  }
+
+  // Fallback: proxy
   try {
     const apiRes = await fetch('/api/db/delivery-cities');
     const contentType = apiRes.headers.get('content-type') || '';
@@ -981,38 +1087,8 @@ export async function fetchDeliveryCitiesFromSupabase(): Promise<CityDeliveryInf
     }
   } catch (e) {}
 
-  if (!isSupabaseConfigured) {
-    console.warn('[Supabase Diagnostic] Table: delivery_cities | Status: SKIPPED | Reason: Supabase client not configured');
-    return null;
-  }
-
-  try {
-    const { data, error, status, statusText } = await supabase
-      .from('delivery_cities')
-      .select('*')
-      .order('display_order', { ascending: true });
-
-    if (error) {
-      console.error(`[Supabase Diagnostic] Table: delivery_cities | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
-      return null;
-    }
-    const count = data ? data.length : 0;
-    console.log(`[Supabase Diagnostic] Table: delivery_cities | Status: SUCCESS | Rows returned: ${count} | HTTP: ${status || 200}`);
-    return data ? data.map((r: any) => ({
-      id: r.id,
-      cityName: r.name || r.city_name || '',
-      deliveryFee: Number(r.delivery_fee ?? 0),
-      estimatedDays: r.estimated_days || '2-4 Days',
-      isEnabled: Boolean(r.enabled),
-      isSameDayAvailable: Boolean(r.same_day_available),
-      isNextDayAvailable: Boolean(r.next_day_available),
-      displayOrder: Number(r.display_order ?? 0),
-      notes: r.notes || undefined
-    })) : [];
-  } catch (err: any) {
-    console.error(`[Supabase Diagnostic] Table: delivery_cities | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
-    return null;
-  }
+  console.warn('[Supabase Diagnostic] Table: delivery_cities | Status: SKIPPED | Reason: Supabase client not configured');
+  return null;
 }
 
 export async function upsertDeliveryCityInSupabase(city: CityDeliveryInfo): Promise<{ success: boolean; error?: string }> {
@@ -1090,6 +1166,34 @@ function getSiteSettingColumnName(key: string): string | null {
 
 export async function fetchSiteSettingFromSupabase<T>(key: string): Promise<T | null> {
   await initializeSupabaseRuntime();
+
+  if (isSupabaseConfigured) {
+    try {
+      // 1. Try key-value table
+      const { data: kvData, error: kvErr, status: kvStatus } = await supabase.from('site_settings').select('value').eq('key', key).maybeSingle();
+      if (!kvErr && kvData && kvData.value !== undefined) {
+        console.log(`[Supabase Diagnostic] Table: site_settings (KV) | Key: ${key} | Status: SUCCESS | HTTP: ${kvStatus || 200}`);
+        return kvData.value as T;
+      }
+
+      // 2. Try single row config with named column
+      const colName = getSiteSettingColumnName(key);
+      if (colName) {
+        const { data: colData, error: colErr, status: colStatus } = await supabase.from('site_settings').select(colName).eq('id', 'config').maybeSingle();
+        if (!colErr && colData && (colData as any)[colName] !== undefined && (colData as any)[colName] !== null) {
+          console.log(`[Supabase Diagnostic] Table: site_settings (Column: ${colName}) | Key: ${key} | Status: SUCCESS | HTTP: ${colStatus || 200}`);
+          return (colData as any)[colName] as T;
+        }
+      }
+      console.log(`[Supabase Diagnostic] Table: site_settings | Key: ${key} | Status: NO_DATA_OR_DEFAULT`);
+      return null;
+    } catch (err: any) {
+      console.error(`[Supabase Diagnostic] Table: site_settings | Key: ${key} | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
+      return null;
+    }
+  }
+
+  // Fallback: proxy
   try {
     const apiRes = await fetch(`/api/db/site-settings/${encodeURIComponent(key)}`);
     const contentType = apiRes.headers.get('content-type') || '';
@@ -1102,34 +1206,8 @@ export async function fetchSiteSettingFromSupabase<T>(key: string): Promise<T | 
     }
   } catch (e) {}
 
-  if (!isSupabaseConfigured) {
-    console.warn(`[Supabase Diagnostic] Table: site_settings | Key: ${key} | Status: SKIPPED | Reason: Supabase client not configured`);
-    return null;
-  }
-
-  try {
-    // 1. Try key-value table
-    const { data: kvData, error: kvErr, status: kvStatus } = await supabase.from('site_settings').select('value').eq('key', key).maybeSingle();
-    if (!kvErr && kvData && kvData.value !== undefined) {
-      console.log(`[Supabase Diagnostic] Table: site_settings (KV) | Key: ${key} | Status: SUCCESS | HTTP: ${kvStatus || 200}`);
-      return kvData.value as T;
-    }
-
-    // 2. Try single row config with named column
-    const colName = getSiteSettingColumnName(key);
-    if (colName) {
-      const { data: colData, error: colErr, status: colStatus } = await supabase.from('site_settings').select(colName).eq('id', 'config').maybeSingle();
-      if (!colErr && colData && (colData as any)[colName] !== undefined && (colData as any)[colName] !== null) {
-        console.log(`[Supabase Diagnostic] Table: site_settings (Column: ${colName}) | Key: ${key} | Status: SUCCESS | HTTP: ${colStatus || 200}`);
-        return (colData as any)[colName] as T;
-      }
-    }
-    console.log(`[Supabase Diagnostic] Table: site_settings | Key: ${key} | Status: NO_DATA_OR_DEFAULT`);
-    return null;
-  } catch (err: any) {
-    console.error(`[Supabase Diagnostic] Table: site_settings | Key: ${key} | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
-    return null;
-  }
+  console.warn(`[Supabase Diagnostic] Table: site_settings | Key: ${key} | Status: SKIPPED | Reason: Supabase client not configured`);
+  return null;
 }
 
 export async function saveSiteSettingToSupabase(key: string, value: any): Promise<{ success: boolean; error?: string }> {
