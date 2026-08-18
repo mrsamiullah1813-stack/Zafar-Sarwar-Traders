@@ -25,16 +25,48 @@ let rawKey = (
   ''
 ).trim();
 
+/**
+ * Normalizes any provided Supabase URL to strictly the root origin (https://<project-ref>.supabase.co)
+ * Strips all pathnames, trailing slashes, duplicate /rest/v1, /api, or dashboard paths.
+ */
 export function normalizeSupabaseUrl(url: string): string {
   if (!url) return '';
   let cleaned = url.trim();
+
+  // Handle accidental dashboard URLs (e.g., https://supabase.com/dashboard/project/<ref> or https://app.supabase.com/project/<ref>)
+  const dashMatch = cleaned.match(/supabase\.com\/(?:dashboard\/)?project\/([a-zA-Z0-9_-]+)/i);
+  if (dashMatch && dashMatch[1]) {
+    return `https://${dashMatch[1]}.supabase.co`;
+  }
+
+  // Ensure protocol
   if (!cleaned.startsWith('http://') && !cleaned.startsWith('https://')) {
     cleaned = `https://${cleaned}`;
-    if (!cleaned.includes('.')) {
-      cleaned += '.supabase.co';
-    }
   }
-  return cleaned;
+
+  try {
+    const parsed = new URL(cleaned);
+    let host = parsed.hostname.toLowerCase();
+
+    // If host doesn't have dots and looks like a raw project ref (e.g. 'abcdefghijklm')
+    if (!host.includes('.')) {
+      host = `${host}.supabase.co`;
+    }
+
+    // Preserve non-standard port only if provided (for local supabase dev)
+    const portPart = (parsed.port && parsed.port !== '80' && parsed.port !== '443') ? `:${parsed.port}` : '';
+    const protocol = parsed.protocol || 'https:';
+
+    // Strictly return protocol://host (NO trailing slash, NO pathname)
+    return `${protocol}//${host}${portPart}`;
+  } catch {
+    // Fallback regex strip
+    return cleaned
+      .replace(/\/+$/, '')
+      .replace(/\/rest\/v1.*$/i, '')
+      .replace(/\/api.*$/i, '')
+      .replace(/\/+$/, '');
+  }
 }
 
 rawUrl = normalizeSupabaseUrl(rawUrl);
@@ -75,13 +107,69 @@ const dummyKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder';
 
 let activeClient: SupabaseClient;
 
-function createSupabaseInstance(url: string, key: string, isReal: boolean): SupabaseClient {
+// Extract safe hostname for diagnostic logging (never log keys or tokens)
+export function getSafeHost(url: string): string {
   try {
-    return createClient(url, key, {
+    if (!url || isPlaceholderUrl(url)) return 'Not configured (placeholder)';
+    const parsed = new URL(url);
+    return parsed.host;
+  } catch {
+    return 'Invalid URL format';
+  }
+}
+
+/**
+ * Diagnostic fetch interceptor that logs the exact request URL Host and Path
+ * without exposing API keys, Authorization headers, or JWT tokens.
+ */
+function createDiagnosticFetch() {
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    const urlString = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+    let safeHost = '';
+    let safePath = '';
+    let fullCleanUrl = '';
+
+    try {
+      const u = new URL(urlString);
+      safeHost = u.host;
+      safePath = u.pathname;
+      fullCleanUrl = `${u.protocol}//${u.host}${u.pathname}`;
+    } catch {
+      safeHost = 'unknown';
+      safePath = 'unknown';
+      fullCleanUrl = 'unknown';
+    }
+
+    const method = init?.method || (typeof input === 'object' && 'method' in input ? (input as Request).method : 'GET');
+    console.log(`[Supabase REST Request] ${method} ${fullCleanUrl} (Host: ${safeHost} | Path: ${safePath})`);
+
+    const res = await fetch(input, init);
+
+    if (!res.ok) {
+      try {
+        const cloned = res.clone();
+        const bodyText = await cloned.text();
+        console.warn(`[Supabase REST Response] HTTP ${res.status} ${res.statusText} | Target: ${fullCleanUrl} | Body: ${bodyText.slice(0, 200)}`);
+      } catch {}
+    } else {
+      console.log(`[Supabase REST Response] HTTP ${res.status} OK | Target: ${fullCleanUrl}`);
+    }
+
+    return res;
+  };
+}
+
+function createSupabaseInstance(url: string, key: string, isReal: boolean): SupabaseClient {
+  const strictBaseUrl = normalizeSupabaseUrl(url);
+  try {
+    return createClient(strictBaseUrl, key, {
       auth: {
         persistSession: isReal,
         autoRefreshToken: isReal,
         detectSessionInUrl: isReal,
+      },
+      global: {
+        fetch: createDiagnosticFetch(),
       },
     });
   } catch (e) {
@@ -96,23 +184,12 @@ function createSupabaseInstance(url: string, key: string, isReal: boolean): Supa
   }
 }
 
-// Extract safe hostname for diagnostic logging (never log keys or tokens)
-export function getSafeHost(url: string): string {
-  try {
-    if (!url || isPlaceholderUrl(url)) return 'Not configured (placeholder)';
-    const parsed = new URL(url);
-    return parsed.origin;
-  } catch {
-    return 'Invalid URL format';
-  }
-}
-
 if (isSupabaseConfigured) {
   activeClient = createSupabaseInstance(rawUrl, rawKey, true);
-  console.log(`[Supabase Direct SDK] Initialization: SUCCESS | Target: ${getSafeHost(rawUrl)} | Auth: Configured`);
+  console.log(`[Supabase Direct SDK] Initialized successfully with Base URL: ${rawUrl} (Host: ${getSafeHost(rawUrl)})`);
 } else {
   activeClient = createSupabaseInstance(dummyUrl, dummyKey, false);
-  console.warn(`[Supabase Direct SDK] Initialization: PENDING | Target: ${getSafeHost(rawUrl)} | Key Present: ${Boolean(rawKey)}`);
+  console.warn(`[Supabase Direct SDK] Initialization PENDING | Base URL: ${rawUrl || 'None'} | Key Present: ${Boolean(rawKey)}`);
 }
 
 // Proxied supabase client that dynamically routes all calls to activeClient
@@ -150,7 +227,7 @@ export async function initializeSupabaseRuntime(): Promise<boolean> {
             const cleanUrl = normalizeSupabaseUrl(parsed.url);
             activeClient = createSupabaseInstance(cleanUrl, parsed.anonKey, true);
             isSupabaseConfigured = true;
-            console.log(`[Supabase Direct SDK] Restored from runtime storage cache: ${getSafeHost(cleanUrl)}`);
+            console.log(`[Supabase Direct SDK] Restored from runtime storage cache with Base URL: ${cleanUrl} (Host: ${getSafeHost(cleanUrl)})`);
             return true;
           }
         }
@@ -166,13 +243,13 @@ export async function initializeSupabaseRuntime(): Promise<boolean> {
             const cleanUrl = normalizeSupabaseUrl(dynamicUrl);
             activeClient = createSupabaseInstance(cleanUrl, dynamicKey, true);
             isSupabaseConfigured = true;
-            console.log(`[Supabase Direct SDK] Connected via window runtime config: ${getSafeHost(cleanUrl)}`);
+            console.log(`[Supabase Direct SDK] Connected via window runtime config with Base URL: ${cleanUrl} (Host: ${getSafeHost(cleanUrl)})`);
             return true;
           }
         }
       } catch {}
 
-      // 3. Fallback: only try server config endpoint if available (non-fatal if 404 on static hosting)
+      // 3. Fallback: server config endpoint if available (non-fatal if 404 on static hosting)
       try {
         const res = await fetch('/api/supabase-config', { cache: 'no-store' });
         if (res.ok) {
@@ -185,14 +262,14 @@ export async function initializeSupabaseRuntime(): Promise<boolean> {
               try {
                 sessionStorage.setItem('zst_sb_config_cache', JSON.stringify({ url: cleanUrl, anonKey: json.anonKey }));
               } catch {}
-              console.log(`[Supabase Direct SDK] Connected via server configuration: ${getSafeHost(cleanUrl)}`);
+              console.log(`[Supabase Direct SDK] Connected via server configuration with Base URL: ${cleanUrl} (Host: ${getSafeHost(cleanUrl)})`);
               return true;
             }
           }
         }
       } catch {}
     } catch (e) {
-      // Silent catch - static hosting won't have /api/ endpoints
+      // Silent catch
     }
     return isSupabaseConfigured;
   })();
