@@ -1094,85 +1094,61 @@ export const syncWithServerCMS = async (callbacks: {
   await initializeSupabaseRuntime();
   if (isSupabaseConfigured) {
     try {
-      console.log('🔄 Syncing live database from Supabase PostgreSQL source of truth...');
+      console.log('🔄 [Supabase Direct SDK] Syncing live data from Supabase PostgreSQL...');
       
       // 1. Fetch Categories
       const categoriesFromDb = await fetchCategoriesFromSupabase();
-      let categoriesToUse = categoriesFromDb;
-      if (categoriesFromDb !== null && categoriesFromDb.length === 0) {
-        console.log('🌱 Syncing default categories to Supabase...');
-        for (const cat of productCategories) {
-          await upsertCategoryInSupabase(cat);
-        }
-        categoriesToUse = await fetchCategoriesFromSupabase();
-      }
-      if (categoriesToUse && Array.isArray(categoriesToUse)) {
-        if (callbacks.setCategories) callbacks.setCategories(categoriesToUse);
-        safeSetLocalStorage(STORAGE_KEYS.CATEGORIES, categoriesToUse);
+      if (categoriesFromDb && Array.isArray(categoriesFromDb) && categoriesFromDb.length > 0) {
+        if (callbacks.setCategories) callbacks.setCategories(categoriesFromDb);
+        safeSetLocalStorage(STORAGE_KEYS.CATEGORIES, categoriesFromDb);
+        console.log(`[Supabase Direct SDK] Categories loaded into React state: ${categoriesFromDb.length}`);
+      } else {
+        const fallbackCats = loadStoredCategories();
+        if (callbacks.setCategories) callbacks.setCategories(fallbackCats);
       }
 
       // 2. Fetch Brands
       const brandsFromDb = await fetchBrandsFromSupabase();
-      let brandsToUse = brandsFromDb;
-      if (brandsFromDb !== null && brandsFromDb.length === 0) {
-        console.log('🌱 Syncing default brands to Supabase...');
-        for (const brand of productBrands) {
-          await upsertBrandInSupabase(brand);
-        }
-        brandsToUse = await fetchBrandsFromSupabase();
-      }
-      if (brandsToUse && Array.isArray(brandsToUse)) {
-        if (callbacks.setBrands) callbacks.setBrands(brandsToUse);
-        safeSetLocalStorage(STORAGE_KEYS.BRANDS, brandsToUse);
+      if (brandsFromDb && Array.isArray(brandsFromDb) && brandsFromDb.length > 0) {
+        if (callbacks.setBrands) callbacks.setBrands(brandsFromDb);
+        safeSetLocalStorage(STORAGE_KEYS.BRANDS, brandsFromDb);
+        console.log(`[Supabase Direct SDK] Brands loaded into React state: ${brandsFromDb.length}`);
+      } else {
+        const fallbackBrands = loadStoredBrands();
+        if (callbacks.setBrands) callbacks.setBrands(fallbackBrands);
       }
 
       // 3. Fetch Products
-      let productsFromDb = await fetchProductsFromSupabase();
-      if (productsFromDb !== null) {
-        if (productsFromDb.length === 0) {
-          console.log('🌱 Supabase products table is empty. Syncing default featured products...');
-          for (const prod of featuredProducts) {
-            await upsertProductInSupabase(prod);
-          }
-          productsFromDb = await fetchProductsFromSupabase();
-        }
-
-        if (productsFromDb && Array.isArray(productsFromDb)) {
-          console.log('[STEP18 LOAD] React products count:', productsFromDb.length);
-          if (callbacks.setProducts) callbacks.setProducts(productsFromDb);
-          safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, productsFromDb);
-        } else {
-          const stored = loadStoredProducts();
-          if (stored && stored.length > 0) {
-            console.log('[STEP18 LOAD] React products count (from local cache):', stored.length);
-            if (callbacks.setProducts) callbacks.setProducts(stored);
-          }
-        }
+      const productsFromDb = await fetchProductsFromSupabase();
+      if (productsFromDb && Array.isArray(productsFromDb) && productsFromDb.length > 0) {
+        console.log(`[Supabase Direct SDK] Products loaded into React state: ${productsFromDb.length}`);
+        if (callbacks.setProducts) callbacks.setProducts(productsFromDb);
+        safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, productsFromDb);
       } else {
-        console.warn('⚠️ Could not fetch products from Supabase. Preserving current products.');
         const stored = loadStoredProducts();
         if (stored && stored.length > 0) {
-          console.log('[STEP18 LOAD] React products count (fallback local cache):', stored.length);
+          console.log('[Supabase Direct SDK] Using local products cache:', stored.length);
           if (callbacks.setProducts) callbacks.setProducts(stored);
         }
       }
 
       // 4. Fetch Hero Settings
       const heroFromDb = await fetchHeroSettingsFromSupabase();
-      let heroToUse = heroFromDb || defaultHeroSettings;
-      if (!heroFromDb) {
-        console.log('🌱 Supabase hero settings empty. Initializing default hero settings...');
-        await saveHeroSettingsToSupabase(defaultHeroSettings);
-        heroToUse = defaultHeroSettings;
+      if (heroFromDb) {
+        if (callbacks.setHeroSettings) callbacks.setHeroSettings(heroFromDb);
+        safeSetLocalStorage(STORAGE_KEYS.HERO_SETTINGS, heroFromDb);
+        console.log('[Supabase Direct SDK] Hero settings loaded into React state');
+      } else {
+        const fallbackHero = loadHeroSettings();
+        if (callbacks.setHeroSettings) callbacks.setHeroSettings(fallbackHero);
       }
-      if (callbacks.setHeroSettings) callbacks.setHeroSettings(heroToUse);
-      safeSetLocalStorage(STORAGE_KEYS.HERO_SETTINGS, heroToUse);
 
       // 5. Fetch Orders for Customer or All (if Admin)
       const ordersFromDb = await fetchOrdersFromSupabase(callbacks.customerId);
       if (callbacks.setOrders && ordersFromDb !== null) {
         callbacks.setOrders(ordersFromDb);
         safeSetLocalStorage(STORAGE_KEYS.ORDERS, ordersFromDb);
+        console.log(`[Supabase Direct SDK] Orders loaded into React state: ${ordersFromDb.length}`);
       }
 
       // 6. Fetch Delivery Cities
@@ -1182,6 +1158,7 @@ export const syncWithServerCMS = async (callbacks: {
         const updatedDeliverySettings = { ...currentDeliverySettings, cities: deliveryCitiesFromDb };
         if (callbacks.setDeliverySettings) callbacks.setDeliverySettings(updatedDeliverySettings);
         safeSetLocalStorage(STORAGE_KEYS.DELIVERY_SETTINGS, updatedDeliverySettings);
+        console.log(`[Supabase Direct SDK] Delivery cities loaded into React state: ${deliveryCitiesFromDb.length}`);
       }
 
       // 7. Fetch Site Settings (Business Config, Announcement, Theme, Checkout, Delivery, Stats, Contacts, Gallery, Planner, AI Assistant)
@@ -1204,7 +1181,7 @@ export const syncWithServerCMS = async (callbacks: {
       }
 
       const themeDb = await fetchSiteSettingFromSupabase<ThemeSettings>(STORAGE_KEYS.THEME_SETTINGS);
-      if (themeDb && typeof themeDb === 'object' && Object.keys(themeDb).length > 0 && ('primaryColor' in themeDb || 'availableThemes' in themeDb)) {
+      if (themeDb && typeof themeDb === 'object' && Object.keys(themeDb).length > 0 && ('primaryColor' in themeDb || 'availableThemes' in themeDb || 'defaultTheme' in themeDb)) {
         if (callbacks.setThemeSettings) callbacks.setThemeSettings(themeDb);
         safeSetLocalStorage(STORAGE_KEYS.THEME_SETTINGS, themeDb);
       } else {
@@ -1225,9 +1202,6 @@ export const syncWithServerCMS = async (callbacks: {
       if (deliveryDb && typeof deliveryDb === 'object' && Array.isArray((deliveryDb as any).cities)) {
         if (callbacks.setDeliverySettings) callbacks.setDeliverySettings(deliveryDb);
         safeSetLocalStorage(STORAGE_KEYS.DELIVERY_SETTINGS, deliveryDb);
-      } else {
-        const fallbackDelivery = loadDeliverySettings();
-        if (callbacks.setDeliverySettings) callbacks.setDeliverySettings(fallbackDelivery);
       }
 
       const statsDb = await fetchSiteSettingFromSupabase<StatCounter[]>(STORAGE_KEYS.STATS);
@@ -1293,196 +1267,34 @@ export const syncWithServerCMS = async (callbacks: {
         if (callbacks.setSmartToolsSettings) callbacks.setSmartToolsSettings(fallbackTools);
       }
 
-      console.log('✅ Supabase PostgreSQL live synchronization complete!');
+      console.log('✅ [Supabase Direct SDK] Synchronization complete!');
       return;
     } catch (err) {
-      console.error('Failed to sync directly from Supabase, falling back to local/CMS:', err);
+      console.error('[Supabase Direct SDK] Sync error, falling back to local cache:', err);
     }
   }
 
-  // Fallback / standard sync with Express backend / LocalStorage
+  // Fallback / standard sync with LocalStorage if Supabase client is not configured
   try {
-    const res = await fetch('/api/cms/load');
-    const json = await res.json();
-    const serverData = (json.success && json.data) ? json.data : {};
-    const batchToPush: Record<string, any> = {};
-
-    // 1. Config
-    if (serverData[STORAGE_KEYS.CONFIG] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(serverData[STORAGE_KEYS.CONFIG]));
-      if (callbacks.setConfig) callbacks.setConfig(serverData[STORAGE_KEYS.CONFIG]);
-    } else {
-      const current = loadStoredConfig();
-      batchToPush[STORAGE_KEYS.CONFIG] = current;
-      if (callbacks.setConfig) callbacks.setConfig(current);
-    }
-
-    // 2. Products
-    if (serverData[STORAGE_KEYS.PRODUCTS] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(serverData[STORAGE_KEYS.PRODUCTS]));
-      if (callbacks.setProducts) callbacks.setProducts(serverData[STORAGE_KEYS.PRODUCTS]);
-    } else {
-      const current = loadStoredProducts();
-      batchToPush[STORAGE_KEYS.PRODUCTS] = current;
-      if (callbacks.setProducts) callbacks.setProducts(current);
-    }
-
-    // 3. Categories
-    if (serverData[STORAGE_KEYS.CATEGORIES] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(serverData[STORAGE_KEYS.CATEGORIES]));
-      if (callbacks.setCategories) callbacks.setCategories(serverData[STORAGE_KEYS.CATEGORIES]);
-    } else {
-      const current = loadStoredCategories();
-      batchToPush[STORAGE_KEYS.CATEGORIES] = current;
-      if (callbacks.setCategories) callbacks.setCategories(current);
-    }
-
-    // 4. Brands
-    if (serverData[STORAGE_KEYS.BRANDS] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.BRANDS, JSON.stringify(serverData[STORAGE_KEYS.BRANDS]));
-      if (callbacks.setBrands) callbacks.setBrands(serverData[STORAGE_KEYS.BRANDS]);
-    } else {
-      const current = loadStoredBrands();
-      batchToPush[STORAGE_KEYS.BRANDS] = current;
-      if (callbacks.setBrands) callbacks.setBrands(current);
-    }
-
-    // 5. Stats
-    if (serverData[STORAGE_KEYS.STATS] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(serverData[STORAGE_KEYS.STATS]));
-      if (callbacks.setStats) callbacks.setStats(serverData[STORAGE_KEYS.STATS]);
-    } else {
-      const current = loadStoredStats();
-      batchToPush[STORAGE_KEYS.STATS] = current;
-      if (callbacks.setStats) callbacks.setStats(current);
-    }
-
-    // 6. Contacts
-    if (serverData[STORAGE_KEYS.CONTACTS] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.CONTACTS, JSON.stringify(serverData[STORAGE_KEYS.CONTACTS]));
-      if (callbacks.setContacts) callbacks.setContacts(serverData[STORAGE_KEYS.CONTACTS]);
-    } else {
-      const current = loadStoredContacts();
-      batchToPush[STORAGE_KEYS.CONTACTS] = current;
-      if (callbacks.setContacts) callbacks.setContacts(current);
-    }
-
-    // 7. Gallery
-    if (serverData[STORAGE_KEYS.GALLERY] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.GALLERY, JSON.stringify(serverData[STORAGE_KEYS.GALLERY]));
-      if (callbacks.setGallery) callbacks.setGallery(serverData[STORAGE_KEYS.GALLERY]);
-    } else {
-      const current = loadStoredGallery();
-      batchToPush[STORAGE_KEYS.GALLERY] = current;
-      if (callbacks.setGallery) callbacks.setGallery(current);
-    }
-
-    // 8. Planner
-    if (serverData[STORAGE_KEYS.PLANNER] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.PLANNER, JSON.stringify(serverData[STORAGE_KEYS.PLANNER]));
-      if (callbacks.setPlannerConfig) callbacks.setPlannerConfig(serverData[STORAGE_KEYS.PLANNER]);
-    } else {
-      const current = loadPlannerConfig();
-      batchToPush[STORAGE_KEYS.PLANNER] = current;
-      if (callbacks.setPlannerConfig) callbacks.setPlannerConfig(current);
-    }
-
-    // 9. AI Assistant
-    if (serverData[STORAGE_KEYS.AI_ASSISTANT] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.AI_ASSISTANT, JSON.stringify(serverData[STORAGE_KEYS.AI_ASSISTANT]));
-      if (callbacks.setAiAssistantConfig) callbacks.setAiAssistantConfig(serverData[STORAGE_KEYS.AI_ASSISTANT]);
-    } else {
-      const current = loadAiAssistantConfig();
-      batchToPush[STORAGE_KEYS.AI_ASSISTANT] = current;
-      if (callbacks.setAiAssistantConfig) callbacks.setAiAssistantConfig(current);
-    }
-
-    // 10. Orders
-    if (serverData[STORAGE_KEYS.ORDERS] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(serverData[STORAGE_KEYS.ORDERS]));
-      if (callbacks.setOrders) callbacks.setOrders(serverData[STORAGE_KEYS.ORDERS]);
-    } else {
-      const current = loadStoredOrders();
-      batchToPush[STORAGE_KEYS.ORDERS] = current;
-      if (callbacks.setOrders) callbacks.setOrders(current);
-    }
-
-    // 11. Checkout Settings
-    if (serverData[STORAGE_KEYS.CHECKOUT_SETTINGS] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.CHECKOUT_SETTINGS, JSON.stringify(serverData[STORAGE_KEYS.CHECKOUT_SETTINGS]));
-      if (callbacks.setCheckoutSettings) callbacks.setCheckoutSettings(serverData[STORAGE_KEYS.CHECKOUT_SETTINGS]);
-    } else {
-      const current = loadCheckoutSettings();
-      batchToPush[STORAGE_KEYS.CHECKOUT_SETTINGS] = current;
-      if (callbacks.setCheckoutSettings) callbacks.setCheckoutSettings(current);
-    }
-
-    // 12. Delivery Settings
-    if (serverData[STORAGE_KEYS.DELIVERY_SETTINGS] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.DELIVERY_SETTINGS, JSON.stringify(serverData[STORAGE_KEYS.DELIVERY_SETTINGS]));
-      if (callbacks.setDeliverySettings) callbacks.setDeliverySettings(serverData[STORAGE_KEYS.DELIVERY_SETTINGS]);
-    } else {
-      const current = loadDeliverySettings();
-      batchToPush[STORAGE_KEYS.DELIVERY_SETTINGS] = current;
-      if (callbacks.setDeliverySettings) callbacks.setDeliverySettings(current);
-    }
-
-    // 13. Theme Settings
-    if (serverData[STORAGE_KEYS.THEME_SETTINGS] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.THEME_SETTINGS, JSON.stringify(serverData[STORAGE_KEYS.THEME_SETTINGS]));
-      if (callbacks.setThemeSettings) callbacks.setThemeSettings(serverData[STORAGE_KEYS.THEME_SETTINGS]);
-    } else {
-      const current = loadThemeSettings();
-      batchToPush[STORAGE_KEYS.THEME_SETTINGS] = current;
-      if (callbacks.setThemeSettings) callbacks.setThemeSettings(current);
-    }
-
-    // 14. Announcement Settings
-    if (serverData[STORAGE_KEYS.ANNOUNCEMENT_SETTINGS] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, JSON.stringify(serverData[STORAGE_KEYS.ANNOUNCEMENT_SETTINGS]));
-      if (callbacks.setAnnouncementSettings) callbacks.setAnnouncementSettings(serverData[STORAGE_KEYS.ANNOUNCEMENT_SETTINGS]);
-    } else {
-      const current = loadAnnouncementSettings();
-      batchToPush[STORAGE_KEYS.ANNOUNCEMENT_SETTINGS] = current;
-      if (callbacks.setAnnouncementSettings) callbacks.setAnnouncementSettings(current);
-    }
-
-    // 15. Hero Settings
-    if (serverData[STORAGE_KEYS.HERO_SETTINGS] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.HERO_SETTINGS, JSON.stringify(serverData[STORAGE_KEYS.HERO_SETTINGS]));
-      if (callbacks.setHeroSettings) callbacks.setHeroSettings(serverData[STORAGE_KEYS.HERO_SETTINGS]);
-    } else {
-      const current = loadHeroSettings();
-      batchToPush[STORAGE_KEYS.HERO_SETTINGS] = current;
-      if (callbacks.setHeroSettings) callbacks.setHeroSettings(current);
-    }
-
-    // 16. Build Material Estimator
-    if (serverData[STORAGE_KEYS.ESTIMATOR] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.ESTIMATOR, JSON.stringify(serverData[STORAGE_KEYS.ESTIMATOR]));
-      if (callbacks.setEstimatorConfig) callbacks.setEstimatorConfig(serverData[STORAGE_KEYS.ESTIMATOR]);
-    } else {
-      const current = loadBuildMaterialEstimatorConfig();
-      batchToPush[STORAGE_KEYS.ESTIMATOR] = current;
-      if (callbacks.setEstimatorConfig) callbacks.setEstimatorConfig(current);
-    }
-
-    // 17. Smart Tools Settings
-    if (serverData[STORAGE_KEYS.SMART_TOOLS] !== undefined) {
-      localStorage.setItem(STORAGE_KEYS.SMART_TOOLS, JSON.stringify(serverData[STORAGE_KEYS.SMART_TOOLS]));
-      if (callbacks.setSmartToolsSettings) callbacks.setSmartToolsSettings(serverData[STORAGE_KEYS.SMART_TOOLS]);
-    } else {
-      const current = loadSmartToolsSettings();
-      batchToPush[STORAGE_KEYS.SMART_TOOLS] = current;
-      if (callbacks.setSmartToolsSettings) callbacks.setSmartToolsSettings(current);
-    }
-
-    // Batch upload any missing keys to server in a single call
-    if (Object.keys(batchToPush).length > 0) {
-      await saveAllToServerCMS(batchToPush);
-    }
+    if (callbacks.setConfig) callbacks.setConfig(loadStoredConfig());
+    if (callbacks.setProducts) callbacks.setProducts(loadStoredProducts());
+    if (callbacks.setCategories) callbacks.setCategories(loadStoredCategories());
+    if (callbacks.setBrands) callbacks.setBrands(loadStoredBrands());
+    if (callbacks.setStats) callbacks.setStats(loadStoredStats());
+    if (callbacks.setContacts) callbacks.setContacts(loadStoredContacts());
+    if (callbacks.setGallery) callbacks.setGallery(loadStoredGallery());
+    if (callbacks.setPlannerConfig) callbacks.setPlannerConfig(loadPlannerConfig());
+    if (callbacks.setAiAssistantConfig) callbacks.setAiAssistantConfig(loadAiAssistantConfig());
+    if (callbacks.setOrders) callbacks.setOrders(loadStoredOrders());
+    if (callbacks.setCheckoutSettings) callbacks.setCheckoutSettings(loadCheckoutSettings());
+    if (callbacks.setDeliverySettings) callbacks.setDeliverySettings(loadDeliverySettings());
+    if (callbacks.setThemeSettings) callbacks.setThemeSettings(loadThemeSettings());
+    if (callbacks.setAnnouncementSettings) callbacks.setAnnouncementSettings(loadAnnouncementSettings());
+    if (callbacks.setHeroSettings) callbacks.setHeroSettings(loadHeroSettings());
+    if (callbacks.setSmartToolsSettings) callbacks.setSmartToolsSettings(loadSmartToolsSettings());
+    if (callbacks.setEstimatorConfig) callbacks.setEstimatorConfig(loadBuildMaterialEstimatorConfig());
   } catch (e) {
-    console.warn('Server CMS sync skipped or unavailable:', e);
+    console.warn('Local storage sync fallback error:', e);
   }
 };
 

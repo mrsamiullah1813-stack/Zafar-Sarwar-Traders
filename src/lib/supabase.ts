@@ -1,12 +1,15 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Safe static access to Vite environment variables (statically replaced during build)
+// Safe static access to Vite environment variables (statically replaced by Vite during build)
 const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env || {} : {};
+const winEnv = typeof window !== 'undefined' ? ((window as any).__ENV__ || (window as any) || {}) : {};
 
 let rawUrl = (
   metaEnv.VITE_SUPABASE_URL ||
   metaEnv.SUPABASE_URL ||
   metaEnv.NEXT_PUBLIC_SUPABASE_URL ||
+  winEnv.VITE_SUPABASE_URL ||
+  winEnv.SUPABASE_URL ||
   ''
 ).trim();
 
@@ -16,6 +19,9 @@ let rawKey = (
   metaEnv.SUPABASE_ANON_KEY ||
   metaEnv.SUPABASE_PUBLISHABLE_KEY ||
   metaEnv.SUPABASE_KEY ||
+  winEnv.VITE_SUPABASE_ANON_KEY ||
+  winEnv.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  winEnv.SUPABASE_ANON_KEY ||
   ''
 ).trim();
 
@@ -91,7 +97,7 @@ function createSupabaseInstance(url: string, key: string, isReal: boolean): Supa
 }
 
 // Extract safe hostname for diagnostic logging (never log keys or tokens)
-function getSafeHost(url: string): string {
+export function getSafeHost(url: string): string {
   try {
     if (!url || isPlaceholderUrl(url)) return 'Not configured (placeholder)';
     const parsed = new URL(url);
@@ -103,10 +109,10 @@ function getSafeHost(url: string): string {
 
 if (isSupabaseConfigured) {
   activeClient = createSupabaseInstance(rawUrl, rawKey, true);
-  console.log(`[Supabase Diagnostic] Initialization: SUCCESS | Project Host: ${getSafeHost(rawUrl)} | Key Present: ${Boolean(rawKey)}`);
+  console.log(`[Supabase Direct SDK] Initialization: SUCCESS | Target: ${getSafeHost(rawUrl)} | Auth: Configured`);
 } else {
   activeClient = createSupabaseInstance(dummyUrl, dummyKey, false);
-  console.warn(`[Supabase Diagnostic] Initialization: PENDING/NOT_CONFIGURED | Detected URL: ${getSafeHost(rawUrl)} | Key Present: ${Boolean(rawKey)}`);
+  console.warn(`[Supabase Direct SDK] Initialization: PENDING | Target: ${getSafeHost(rawUrl)} | Key Present: ${Boolean(rawKey)}`);
 }
 
 // Proxied supabase client that dynamically routes all calls to activeClient
@@ -135,45 +141,61 @@ export async function initializeSupabaseRuntime(): Promise<boolean> {
 
   runtimeInitPromise = (async () => {
     try {
-      // 1. Check if safe cached credentials exist in sessionStorage
+      // 1. Check if safe cached credentials exist in sessionStorage or localStorage
       try {
-        const cached = sessionStorage.getItem('zst_sb_config_cache');
+        const cached = sessionStorage.getItem('zst_sb_config_cache') || localStorage.getItem('zst_sb_config_cache');
         if (cached) {
           const parsed = JSON.parse(cached);
           if (parsed?.url && parsed?.anonKey && !isPlaceholderUrl(parsed.url) && !isPlaceholderKey(parsed.anonKey)) {
             const cleanUrl = normalizeSupabaseUrl(parsed.url);
             activeClient = createSupabaseInstance(cleanUrl, parsed.anonKey, true);
             isSupabaseConfigured = true;
-            console.log('✅ Supabase restored from runtime session cache:', cleanUrl);
+            console.log(`[Supabase Direct SDK] Restored from runtime storage cache: ${getSafeHost(cleanUrl)}`);
             return true;
           }
         }
       } catch {}
 
-      // 2. Fetch server-provided public config endpoint (which accesses Hostinger/Cloud Run process.env)
-      const res = await fetch('/api/supabase-config', { cache: 'no-store' });
-      if (res.ok) {
-        const json = await res.json();
-        if (json?.configured && json?.url && json?.anonKey) {
-          const cleanUrl = normalizeSupabaseUrl(json.url);
-          if (isValidHttpUrl(cleanUrl) && !isPlaceholderUrl(cleanUrl) && !isPlaceholderKey(json.anonKey)) {
-            activeClient = createSupabaseInstance(cleanUrl, json.anonKey, true);
+      // 2. Check window.__ENV__ if injected dynamically
+      try {
+        const win = typeof window !== 'undefined' ? (window as any) : null;
+        if (win) {
+          const dynamicUrl = win.__ENV__?.VITE_SUPABASE_URL || win.VITE_SUPABASE_URL;
+          const dynamicKey = win.__ENV__?.VITE_SUPABASE_ANON_KEY || win.VITE_SUPABASE_ANON_KEY || win.VITE_SUPABASE_PUBLISHABLE_KEY;
+          if (dynamicUrl && dynamicKey && !isPlaceholderUrl(dynamicUrl) && !isPlaceholderKey(dynamicKey)) {
+            const cleanUrl = normalizeSupabaseUrl(dynamicUrl);
+            activeClient = createSupabaseInstance(cleanUrl, dynamicKey, true);
             isSupabaseConfigured = true;
-            try {
-              sessionStorage.setItem('zst_sb_config_cache', JSON.stringify({ url: cleanUrl, anonKey: json.anonKey }));
-            } catch {}
-            console.log('✅ Supabase successfully connected via runtime server configuration:', cleanUrl);
+            console.log(`[Supabase Direct SDK] Connected via window runtime config: ${getSafeHost(cleanUrl)}`);
             return true;
           }
         }
-      }
+      } catch {}
+
+      // 3. Fallback: only try server config endpoint if available (non-fatal if 404 on static hosting)
+      try {
+        const res = await fetch('/api/supabase-config', { cache: 'no-store' });
+        if (res.ok) {
+          const json = await res.json();
+          if (json?.configured && json?.url && json?.anonKey) {
+            const cleanUrl = normalizeSupabaseUrl(json.url);
+            if (isValidHttpUrl(cleanUrl) && !isPlaceholderUrl(cleanUrl) && !isPlaceholderKey(json.anonKey)) {
+              activeClient = createSupabaseInstance(cleanUrl, json.anonKey, true);
+              isSupabaseConfigured = true;
+              try {
+                sessionStorage.setItem('zst_sb_config_cache', JSON.stringify({ url: cleanUrl, anonKey: json.anonKey }));
+              } catch {}
+              console.log(`[Supabase Direct SDK] Connected via server configuration: ${getSafeHost(cleanUrl)}`);
+              return true;
+            }
+          }
+        }
+      } catch {}
     } catch (e) {
-      console.warn('Runtime Supabase config check skipped or server unreachable:', e);
+      // Silent catch - static hosting won't have /api/ endpoints
     }
     return isSupabaseConfigured;
   })();
 
   return runtimeInitPromise;
 }
-
-
