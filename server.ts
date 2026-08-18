@@ -4,20 +4,65 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 
-// Initialize Supabase Service Role DB Client for server proxy
-const rawSupabaseUrl = (process.env.VITE_SUPABASE_URL || "").trim();
-const targetSupabaseUrl = rawSupabaseUrl
-  ? (rawSupabaseUrl.startsWith("http") ? rawSupabaseUrl : `https://${rawSupabaseUrl}.supabase.co`)
-  : "";
-const serviceRoleKey = (
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.VITE_SUPABASE_ANON_KEY ||
+// Initialize Supabase DB Client for server proxy with exhaustive environment variable fallbacks
+const rawSupabaseUrl = (
+  process.env.VITE_SUPABASE_URL ||
+  process.env.SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
   ""
 ).trim();
 
-const dbClient = (targetSupabaseUrl && serviceRoleKey)
-  ? createClient(targetSupabaseUrl, serviceRoleKey)
+let normalizedSupabaseUrl = rawSupabaseUrl;
+if (normalizedSupabaseUrl && !normalizedSupabaseUrl.startsWith("http://") && !normalizedSupabaseUrl.startsWith("https://")) {
+  normalizedSupabaseUrl = `https://${normalizedSupabaseUrl}`;
+  if (!normalizedSupabaseUrl.includes(".")) {
+    normalizedSupabaseUrl += ".supabase.co";
+  }
+}
+
+const serviceRoleKey = (
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SERVICE_ROLE_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_KEY ||
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.SUPABASE_PUBLISHABLE_KEY ||
+  ""
+).trim();
+
+const publicAnonKey = (
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_PUBLISHABLE_KEY ||
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.SUPABASE_KEY ||
+  ""
+).trim();
+
+const isPlaceholder = (val: string) =>
+  !val ||
+  val.includes("your-supabase") ||
+  val.includes("placeholder") ||
+  val.includes("EXAMPLE") ||
+  val.includes("YOUR_");
+
+const isSupabaseServerConfigured = Boolean(
+  normalizedSupabaseUrl &&
+  !isPlaceholder(normalizedSupabaseUrl) &&
+  serviceRoleKey &&
+  !isPlaceholder(serviceRoleKey)
+);
+
+const dbClient = isSupabaseServerConfigured
+  ? createClient(normalizedSupabaseUrl, serviceRoleKey)
   : null;
+
+if (dbClient) {
+  console.log("✅ Supabase Server Database Proxy connected to:", normalizedSupabaseUrl);
+} else {
+  console.log("ℹ️ Supabase Server Database Proxy inactive: credentials not provided or placeholder.");
+}
 
 async function startServer() {
   const app = express();
@@ -28,7 +73,69 @@ async function startServer() {
 
   // Health check endpoint
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", app: "Zafar Sarwar Traders" });
+    res.json({
+      status: "ok",
+      app: "Zafar Sarwar Traders",
+      supabaseConnected: Boolean(dbClient),
+      supabaseUrl: normalizedSupabaseUrl ? normalizedSupabaseUrl.replace(/^(https?:\/\/)([^.]+)(.*)$/, "$1***$3") : null
+    });
+  });
+
+  // Public Supabase Configuration Endpoint for Frontend Dynamic Runtime Hydration
+  // (Safe: strictly returns public Anon Key / URL; never leaks Service Role Key)
+  app.get("/api/supabase-config", (req, res) => {
+    const isPublicConfigured = Boolean(
+      normalizedSupabaseUrl &&
+      !isPlaceholder(normalizedSupabaseUrl) &&
+      publicAnonKey &&
+      !isPlaceholder(publicAnonKey)
+    );
+    return res.json({
+      configured: isPublicConfigured,
+      url: isPublicConfigured ? normalizedSupabaseUrl : "",
+      anonKey: isPublicConfigured ? publicAnonKey : ""
+    });
+  });
+
+  // Database Diagnostic Endpoint
+  app.get("/api/db/diagnostic", async (req, res) => {
+    if (!dbClient) {
+      return res.json({
+        success: false,
+        status: "Supabase client not initialized on server",
+        urlConfigured: Boolean(normalizedSupabaseUrl),
+        keyConfigured: Boolean(serviceRoleKey)
+      });
+    }
+
+    const report: Record<string, any> = {};
+    const tables = ["products", "categories", "brands", "hero_settings", "hero_slides", "orders", "delivery_cities", "site_settings"];
+
+    for (const tbl of tables) {
+      try {
+        const { count, error } = await dbClient.from(tbl).select("*", { count: "exact", head: true });
+        if (error) {
+          report[tbl] = { status: "error", error: error.message };
+        } else {
+          report[tbl] = { status: "ok", count: count ?? 0 };
+        }
+      } catch (err: any) {
+        report[tbl] = { status: "exception", error: err?.message || String(err) };
+      }
+    }
+
+    try {
+      const { data: buckets, error: bError } = await dbClient.storage.listBuckets();
+      report["storage_buckets"] = bError ? { status: "error", error: bError.message } : { status: "ok", buckets: buckets?.map(b => b.name) || [] };
+    } catch (err: any) {
+      report["storage_buckets"] = { status: "exception", error: err?.message || String(err) };
+    }
+
+    return res.json({
+      success: true,
+      url: normalizedSupabaseUrl ? normalizedSupabaseUrl.replace(/^(https?:\/\/)([^.]+)(.*)$/, "$1***$3") : null,
+      tables: report
+    });
   });
 
   // Database Proxy API Endpoints (Bypasses browser RLS write restrictions using service role key)
@@ -272,6 +379,223 @@ async function startServer() {
       const { error } = await dbClient.from("products").delete().eq("id", id);
       if (error) return res.status(500).json({ success: false, error: error.message });
       return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // HERO SETTINGS DB Proxy
+  app.get("/api/db/hero-settings", async (req, res) => {
+    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
+    try {
+      const { data, error } = await dbClient.from("hero_settings").select("*").eq("id", "default").maybeSingle();
+      if (error) return res.status(500).json({ success: false, error: error.message });
+      return res.json({ success: true, data });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  app.post("/api/db/hero-settings/upsert", async (req, res) => {
+    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
+    try {
+      const { settings } = req.body;
+      const payload = {
+        id: "default",
+        autoplay: Boolean(settings.autoPlay ?? true),
+        slide_duration: (settings.rotationDurationSeconds || 5) * 1000,
+        transition_style: settings.transitionStyle || "fade",
+        overlay_intensity: 0.4,
+        height: "h-[85vh]",
+        show_price: true,
+        show_brand: true,
+        show_category: true,
+        show_stock: true,
+        show_cart: Boolean(settings.enableSecondaryBtn ?? true),
+        show_whatsapp: Boolean(settings.enableTertiaryBtn ?? true),
+        published: Boolean(settings.isEnabled ?? true),
+        updated_at: new Date().toISOString()
+      };
+      const { error } = await dbClient.from("hero_settings").upsert(payload, { onConflict: "id" });
+      if (error) return res.status(500).json({ success: false, error: error.message });
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // ORDERS DB Proxy
+  app.get("/api/db/orders", async (req, res) => {
+    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
+    try {
+      const { customerId } = req.query;
+      let query = dbClient.from("orders").select("*, order_items(*)").order("created_at", { ascending: false });
+      if (customerId && typeof customerId === "string") {
+        query = query.eq("customer_id", customerId);
+      }
+      const { data, error } = await query;
+      if (error) return res.status(500).json({ success: false, error: error.message });
+      return res.json({ success: true, data });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  app.post("/api/db/orders/upsert", async (req, res) => {
+    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
+    try {
+      const { order, items } = req.body;
+      if (!order) return res.status(400).json({ success: false, error: "Order payload required" });
+
+      const { error: orderErr } = await dbClient.from("orders").upsert(order, { onConflict: "id" });
+      if (orderErr) return res.status(500).json({ success: false, error: orderErr.message });
+
+      if (Array.isArray(items) && items.length > 0) {
+        const { error: itemsErr } = await dbClient.from("order_items").upsert(items, { onConflict: "id" });
+        if (itemsErr) console.warn("Order items upsert warning:", itemsErr.message);
+      }
+      return res.json({ success: true, id: order.id });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  app.patch("/api/db/orders/:id/status", async (req, res) => {
+    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
+    try {
+      const { id } = req.params;
+      const { status, note } = req.body;
+      const { data: existing } = await dbClient.from("orders").select("status_history").eq("id", id).maybeSingle();
+      const history = existing && Array.isArray(existing.status_history) ? existing.status_history : [];
+      const updatedHistory = [...history, { status, timestamp: new Date().toISOString(), note }];
+
+      const { error } = await dbClient
+        .from("orders")
+        .update({ status, status_history: updatedHistory, updated_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) return res.status(500).json({ success: false, error: error.message });
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // DELIVERY CITIES DB Proxy
+  app.get("/api/db/delivery-cities", async (req, res) => {
+    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
+    try {
+      const { data, error } = await dbClient.from("delivery_cities").select("*").order("display_order", { ascending: true });
+      if (error) return res.status(500).json({ success: false, error: error.message });
+      return res.json({ success: true, data });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  app.post("/api/db/delivery-cities/upsert", async (req, res) => {
+    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
+    try {
+      const { cities } = req.body;
+      const list = Array.isArray(cities) ? cities : (req.body.city ? [req.body.city] : []);
+      if (list.length === 0) return res.json({ success: true });
+
+      const payloads = list.map((c: any) => ({
+        id: c.id,
+        name: c.cityName || c.name,
+        delivery_fee: c.deliveryFee ?? c.delivery_fee ?? 0,
+        estimated_days: c.estimatedDays || c.estimated_days || "2-4 Days",
+        enabled: Boolean(c.isEnabled ?? c.enabled ?? true),
+        same_day_available: Boolean(c.isSameDayAvailable ?? c.same_day_available),
+        next_day_available: Boolean(c.isNextDayAvailable ?? c.next_day_available),
+        display_order: c.displayOrder ?? c.display_order ?? 0,
+        notes: c.notes || null
+      }));
+
+      const { error } = await dbClient.from("delivery_cities").upsert(payloads, { onConflict: "id" });
+      if (error) return res.status(500).json({ success: false, error: error.message });
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // SITE SETTINGS DB Proxy (Supports both key/value rows AND column-based rows)
+  app.get("/api/db/site-settings/:key", async (req, res) => {
+    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
+    try {
+      const { key } = req.params;
+      // 1. Try key-value table
+      const { data: kvData, error: kvErr } = await dbClient.from("site_settings").select("value").eq("key", key).maybeSingle();
+      if (!kvErr && kvData && kvData.value !== undefined) {
+        return res.json({ success: true, data: kvData.value });
+      }
+
+      // 2. Try single row config with named column
+      const k = key.toLowerCase();
+      let colName = null;
+      if (k.includes("announcement")) colName = "announcements";
+      else if (k.includes("theme")) colName = "theme_settings";
+      else if (k.includes("ai") || k.includes("assistant")) colName = "ai_assistant";
+      else if (k.includes("contact")) colName = "contact_info";
+      else if (k.includes("stat")) colName = "stats";
+      else if (k.includes("delivery")) colName = "delivery_settings";
+      else if (k.includes("checkout")) colName = "checkout_settings";
+      else if (k.includes("planner") || k.includes("designer")) colName = "planner_config";
+      else if (k.includes("config") || k.includes("business")) colName = "business_config";
+      else if (k.includes("gallery")) colName = "gallery";
+
+      if (colName) {
+        const { data: colData } = await dbClient.from("site_settings").select(colName).eq("id", "config").maybeSingle();
+        if (colData && (colData as any)[colName] !== undefined) {
+          return res.json({ success: true, data: (colData as any)[colName] });
+        }
+      }
+
+      return res.json({ success: true, data: null });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  app.post("/api/db/site-settings/upsert", async (req, res) => {
+    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
+    try {
+      const { key, value } = req.body;
+      if (!key) return res.status(400).json({ success: false, error: "Key is required" });
+
+      // 1. Try key/value schema
+      const { error: kvError } = await dbClient.from("site_settings").upsert({
+        key,
+        value,
+        updated_at: new Date().toISOString()
+      }, { onConflict: "key" });
+
+      if (!kvError) {
+        return res.json({ success: true });
+      }
+
+      // 2. If table uses column-based id='config' schema
+      const k = key.toLowerCase();
+      let colName = null;
+      if (k.includes("announcement")) colName = "announcements";
+      else if (k.includes("theme")) colName = "theme_settings";
+      else if (k.includes("ai") || k.includes("assistant")) colName = "ai_assistant";
+      else if (k.includes("contact")) colName = "contact_info";
+      else if (k.includes("stat")) colName = "stats";
+      else if (k.includes("delivery")) colName = "delivery_settings";
+      else if (k.includes("checkout")) colName = "checkout_settings";
+      else if (k.includes("planner") || k.includes("designer")) colName = "planner_config";
+      else if (k.includes("config") || k.includes("business")) colName = "business_config";
+      else if (k.includes("gallery")) colName = "gallery";
+
+      if (colName) {
+        const payload = { id: "config", [colName]: value, updated_at: new Date().toISOString() };
+        const { error: colError } = await dbClient.from("site_settings").upsert(payload, { onConflict: "id" });
+        if (colError) return res.status(500).json({ success: false, error: colError.message });
+        return res.json({ success: true });
+      }
+
+      return res.status(500).json({ success: false, error: kvError.message });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }

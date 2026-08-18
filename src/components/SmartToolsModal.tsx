@@ -105,18 +105,21 @@ interface ErrorBoundaryState {
   error?: Error;
 }
 
-class ToolErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  public override state: ErrorBoundaryState = { hasError: false };
+class ToolErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
-  override componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('[SmartTools] Tool render error caught safely:', error, errorInfo);
   }
 
-  override render() {
+  render() {
     if (this.state.hasError) {
       return (
         <div className="p-6 sm:p-10 rounded-3xl bg-slate-900 border border-slate-800 text-center max-w-xl mx-auto my-8 space-y-5 animate-fadeIn">

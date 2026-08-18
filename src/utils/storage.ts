@@ -3,7 +3,7 @@ import { initialBusinessConfig, productCategories, featuredProducts, galleryItem
 import { defaultBathroomPlannerConfig } from '../data/defaultPlannerConfig';
 import { defaultBuildMaterialEstimatorConfig } from '../data/defaultEstimatorConfig';
 import { defaultSmartToolsSettings } from '../data/defaultSmartToolsConfig';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { isSupabaseConfigured, initializeSupabaseRuntime } from '../lib/supabase';
 import { 
   fetchProductsFromSupabase, 
   upsertProductInSupabase, 
@@ -1091,6 +1091,7 @@ export const syncWithServerCMS = async (callbacks: {
   setSmartToolsSettings?: (st: SmartToolsSettings) => void;
   customerId?: string;
 }) => {
+  await initializeSupabaseRuntime();
   if (isSupabaseConfigured) {
     try {
       console.log('🔄 Syncing live database from Supabase PostgreSQL source of truth...');

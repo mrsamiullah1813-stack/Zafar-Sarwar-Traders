@@ -1,5 +1,5 @@
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
-export { isSupabaseConfigured };
+import { supabase, isSupabaseConfigured, initializeSupabaseRuntime } from '../lib/supabase';
+export { isSupabaseConfigured, initializeSupabaseRuntime };
 import { 
   Product, 
   ProductCategory, 
@@ -188,20 +188,21 @@ export function mapProductToDb(product: Product): any {
 // PRODUCTS CRUD
 // ---------------------------------------------------------
 export async function fetchProductsFromSupabase(): Promise<Product[] | null> {
-  if (!isSupabaseConfigured) return null;
+  await initializeSupabaseRuntime();
   try {
     const apiRes = await fetch('/api/db/products');
     if (apiRes.ok) {
       const json = await apiRes.json();
-      if (json.success && Array.isArray(json.data)) {
-        console.log('[STEP18 LOAD] Proxy returned product count:', json.data.length);
+      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        console.log('[CMS SYNC] Server proxy returned products count:', json.data.length);
         return json.data.map(mapDbProductToProduct);
       }
     }
   } catch (e) {
-    console.warn('[STEP18 LOAD] Proxy fetch products failed, trying direct SDK:', e);
+    console.warn('[CMS SYNC] Server proxy product fetch fallback:', e);
   }
 
+  if (!isSupabaseConfigured) return null;
   try {
     const { data, error } = await supabase
       .from('products')
@@ -209,23 +210,20 @@ export async function fetchProductsFromSupabase(): Promise<Product[] | null> {
       .order('display_order', { ascending: true })
       .order('created_at', { ascending: false });
 
-    console.log('[STEP18 LOAD] Supabase returned product count:', data ? data.length : null);
     if (error) {
-      console.error('[STEP18 LOAD] Error fetching products from Supabase:', error);
+      console.error('[CMS SYNC] Error fetching products from Supabase SDK:', error);
       return null;
     }
     return data ? data.map(mapDbProductToProduct) : [];
   } catch (err) {
-    console.error('[STEP18 LOAD] Unexpected error fetching products from Supabase:', err);
+    console.error('[CMS SYNC] Unexpected error fetching products from Supabase:', err);
     return null;
   }
 }
 
 export async function upsertProductInSupabase(product: Product | Product[]): Promise<{ success: boolean; error?: string }> {
-  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
+  await initializeSupabaseRuntime();
   const list = Array.isArray(product) ? product : [product];
-
-  console.log('[STEP32 REQUEST] upsertProductInSupabase processing items:', list.length);
 
   try {
     const apiRes = await fetch('/api/db/products/upsert', {
@@ -235,21 +233,14 @@ export async function upsertProductInSupabase(product: Product | Product[]): Pro
     });
     if (apiRes.ok) {
       const json = await apiRes.json();
-      if (json.success) {
-        console.log('[STEP32 RESPONSE] Server proxy product upsert: success');
-        return { success: true };
-      }
-      if (json.error) {
-        console.warn('[STEP32 RESPONSE] Server proxy product upsert returned error:', json.error);
-        return { success: false, error: json.error };
-      }
-    } else {
-      const errText = await apiRes.text();
-      console.warn('[STEP32 RESPONSE] Server proxy returned non-OK status:', apiRes.status, errText);
+      if (json.success) return { success: true };
+      if (json.error) return { success: false, error: json.error };
     }
   } catch (e: any) {
-    console.warn('[STEP32 RESPONSE] Proxy upsert product fetch failed, trying direct SDK:', e);
+    console.warn('Proxy upsert product failed, trying direct SDK:', e);
   }
+
+  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
   try {
     for (const prod of list) {
@@ -257,27 +248,23 @@ export async function upsertProductInSupabase(product: Product | Product[]): Pro
       let { error } = await supabase.from('products').upsert(payload, { onConflict: 'id' });
 
       if (error && error.code === '23503') {
-        console.warn('[STEP32 FK NOTICE] Category or Brand ID FK missing, retrying with sanitized payload...');
         const sanitizedPayload = { ...payload, category_id: null, brand_id: null };
         const retryResult = await supabase.from('products').upsert(sanitizedPayload, { onConflict: 'id' });
         error = retryResult.error;
       }
 
       if (error) {
-        console.error('[STEP32 ERROR] Error saving product in Supabase:', error);
         return { success: false, error: error.message };
       }
     }
-    console.log('[STEP32 RESPONSE] Direct SDK product upsert: success');
     return { success: true };
   } catch (err: any) {
-    console.error('[STEP32 ERROR] Exception in upsertProductInSupabase:', err);
     return { success: false, error: err.message || String(err) };
   }
 }
 
 export async function deleteProductFromSupabase(productId: string): Promise<{ success: boolean; error?: string }> {
-  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
+  await initializeSupabaseRuntime();
   try {
     const apiRes = await fetch(`/api/db/products/${encodeURIComponent(productId)}`, { method: 'DELETE' });
     if (apiRes.ok) {
@@ -288,12 +275,11 @@ export async function deleteProductFromSupabase(productId: string): Promise<{ su
     console.warn('Proxy delete product failed, trying direct SDK:', e);
   }
 
+  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
+
   try {
     const { error } = await supabase.from('products').delete().eq('id', productId);
-    if (error) {
-      console.error('Error deleting product from Supabase:', error);
-      return { success: false, error: error.message };
-    }
+    if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -304,7 +290,7 @@ export async function deleteProductFromSupabase(productId: string): Promise<{ su
 // CATEGORIES CRUD
 // ---------------------------------------------------------
 export async function fetchCategoriesFromSupabase(): Promise<ProductCategory[] | null> {
-  if (!isSupabaseConfigured) return null;
+  await initializeSupabaseRuntime();
   try {
     const apiRes = await fetch('/api/db/categories');
     if (apiRes.ok) {
@@ -336,6 +322,7 @@ export async function fetchCategoriesFromSupabase(): Promise<ProductCategory[] |
     console.warn('Proxy fetch categories failed, attempting direct SDK fetch:', e);
   }
 
+  if (!isSupabaseConfigured) return null;
   try {
     const { data, error } = await supabase
       .from('categories')
@@ -373,7 +360,7 @@ export async function fetchCategoriesFromSupabase(): Promise<ProductCategory[] |
 }
 
 export async function upsertCategoryInSupabase(category: ProductCategory | ProductCategory[]): Promise<{ success: boolean; error?: string }> {
-  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
+  await initializeSupabaseRuntime();
   const list = Array.isArray(category) ? category : [category];
 
   try {
@@ -390,6 +377,8 @@ export async function upsertCategoryInSupabase(category: ProductCategory | Produ
   } catch (e: any) {
     console.warn('Proxy upsert category failed, trying direct SDK:', e);
   }
+
+  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
   try {
     const payloads = list.map(cat => ({
@@ -410,9 +399,7 @@ export async function upsertCategoryInSupabase(category: ProductCategory | Produ
     }));
 
     const { error } = await supabase.from('categories').upsert(payloads, { onConflict: 'id' });
-    if (error) {
-      return { success: false, error: error.message };
-    }
+    if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err?.message || String(err) };
@@ -420,26 +407,22 @@ export async function upsertCategoryInSupabase(category: ProductCategory | Produ
 }
 
 export async function deleteCategoryFromSupabase(categoryId: string): Promise<{ success: boolean; error?: string }> {
-  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
-
+  await initializeSupabaseRuntime();
   try {
-    const apiRes = await fetch(`/api/db/categories/${encodeURIComponent(categoryId)}`, {
-      method: 'DELETE'
-    });
+    const apiRes = await fetch(`/api/db/categories/${encodeURIComponent(categoryId)}`, { method: 'DELETE' });
     if (apiRes.ok) {
       const json = await apiRes.json();
       if (json.success) return { success: true };
-      if (json.error) return { success: false, error: json.error };
     }
   } catch (e) {
     console.warn('Proxy delete category failed, trying direct SDK:', e);
   }
 
+  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
+
   try {
     const { error } = await supabase.from('categories').delete().eq('id', categoryId);
-    if (error) {
-      return { success: false, error: error.message };
-    }
+    if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -450,7 +433,7 @@ export async function deleteCategoryFromSupabase(categoryId: string): Promise<{ 
 // BRANDS CRUD
 // ---------------------------------------------------------
 export async function fetchBrandsFromSupabase(): Promise<ProductBrand[] | null> {
-  if (!isSupabaseConfigured) return null;
+  await initializeSupabaseRuntime();
   try {
     const apiRes = await fetch('/api/db/brands');
     if (apiRes.ok) {
@@ -474,16 +457,14 @@ export async function fetchBrandsFromSupabase(): Promise<ProductBrand[] | null> 
     console.warn('Proxy fetch brands failed, attempting direct SDK fetch:', e);
   }
 
+  if (!isSupabaseConfigured) return null;
   try {
     const { data, error } = await supabase
       .from('brands')
       .select('*')
       .order('display_order', { ascending: true });
 
-    if (error) {
-      console.error('Error fetching brands from Supabase:', error);
-      return null;
-    }
+    if (error) return null;
     return data ? data.map((r: any) => ({
       id: r.id,
       name: r.name,
@@ -497,13 +478,12 @@ export async function fetchBrandsFromSupabase(): Promise<ProductBrand[] | null> 
       displayOrder: Number(r.display_order ?? 0)
     })) : [];
   } catch (err) {
-    console.error('Unexpected error fetching brands from Supabase:', err);
     return null;
   }
 }
 
 export async function upsertBrandInSupabase(brand: ProductBrand | ProductBrand[]): Promise<{ success: boolean; error?: string }> {
-  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
+  await initializeSupabaseRuntime();
   const list = Array.isArray(brand) ? brand : [brand];
 
   try {
@@ -515,11 +495,12 @@ export async function upsertBrandInSupabase(brand: ProductBrand | ProductBrand[]
     if (apiRes.ok) {
       const json = await apiRes.json();
       if (json.success) return { success: true };
-      if (json.error) return { success: false, error: json.error };
     }
   } catch (e: any) {
     console.warn('Proxy upsert brand failed, trying direct SDK:', e);
   }
+
+  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
   try {
     const payloads = list.map(b => ({
@@ -543,20 +524,18 @@ export async function upsertBrandInSupabase(brand: ProductBrand | ProductBrand[]
 }
 
 export async function deleteBrandFromSupabase(brandId: string): Promise<{ success: boolean; error?: string }> {
-  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
-
+  await initializeSupabaseRuntime();
   try {
-    const apiRes = await fetch(`/api/db/brands/${encodeURIComponent(brandId)}`, {
-      method: 'DELETE'
-    });
+    const apiRes = await fetch(`/api/db/brands/${encodeURIComponent(brandId)}`, { method: 'DELETE' });
     if (apiRes.ok) {
       const json = await apiRes.json();
       if (json.success) return { success: true };
-      if (json.error) return { success: false, error: json.error };
     }
   } catch (e) {
     console.warn('Proxy delete brand failed, trying direct SDK:', e);
   }
+
+  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
   try {
     const { error } = await supabase.from('brands').delete().eq('id', brandId);
@@ -571,6 +550,49 @@ export async function deleteBrandFromSupabase(brandId: string): Promise<{ succes
 // HERO SETTINGS & HERO SLIDES
 // ---------------------------------------------------------
 export async function fetchHeroSettingsFromSupabase(): Promise<HeroSettings | null> {
+  await initializeSupabaseRuntime();
+  try {
+    const apiRes = await fetch('/api/db/hero-settings');
+    if (apiRes.ok) {
+      const json = await apiRes.json();
+      if (json.success && json.data) {
+        const data = json.data;
+        return {
+          isEnabled: Boolean(data.is_enabled ?? data.published ?? true),
+          badgeText: data.badge_text || 'DIRECT DISTRIBUTOR & SANITARY SPECIALIST',
+          heading: data.heading || 'INNOVATION & ELEGANCE IN SANITARYWARE',
+          subheading: data.subheading || 'Premium Faucets, Luxury Bathroom Suites, Smart Showers & Complete Building Solutions',
+          primaryBtnText: data.primary_btn_text || 'Explore Collection',
+          primaryBtnLink: data.primary_btn_link || '#products',
+          enablePrimaryBtn: Boolean(data.enable_primary_btn ?? true),
+          secondaryBtnText: data.secondary_btn_text || 'Contact Sales',
+          secondaryBtnLink: data.secondary_btn_link || '#contact',
+          enableSecondaryBtn: Boolean(data.enable_secondary_btn ?? data.show_cart ?? true),
+          tertiaryBtnText: data.tertiary_btn_text || undefined,
+          tertiaryBtnLink: data.tertiary_btn_link || undefined,
+          enableTertiaryBtn: data.enable_tertiary_btn !== undefined ? Boolean(data.enable_tertiary_btn) : (data.show_whatsapp !== undefined ? Boolean(data.show_whatsapp) : undefined),
+          rotationDurationSeconds: Number(data.rotation_duration_seconds ?? (data.slide_duration ? data.slide_duration / 1000 : 6)),
+          transitionSpeedSeconds: Number(data.transition_speed_seconds ?? 0.8),
+          transitionStyle: data.transition_style || 'cinematic-depth',
+          autoPlay: Boolean(data.autoplay ?? true),
+          pauseOnHover: Boolean(data.pause_on_hover ?? true),
+          enableParallax: Boolean(data.enable_parallax ?? true),
+          parallaxStrength: Number(data.parallax_strength ?? 15),
+          glowIntensity: data.glow_intensity || 'medium',
+          bgType: data.bg_type || 'ambient-dark',
+          bgMediaUrl: data.bg_media_url || undefined,
+          bgVideoUrl: data.bg_video_url || undefined,
+          heroProductIds: Array.isArray(data.hero_product_ids) ? data.hero_product_ids : [],
+          heroMode: data.hero_mode || 'selected_or_featured',
+          productImageOverrides: typeof data.product_image_overrides === 'object' ? data.product_image_overrides : {},
+          productVideoOverrides: typeof data.product_video_overrides === 'object' ? data.product_video_overrides : {},
+          customProductOrder: Array.isArray(data.custom_product_order) ? data.custom_product_order : [],
+          isDraft: Boolean(data.is_draft)
+        };
+      }
+    }
+  } catch (e) {}
+
   if (!isSupabaseConfigured) return null;
   try {
     const { data, error } = await supabase
@@ -579,12 +601,8 @@ export async function fetchHeroSettingsFromSupabase(): Promise<HeroSettings | nu
       .eq('id', 'default')
       .maybeSingle();
 
-    if (error) {
-      console.error('Error fetching hero settings from Supabase:', error);
-      return null;
-    }
+    if (error || !data) return null;
 
-    // Fetch enabled hero product IDs or hero slides
     const { data: slideData } = await supabase
       .from('hero_slides')
       .select('*')
@@ -594,38 +612,6 @@ export async function fetchHeroSettingsFromSupabase(): Promise<HeroSettings | nu
     const enabledProductIds = slideData && slideData.length > 0
       ? slideData.map((s: any) => s.product_id).filter(Boolean)
       : [];
-
-    if (!data) {
-      if (enabledProductIds.length > 0) {
-        return {
-          isEnabled: true,
-          badgeText: 'DIRECT DISTRIBUTOR & SANITARY SPECIALIST',
-          heading: 'INNOVATION & ELEGANCE IN SANITARYWARE',
-          subheading: 'Premium Faucets, Luxury Bathroom Suites, Smart Showers & Complete Building Solutions',
-          primaryBtnText: 'Explore Collection',
-          primaryBtnLink: '#products',
-          enablePrimaryBtn: true,
-          secondaryBtnText: 'Contact Sales',
-          secondaryBtnLink: '#contact',
-          enableSecondaryBtn: true,
-          rotationDurationSeconds: 6,
-          transitionSpeedSeconds: 0.8,
-          transitionStyle: 'cinematic-depth',
-          autoPlay: true,
-          pauseOnHover: true,
-          enableParallax: true,
-          parallaxStrength: 15,
-          glowIntensity: 'medium',
-          bgType: 'ambient-dark',
-          heroProductIds: enabledProductIds,
-          heroMode: 'selected_or_featured',
-          productImageOverrides: {},
-          productVideoOverrides: {},
-          customProductOrder: enabledProductIds
-        };
-      }
-      return null;
-    }
 
     return {
       isEnabled: Boolean(data.is_enabled ?? true),
@@ -660,12 +646,24 @@ export async function fetchHeroSettingsFromSupabase(): Promise<HeroSettings | nu
       isDraft: Boolean(data.is_draft)
     };
   } catch (err) {
-    console.error('Unexpected error fetching hero settings from Supabase:', err);
     return null;
   }
 }
 
 export async function saveHeroSettingsToSupabase(settings: HeroSettings): Promise<{ success: boolean; error?: string }> {
+  await initializeSupabaseRuntime();
+  try {
+    const apiRes = await fetch('/api/db/hero-settings/upsert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settings })
+    });
+    if (apiRes.ok) {
+      const json = await apiRes.json();
+      if (json.success) return { success: true };
+    }
+  } catch (e) {}
+
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
   try {
     const payload = {
@@ -703,26 +701,7 @@ export async function saveHeroSettingsToSupabase(settings: HeroSettings): Promis
     };
 
     const { error } = await supabase.from('hero_settings').upsert(payload, { onConflict: 'id' });
-    if (error) {
-      console.warn('hero_settings table write notice:', error.message);
-      return { success: false, error: error.message };
-    }
-
-    // Also sync hero_slides table to reflect heroProductIds
-    if (Array.isArray(settings.heroProductIds)) {
-      await supabase.from('hero_slides').delete().neq('id', 'keep_all');
-      const slideInserts = settings.heroProductIds.map((pid, idx) => ({
-        id: `slide-${pid}`,
-        product_id: pid,
-        enabled: true,
-        display_order: idx + 1,
-        transition_style: settings.transitionStyle || 'cinematic-depth'
-      }));
-      if (slideInserts.length > 0) {
-        await supabase.from('hero_slides').upsert(slideInserts);
-      }
-    }
-
+    if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -735,6 +714,18 @@ const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4
 // ORDERS CRUD
 // ---------------------------------------------------------
 export async function fetchOrdersFromSupabase(customerId?: string): Promise<CustomerOrder[] | null> {
+  await initializeSupabaseRuntime();
+  try {
+    const url = customerId ? `/api/db/orders?customerId=${encodeURIComponent(customerId)}` : '/api/db/orders';
+    const apiRes = await fetch(url);
+    if (apiRes.ok) {
+      const json = await apiRes.json();
+      if (json.success && Array.isArray(json.data)) {
+        return json.data.map(mapDbOrderToCustomerOrder);
+      }
+    }
+  } catch (e) {}
+
   if (!isSupabaseConfigured) return null;
   try {
     let query = supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false });
@@ -746,120 +737,122 @@ export async function fetchOrdersFromSupabase(customerId?: string): Promise<Cust
       }
     }
     const { data, error } = await query;
-    if (error) {
-      console.error('Error fetching orders from Supabase:', error);
-      return null;
-    }
-    if (!data) return [];
-
-    return data.map((r: any) => ({
-      id: r.id,
-      orderNumber: r.id || r.order_number,
-      customerId: r.customer_id || undefined,
-      customerName: r.customer_name,
-      phoneNumber: r.customer_phone || r.phone_number || '',
-      whatsappNumber: r.whatsapp_number || undefined,
-      city: r.shipping_city || r.city || '',
-      areaLocality: r.shipping_area || r.area_locality || undefined,
-      deliveryAddress: r.shipping_address || r.delivery_address || '',
-      postalCode: r.postal_code || undefined,
-      landmark: r.landmark || undefined,
-      deliveryInstructions: r.delivery_instructions || undefined,
-      notes: r.notes || undefined,
-      items: Array.isArray(r.order_items) ? r.order_items.map((item: any) => ({
-        productId: item.product_id,
-        productName: item.product_title || item.product_name || '',
-        image: item.product_image || item.image || '',
-        unitPrice: String(item.unit_price ?? 0),
-        numericPrice: Number(item.unit_price ?? 0),
-        quantity: Number(item.quantity ?? 1),
-        selectedColor: item.selected_color || undefined,
-        selectedSize: item.selected_size || undefined,
-        selectedQuality: item.selected_quality || undefined,
-        selectedVariant: item.selected_variant || undefined,
-        lineTotal: Number(item.total_price ?? ((item.unit_price || 0) * (item.quantity || 1)))
-      })) : [],
-      subtotal: Number(r.subtotal ?? 0),
-      deliveryCharges: Number(r.delivery_fee ?? r.delivery_charges ?? 0),
-      taxAmount: Number(r.tax_amount ?? 0),
-      grandTotal: Number(r.total_amount ?? r.grand_total ?? 0),
-      createdAt: r.created_at,
-      updatedAt: r.updated_at || undefined,
-      status: r.status || 'Order Received',
-      statusHistory: Array.isArray(r.status_history) ? r.status_history : [],
-      estimatedDeliveryDays: r.estimated_delivery_days || undefined,
-      estimatedDeliveryDate: r.estimated_delivery_date || undefined,
-      estimatedDeliveryTime: r.estimated_delivery_time || undefined,
-      isDelayed: Boolean(r.is_delayed),
-      delayReason: r.delay_reason || undefined,
-      trackingReference: r.tracking_reference || undefined,
-      adminNotes: r.admin_notes || undefined,
-      deliveryDelayNote: r.delivery_delay_note || undefined
-    }));
+    if (error || !data) return null;
+    return data.map(mapDbOrderToCustomerOrder);
   } catch (err) {
-    console.error('Unexpected error fetching orders from Supabase:', err);
     return null;
   }
 }
 
+function mapDbOrderToCustomerOrder(r: any): CustomerOrder {
+  return {
+    id: r.id,
+    orderNumber: r.id || r.order_number,
+    customerId: r.customer_id || undefined,
+    customerName: r.customer_name,
+    phoneNumber: r.customer_phone || r.phone_number || '',
+    whatsappNumber: r.whatsapp_number || undefined,
+    city: r.shipping_city || r.city || '',
+    areaLocality: r.shipping_area || r.area_locality || undefined,
+    deliveryAddress: r.shipping_address || r.delivery_address || '',
+    postalCode: r.postal_code || undefined,
+    landmark: r.landmark || undefined,
+    deliveryInstructions: r.delivery_instructions || undefined,
+    notes: r.notes || undefined,
+    items: Array.isArray(r.order_items) ? r.order_items.map((item: any) => ({
+      productId: item.product_id,
+      productName: item.product_title || item.product_name || '',
+      image: item.product_image || item.image || '',
+      unitPrice: String(item.unit_price ?? 0),
+      numericPrice: Number(item.unit_price ?? 0),
+      quantity: Number(item.quantity ?? 1),
+      selectedColor: item.selected_color || undefined,
+      selectedSize: item.selected_size || undefined,
+      selectedQuality: item.selected_quality || undefined,
+      selectedVariant: item.selected_variant || undefined,
+      lineTotal: Number(item.total_price ?? ((item.unit_price || 0) * (item.quantity || 1)))
+    })) : [],
+    subtotal: Number(r.subtotal ?? 0),
+    deliveryCharges: Number(r.delivery_fee ?? r.delivery_charges ?? 0),
+    taxAmount: Number(r.tax_amount ?? 0),
+    grandTotal: Number(r.total_amount ?? r.grand_total ?? 0),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at || undefined,
+    status: r.status || 'Order Received',
+    statusHistory: Array.isArray(r.status_history) ? r.status_history : [],
+    estimatedDeliveryDays: r.estimated_delivery_days || undefined,
+    estimatedDeliveryDate: r.estimated_delivery_date || undefined,
+    estimatedDeliveryTime: r.estimated_delivery_time || undefined,
+    isDelayed: Boolean(r.is_delayed),
+    delayReason: r.delay_reason || undefined,
+    trackingReference: r.tracking_reference || undefined,
+    adminNotes: r.admin_notes || undefined,
+    deliveryDelayNote: r.delivery_delay_note || undefined
+  };
+}
+
 export async function createOrderInSupabase(order: CustomerOrder): Promise<{ success: boolean; error?: string }> {
+  await initializeSupabaseRuntime();
+  const orderPayload = {
+    id: order.id,
+    customer_id: (order.customerId && isUUID(order.customerId)) ? order.customerId : null,
+    customer_name: order.customerName,
+    customer_phone: order.phoneNumber,
+    whatsapp_number: order.whatsappNumber || null,
+    shipping_city: order.city,
+    shipping_area: order.areaLocality || null,
+    shipping_address: order.deliveryAddress,
+    postal_code: order.postalCode || null,
+    landmark: order.landmark || null,
+    delivery_instructions: order.deliveryInstructions || null,
+    notes: order.notes || null,
+    subtotal: order.subtotal,
+    delivery_fee: order.deliveryCharges,
+    tax_amount: order.taxAmount || 0,
+    total_amount: order.grandTotal,
+    status: order.status || 'Order Received',
+    status_history: order.statusHistory || [{ status: order.status || 'Order Received', timestamp: new Date().toISOString() }],
+    estimated_delivery_days: order.estimatedDeliveryDays || null,
+    estimated_delivery_date: order.estimatedDeliveryDate || null,
+    estimated_delivery_time: order.estimatedDeliveryTime || null,
+    created_at: order.createdAt || new Date().toISOString()
+  };
+
+  const itemsPayload = (Array.isArray(order.items) ? order.items : []).map(item => ({
+    id: `${order.id}-${item.productId}`,
+    order_id: order.id,
+    product_id: item.productId,
+    product_title: item.productName || '',
+    product_image: item.image || '',
+    unit_price: item.numericPrice || parseFloat(item.unitPrice) || 0,
+    quantity: item.quantity,
+    total_price: item.lineTotal || ((item.numericPrice || parseFloat(item.unitPrice) || 0) * item.quantity),
+    selected_color: item.selectedColor || null,
+    selected_size: item.selectedSize || null,
+    selected_quality: item.selectedQuality || null,
+    selected_variant: item.selectedVariant || null
+  }));
+
+  try {
+    const apiRes = await fetch('/api/db/orders/upsert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: orderPayload, items: itemsPayload })
+    });
+    if (apiRes.ok) {
+      const json = await apiRes.json();
+      if (json.success) return { success: true };
+    }
+  } catch (e) {}
+
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
   try {
-    const orderPayload = {
-      id: order.id,
-      customer_id: (order.customerId && isUUID(order.customerId)) ? order.customerId : null,
-      customer_name: order.customerName,
-      customer_phone: order.phoneNumber,
-      whatsapp_number: order.whatsappNumber || null,
-      shipping_city: order.city,
-      shipping_area: order.areaLocality || null,
-      shipping_address: order.deliveryAddress,
-      postal_code: order.postalCode || null,
-      landmark: order.landmark || null,
-      delivery_instructions: order.deliveryInstructions || null,
-      notes: order.notes || null,
-      subtotal: order.subtotal,
-      delivery_fee: order.deliveryCharges,
-      tax_amount: order.taxAmount || 0,
-      total_amount: order.grandTotal,
-      status: order.status || 'Order Received',
-      status_history: order.statusHistory || [{ status: order.status || 'Order Received', timestamp: new Date().toISOString() }],
-      estimated_delivery_days: order.estimatedDeliveryDays || null,
-      estimated_delivery_date: order.estimatedDeliveryDate || null,
-      estimated_delivery_time: order.estimatedDeliveryTime || null,
-      created_at: order.createdAt || new Date().toISOString()
-    };
-
     const { error: orderErr } = await supabase.from('orders').upsert(orderPayload, { onConflict: 'id' });
-    if (orderErr) {
-      console.error('Error inserting order into Supabase:', orderErr);
-      return { success: false, error: orderErr.message };
+    if (orderErr) return { success: false, error: orderErr.message };
+
+    if (itemsPayload.length > 0) {
+      await supabase.from('order_items').upsert(itemsPayload, { onConflict: 'id' });
     }
-
-    // Insert order items
-    if (Array.isArray(order.items) && order.items.length > 0) {
-      const itemsPayload = order.items.map(item => ({
-        id: `${order.id}-${item.productId}`,
-        order_id: order.id,
-        product_id: item.productId,
-        product_title: item.productName || '',
-        product_image: item.image || '',
-        unit_price: item.numericPrice || parseFloat(item.unitPrice) || 0,
-        quantity: item.quantity,
-        total_price: item.lineTotal || ((item.numericPrice || parseFloat(item.unitPrice) || 0) * item.quantity),
-        selected_color: item.selectedColor || null,
-        selected_size: item.selectedSize || null,
-        selected_quality: item.selectedQuality || null,
-        selected_variant: item.selectedVariant || null
-      }));
-
-      const { error: itemsErr } = await supabase.from('order_items').upsert(itemsPayload, { onConflict: 'id' });
-      if (itemsErr) {
-        console.error('Error inserting order items into Supabase:', itemsErr);
-        return { success: false, error: itemsErr.message };
-      }
-    }
-
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -867,6 +860,19 @@ export async function createOrderInSupabase(order: CustomerOrder): Promise<{ suc
 }
 
 export async function updateOrderStatusInSupabase(orderId: string, status: CustomerOrder['status'], note?: string): Promise<{ success: boolean; error?: string }> {
+  await initializeSupabaseRuntime();
+  try {
+    const apiRes = await fetch(`/api/db/orders/${encodeURIComponent(orderId)}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, note })
+    });
+    if (apiRes.ok) {
+      const json = await apiRes.json();
+      if (json.success) return { success: true };
+    }
+  } catch (e) {}
+
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
   try {
     const { data: existing } = await supabase.from('orders').select('status_history').eq('id', orderId).maybeSingle();
@@ -889,6 +895,27 @@ export async function updateOrderStatusInSupabase(orderId: string, status: Custo
 // DELIVERY CITIES CRUD
 // ---------------------------------------------------------
 export async function fetchDeliveryCitiesFromSupabase(): Promise<CityDeliveryInfo[] | null> {
+  await initializeSupabaseRuntime();
+  try {
+    const apiRes = await fetch('/api/db/delivery-cities');
+    if (apiRes.ok) {
+      const json = await apiRes.json();
+      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        return json.data.map((r: any) => ({
+          id: r.id,
+          cityName: r.name || r.city_name || '',
+          deliveryFee: Number(r.delivery_fee ?? 0),
+          estimatedDays: r.estimated_days || '2-4 Days',
+          isEnabled: Boolean(r.enabled),
+          isSameDayAvailable: Boolean(r.same_day_available),
+          isNextDayAvailable: Boolean(r.next_day_available),
+          displayOrder: Number(r.display_order ?? 0),
+          notes: r.notes || undefined
+        }));
+      }
+    }
+  } catch (e) {}
+
   if (!isSupabaseConfigured) return null;
   try {
     const { data, error } = await supabase
@@ -896,10 +923,7 @@ export async function fetchDeliveryCitiesFromSupabase(): Promise<CityDeliveryInf
       .select('*')
       .order('display_order', { ascending: true });
 
-    if (error) {
-      console.error('Error fetching delivery cities from Supabase:', error);
-      return null;
-    }
+    if (error) return null;
     return data ? data.map((r: any) => ({
       id: r.id,
       cityName: r.name || r.city_name || '',
@@ -917,6 +941,19 @@ export async function fetchDeliveryCitiesFromSupabase(): Promise<CityDeliveryInf
 }
 
 export async function upsertDeliveryCityInSupabase(city: CityDeliveryInfo): Promise<{ success: boolean; error?: string }> {
+  await initializeSupabaseRuntime();
+  try {
+    const apiRes = await fetch('/api/db/delivery-cities/upsert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ city })
+    });
+    if (apiRes.ok) {
+      const json = await apiRes.json();
+      if (json.success) return { success: true };
+    }
+  } catch (e) {}
+
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
   try {
     const payload = {
@@ -939,19 +976,27 @@ export async function upsertDeliveryCityInSupabase(city: CityDeliveryInfo): Prom
 }
 
 export async function saveDeliveryCitiesToSupabase(cities: CityDeliveryInfo[]): Promise<{ success: boolean; error?: string }> {
-  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
+  await initializeSupabaseRuntime();
   try {
-    for (const city of cities) {
-      await upsertDeliveryCityInSupabase(city);
+    const apiRes = await fetch('/api/db/delivery-cities/upsert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cities })
+    });
+    if (apiRes.ok) {
+      const json = await apiRes.json();
+      if (json.success) return { success: true };
     }
-    return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (e) {}
+
+  for (const city of cities) {
+    await upsertDeliveryCityInSupabase(city);
   }
+  return { success: true };
 }
 
 // ---------------------------------------------------------
-// SITE SETTINGS (Mapped column store on site_settings row 'config')
+// SITE SETTINGS (Both Key-Value and Column-Store compatible)
 // ---------------------------------------------------------
 function getSiteSettingColumnName(key: string): string | null {
   const k = key.toLowerCase();
@@ -969,68 +1014,90 @@ function getSiteSettingColumnName(key: string): string | null {
 }
 
 export async function fetchSiteSettingFromSupabase<T>(key: string): Promise<T | null> {
+  await initializeSupabaseRuntime();
+  try {
+    const apiRes = await fetch(`/api/db/site-settings/${encodeURIComponent(key)}`);
+    if (apiRes.ok) {
+      const json = await apiRes.json();
+      if (json.success && json.data !== null && json.data !== undefined) {
+        return json.data as T;
+      }
+    }
+  } catch (e) {}
+
   if (!isSupabaseConfigured) return null;
   try {
+    // 1. Try key-value table
+    const { data: kvData, error: kvErr } = await supabase.from('site_settings').select('value').eq('key', key).maybeSingle();
+    if (!kvErr && kvData && kvData.value !== undefined) {
+      return kvData.value as T;
+    }
+
+    // 2. Try single row config with named column
     const colName = getSiteSettingColumnName(key);
-    if (!colName) return null;
-    const { data, error } = await supabase.from('site_settings').select(colName).eq('id', 'config').maybeSingle();
-    if (error || !data) return null;
-    const val = (data as any)[colName];
-    if (val === null || val === undefined) return null;
-    return val as T;
+    if (colName) {
+      const { data: colData } = await supabase.from('site_settings').select(colName).eq('id', 'config').maybeSingle();
+      if (colData && (colData as any)[colName] !== undefined && (colData as any)[colName] !== null) {
+        return (colData as any)[colName] as T;
+      }
+    }
+    return null;
   } catch (err) {
     return null;
   }
 }
 
 export async function saveSiteSettingToSupabase(key: string, value: any): Promise<{ success: boolean; error?: string }> {
+  await initializeSupabaseRuntime();
+  try {
+    const apiRes = await fetch('/api/db/site-settings/upsert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value })
+    });
+    if (apiRes.ok) {
+      const json = await apiRes.json();
+      if (json.success) return { success: true };
+    }
+  } catch (e) {}
+
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
   try {
+    const { error: kvError } = await supabase.from('site_settings').upsert({
+      key,
+      value,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'key' });
+
+    if (!kvError) return { success: true };
+
     const colName = getSiteSettingColumnName(key);
-    if (!colName) return { success: false, error: `Unmapped site setting key: ${key}` };
-    const payload = { id: 'config', [colName]: value, updated_at: new Date().toISOString() };
-    const { error } = await supabase.from('site_settings').upsert(payload, { onConflict: 'id' });
-    if (error) return { success: false, error: error.message };
-    return { success: true };
+    if (colName) {
+      const payload = { id: 'config', [colName]: value, updated_at: new Date().toISOString() };
+      const { error: colError } = await supabase.from('site_settings').upsert(payload, { onConflict: 'id' });
+      if (colError) return { success: false, error: colError.message };
+      return { success: true };
+    }
+
+    return { success: false, error: kvError?.message };
   } catch (err: any) {
     return { success: false, error: err.message };
   }
 }
 
 export async function saveBuildMaterialEstimatorToSupabase(config: any): Promise<{ success: boolean; error?: string }> {
-  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
-  try {
-    const { data } = await supabase.from('site_settings').select('planner_config').eq('id', 'config').maybeSingle();
-    const currentPlanner = data?.planner_config && typeof data.planner_config === 'object' ? data.planner_config : {};
-    const merged = { ...currentPlanner, buildMaterialEstimator: config };
-    const payload = { id: 'config', planner_config: merged, updated_at: new Date().toISOString() };
-    const { error } = await supabase.from('site_settings').upsert(payload, { onConflict: 'id' });
-    if (error) return { success: false, error: error.message };
-    return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return saveSiteSettingToSupabase('zst_planner_config_v1', config);
 }
 
 export async function fetchBuildMaterialEstimatorFromSupabase(): Promise<any | null> {
-  if (!isSupabaseConfigured) return null;
-  try {
-    const { data, error } = await supabase.from('site_settings').select('planner_config').eq('id', 'config').maybeSingle();
-    if (error || !data) return null;
-    const planner = data.planner_config;
-    if (planner && typeof planner === 'object' && planner.buildMaterialEstimator) {
-      return planner.buildMaterialEstimator;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  return fetchSiteSettingFromSupabase<any>('zst_planner_config_v1');
 }
 
 // ---------------------------------------------------------
 // MEDIA UPLOAD
 // ---------------------------------------------------------
 export async function uploadMediaToSupabase(file: File, bucketName: 'product-media' | 'brand-assets' | 'hero-media' = 'product-media'): Promise<{ url?: string; error?: string }> {
+  await initializeSupabaseRuntime();
   if (!isSupabaseConfigured) return { error: 'Supabase not configured' };
   try {
     const fileExt = file.name.split('.').pop() || 'png';
@@ -1050,6 +1117,6 @@ export async function uploadMediaToSupabase(file: File, bucketName: 'product-med
     const { data: publicUrlData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
     return { url: publicUrlData.publicUrl };
   } catch (err: any) {
-    return { error: err.message || 'File upload failed' };
+    return { error: err.message || 'Media upload failed' };
   }
 }
