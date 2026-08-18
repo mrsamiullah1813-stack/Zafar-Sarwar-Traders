@@ -189,34 +189,44 @@ export function mapProductToDb(product: Product): any {
 // ---------------------------------------------------------
 export async function fetchProductsFromSupabase(): Promise<Product[] | null> {
   await initializeSupabaseRuntime();
+
+  // Try server proxy first if running under full-stack Node server
   try {
     const apiRes = await fetch('/api/db/products');
-    if (apiRes.ok) {
+    const contentType = apiRes.headers.get('content-type') || '';
+    if (apiRes.ok && contentType.includes('application/json')) {
       const json = await apiRes.json();
       if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-        console.log('[CMS SYNC] Server proxy returned products count:', json.data.length);
+        console.log(`[Supabase Diagnostic] Table: products (via proxy) | Status: SUCCESS | Rows: ${json.data.length} | HTTP: ${apiRes.status}`);
         return json.data.map(mapDbProductToProduct);
       }
     }
   } catch (e) {
-    console.warn('[CMS SYNC] Server proxy product fetch fallback:', e);
+    // Proxy unavailable (e.g. static hosting), proceed to direct SDK
   }
 
-  if (!isSupabaseConfigured) return null;
+  if (!isSupabaseConfigured) {
+    console.warn('[Supabase Diagnostic] Table: products | Status: SKIPPED | Reason: Supabase client not configured');
+    return null;
+  }
+
   try {
-    const { data, error } = await supabase
+    const { data, error, status, statusText } = await supabase
       .from('products')
       .select('*')
       .order('display_order', { ascending: true })
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('[CMS SYNC] Error fetching products from Supabase SDK:', error);
+      console.error(`[Supabase Diagnostic] Table: products | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
       return null;
     }
+
+    const rowCount = data ? data.length : 0;
+    console.log(`[Supabase Diagnostic] Table: products | Status: SUCCESS | Rows returned: ${rowCount} | HTTP: ${status || 200}`);
     return data ? data.map(mapDbProductToProduct) : [];
-  } catch (err) {
-    console.error('[CMS SYNC] Unexpected error fetching products from Supabase:', err);
+  } catch (err: any) {
+    console.error(`[Supabase Diagnostic] Table: products | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
     return null;
   }
 }
@@ -293,9 +303,11 @@ export async function fetchCategoriesFromSupabase(): Promise<ProductCategory[] |
   await initializeSupabaseRuntime();
   try {
     const apiRes = await fetch('/api/db/categories');
-    if (apiRes.ok) {
+    const contentType = apiRes.headers.get('content-type') || '';
+    if (apiRes.ok && contentType.includes('application/json')) {
       const json = await apiRes.json();
       if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        console.log(`[Supabase Diagnostic] Table: categories (via proxy) | Status: SUCCESS | Rows: ${json.data.length} | HTTP: ${apiRes.status}`);
         return json.data.map((r: any) => ({
           id: r.id,
           name: r.name,
@@ -318,21 +330,26 @@ export async function fetchCategoriesFromSupabase(): Promise<ProductCategory[] |
         }));
       }
     }
-  } catch (e) {
-    console.warn('Proxy fetch categories failed, attempting direct SDK fetch:', e);
+  } catch (e) {}
+
+  if (!isSupabaseConfigured) {
+    console.warn('[Supabase Diagnostic] Table: categories | Status: SKIPPED | Reason: Supabase client not configured');
+    return null;
   }
 
-  if (!isSupabaseConfigured) return null;
   try {
-    const { data, error } = await supabase
+    const { data, error, status, statusText } = await supabase
       .from('categories')
       .select('*')
       .order('display_order', { ascending: true });
 
     if (error) {
-      console.error('Error fetching categories from Supabase:', error);
+      console.error(`[Supabase Diagnostic] Table: categories | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
       return null;
     }
+
+    const rowCount = data ? data.length : 0;
+    console.log(`[Supabase Diagnostic] Table: categories | Status: SUCCESS | Rows returned: ${rowCount} | HTTP: ${status || 200}`);
     return data ? data.map((r: any) => ({
       id: r.id,
       name: r.name,
@@ -353,8 +370,8 @@ export async function fetchCategoriesFromSupabase(): Promise<ProductCategory[] |
       seoDescription: r.seo_description || undefined,
       displayOrder: Number(r.display_order ?? 0)
     })) : [];
-  } catch (err) {
-    console.error('Unexpected error fetching categories from Supabase:', err);
+  } catch (err: any) {
+    console.error(`[Supabase Diagnostic] Table: categories | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
     return null;
   }
 }
@@ -436,9 +453,11 @@ export async function fetchBrandsFromSupabase(): Promise<ProductBrand[] | null> 
   await initializeSupabaseRuntime();
   try {
     const apiRes = await fetch('/api/db/brands');
-    if (apiRes.ok) {
+    const contentType = apiRes.headers.get('content-type') || '';
+    if (apiRes.ok && contentType.includes('application/json')) {
       const json = await apiRes.json();
       if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        console.log(`[Supabase Diagnostic] Table: brands (via proxy) | Status: SUCCESS | Rows: ${json.data.length} | HTTP: ${apiRes.status}`);
         return json.data.map((r: any) => ({
           id: r.id,
           name: r.name,
@@ -453,18 +472,26 @@ export async function fetchBrandsFromSupabase(): Promise<ProductBrand[] | null> 
         }));
       }
     }
-  } catch (e) {
-    console.warn('Proxy fetch brands failed, attempting direct SDK fetch:', e);
+  } catch (e) {}
+
+  if (!isSupabaseConfigured) {
+    console.warn('[Supabase Diagnostic] Table: brands | Status: SKIPPED | Reason: Supabase client not configured');
+    return null;
   }
 
-  if (!isSupabaseConfigured) return null;
   try {
-    const { data, error } = await supabase
+    const { data, error, status, statusText } = await supabase
       .from('brands')
       .select('*')
       .order('display_order', { ascending: true });
 
-    if (error) return null;
+    if (error) {
+      console.error(`[Supabase Diagnostic] Table: brands | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
+      return null;
+    }
+
+    const rowCount = data ? data.length : 0;
+    console.log(`[Supabase Diagnostic] Table: brands | Status: SUCCESS | Rows returned: ${rowCount} | HTTP: ${status || 200}`);
     return data ? data.map((r: any) => ({
       id: r.id,
       name: r.name,
@@ -477,7 +504,8 @@ export async function fetchBrandsFromSupabase(): Promise<ProductBrand[] | null> 
       isActive: Boolean(r.enabled ?? r.is_active ?? true),
       displayOrder: Number(r.display_order ?? 0)
     })) : [];
-  } catch (err) {
+  } catch (err: any) {
+    console.error(`[Supabase Diagnostic] Table: brands | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
     return null;
   }
 }
@@ -553,10 +581,12 @@ export async function fetchHeroSettingsFromSupabase(): Promise<HeroSettings | nu
   await initializeSupabaseRuntime();
   try {
     const apiRes = await fetch('/api/db/hero-settings');
-    if (apiRes.ok) {
+    const contentType = apiRes.headers.get('content-type') || '';
+    if (apiRes.ok && contentType.includes('application/json')) {
       const json = await apiRes.json();
       if (json.success && json.data) {
         const data = json.data;
+        console.log(`[Supabase Diagnostic] Table: hero_settings (via proxy) | Status: SUCCESS | HTTP: ${apiRes.status}`);
         return {
           isEnabled: Boolean(data.is_enabled ?? data.published ?? true),
           badgeText: data.badge_text || 'DIRECT DISTRIBUTOR & SANITARY SPECIALIST',
@@ -593,21 +623,41 @@ export async function fetchHeroSettingsFromSupabase(): Promise<HeroSettings | nu
     }
   } catch (e) {}
 
-  if (!isSupabaseConfigured) return null;
+  if (!isSupabaseConfigured) {
+    console.warn('[Supabase Diagnostic] Table: hero_settings | Status: SKIPPED | Reason: Supabase client not configured');
+    return null;
+  }
+
   try {
-    const { data, error } = await supabase
+    const { data, error, status, statusText } = await supabase
       .from('hero_settings')
       .select('*')
       .eq('id', 'default')
       .maybeSingle();
 
-    if (error || !data) return null;
+    if (error) {
+      console.error(`[Supabase Diagnostic] Table: hero_settings | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
+      return null;
+    }
 
-    const { data: slideData } = await supabase
+    if (!data) {
+      console.log(`[Supabase Diagnostic] Table: hero_settings | Status: SUCCESS (No default row) | HTTP: ${status || 200}`);
+      return null;
+    }
+
+    console.log(`[Supabase Diagnostic] Table: hero_settings | Status: SUCCESS | Config Found: true | HTTP: ${status || 200}`);
+
+    const { data: slideData, error: slideErr } = await supabase
       .from('hero_slides')
       .select('*')
       .eq('enabled', true)
       .order('display_order', { ascending: true });
+
+    if (slideErr) {
+      console.warn(`[Supabase Diagnostic] Table: hero_slides | Status: FAILED | Message: ${slideErr.message}`);
+    } else {
+      console.log(`[Supabase Diagnostic] Table: hero_slides | Status: SUCCESS | Rows: ${slideData?.length || 0}`);
+    }
 
     const enabledProductIds = slideData && slideData.length > 0
       ? slideData.map((s: any) => s.product_id).filter(Boolean)
@@ -645,7 +695,8 @@ export async function fetchHeroSettingsFromSupabase(): Promise<HeroSettings | nu
       customProductOrder: Array.isArray(data.custom_product_order) ? data.custom_product_order : [],
       isDraft: Boolean(data.is_draft)
     };
-  } catch (err) {
+  } catch (err: any) {
+    console.error(`[Supabase Diagnostic] Table: hero_settings | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
     return null;
   }
 }
@@ -718,15 +769,21 @@ export async function fetchOrdersFromSupabase(customerId?: string): Promise<Cust
   try {
     const url = customerId ? `/api/db/orders?customerId=${encodeURIComponent(customerId)}` : '/api/db/orders';
     const apiRes = await fetch(url);
-    if (apiRes.ok) {
+    const contentType = apiRes.headers.get('content-type') || '';
+    if (apiRes.ok && contentType.includes('application/json')) {
       const json = await apiRes.json();
       if (json.success && Array.isArray(json.data)) {
+        console.log(`[Supabase Diagnostic] Table: orders (via proxy) | Status: SUCCESS | Rows: ${json.data.length} | HTTP: ${apiRes.status}`);
         return json.data.map(mapDbOrderToCustomerOrder);
       }
     }
   } catch (e) {}
 
-  if (!isSupabaseConfigured) return null;
+  if (!isSupabaseConfigured) {
+    console.warn('[Supabase Diagnostic] Table: orders | Status: SKIPPED | Reason: Supabase client not configured');
+    return null;
+  }
+
   try {
     let query = supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false });
     if (customerId) {
@@ -736,10 +793,16 @@ export async function fetchOrdersFromSupabase(customerId?: string): Promise<Cust
         query = query.or(`customer_phone.eq.${customerId},id.eq.${customerId}`);
       }
     }
-    const { data, error } = await query;
-    if (error || !data) return null;
-    return data.map(mapDbOrderToCustomerOrder);
-  } catch (err) {
+    const { data, error, status, statusText } = await query;
+    if (error) {
+      console.error(`[Supabase Diagnostic] Table: orders | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
+      return null;
+    }
+    const count = data ? data.length : 0;
+    console.log(`[Supabase Diagnostic] Table: orders | Status: SUCCESS | Rows returned: ${count} | HTTP: ${status || 200}`);
+    return data ? data.map(mapDbOrderToCustomerOrder) : [];
+  } catch (err: any) {
+    console.error(`[Supabase Diagnostic] Table: orders | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
     return null;
   }
 }
@@ -898,9 +961,11 @@ export async function fetchDeliveryCitiesFromSupabase(): Promise<CityDeliveryInf
   await initializeSupabaseRuntime();
   try {
     const apiRes = await fetch('/api/db/delivery-cities');
-    if (apiRes.ok) {
+    const contentType = apiRes.headers.get('content-type') || '';
+    if (apiRes.ok && contentType.includes('application/json')) {
       const json = await apiRes.json();
       if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        console.log(`[Supabase Diagnostic] Table: delivery_cities (via proxy) | Status: SUCCESS | Rows: ${json.data.length} | HTTP: ${apiRes.status}`);
         return json.data.map((r: any) => ({
           id: r.id,
           cityName: r.name || r.city_name || '',
@@ -916,14 +981,23 @@ export async function fetchDeliveryCitiesFromSupabase(): Promise<CityDeliveryInf
     }
   } catch (e) {}
 
-  if (!isSupabaseConfigured) return null;
+  if (!isSupabaseConfigured) {
+    console.warn('[Supabase Diagnostic] Table: delivery_cities | Status: SKIPPED | Reason: Supabase client not configured');
+    return null;
+  }
+
   try {
-    const { data, error } = await supabase
+    const { data, error, status, statusText } = await supabase
       .from('delivery_cities')
       .select('*')
       .order('display_order', { ascending: true });
 
-    if (error) return null;
+    if (error) {
+      console.error(`[Supabase Diagnostic] Table: delivery_cities | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
+      return null;
+    }
+    const count = data ? data.length : 0;
+    console.log(`[Supabase Diagnostic] Table: delivery_cities | Status: SUCCESS | Rows returned: ${count} | HTTP: ${status || 200}`);
     return data ? data.map((r: any) => ({
       id: r.id,
       cityName: r.name || r.city_name || '',
@@ -935,7 +1009,8 @@ export async function fetchDeliveryCitiesFromSupabase(): Promise<CityDeliveryInf
       displayOrder: Number(r.display_order ?? 0),
       notes: r.notes || undefined
     })) : [];
-  } catch (err) {
+  } catch (err: any) {
+    console.error(`[Supabase Diagnostic] Table: delivery_cities | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
     return null;
   }
 }
@@ -1017,32 +1092,42 @@ export async function fetchSiteSettingFromSupabase<T>(key: string): Promise<T | 
   await initializeSupabaseRuntime();
   try {
     const apiRes = await fetch(`/api/db/site-settings/${encodeURIComponent(key)}`);
-    if (apiRes.ok) {
+    const contentType = apiRes.headers.get('content-type') || '';
+    if (apiRes.ok && contentType.includes('application/json')) {
       const json = await apiRes.json();
       if (json.success && json.data !== null && json.data !== undefined) {
+        console.log(`[Supabase Diagnostic] Table: site_settings (via proxy) | Key: ${key} | Status: SUCCESS | HTTP: ${apiRes.status}`);
         return json.data as T;
       }
     }
   } catch (e) {}
 
-  if (!isSupabaseConfigured) return null;
+  if (!isSupabaseConfigured) {
+    console.warn(`[Supabase Diagnostic] Table: site_settings | Key: ${key} | Status: SKIPPED | Reason: Supabase client not configured`);
+    return null;
+  }
+
   try {
     // 1. Try key-value table
-    const { data: kvData, error: kvErr } = await supabase.from('site_settings').select('value').eq('key', key).maybeSingle();
+    const { data: kvData, error: kvErr, status: kvStatus } = await supabase.from('site_settings').select('value').eq('key', key).maybeSingle();
     if (!kvErr && kvData && kvData.value !== undefined) {
+      console.log(`[Supabase Diagnostic] Table: site_settings (KV) | Key: ${key} | Status: SUCCESS | HTTP: ${kvStatus || 200}`);
       return kvData.value as T;
     }
 
     // 2. Try single row config with named column
     const colName = getSiteSettingColumnName(key);
     if (colName) {
-      const { data: colData } = await supabase.from('site_settings').select(colName).eq('id', 'config').maybeSingle();
-      if (colData && (colData as any)[colName] !== undefined && (colData as any)[colName] !== null) {
+      const { data: colData, error: colErr, status: colStatus } = await supabase.from('site_settings').select(colName).eq('id', 'config').maybeSingle();
+      if (!colErr && colData && (colData as any)[colName] !== undefined && (colData as any)[colName] !== null) {
+        console.log(`[Supabase Diagnostic] Table: site_settings (Column: ${colName}) | Key: ${key} | Status: SUCCESS | HTTP: ${colStatus || 200}`);
         return (colData as any)[colName] as T;
       }
     }
+    console.log(`[Supabase Diagnostic] Table: site_settings | Key: ${key} | Status: NO_DATA_OR_DEFAULT`);
     return null;
-  } catch (err) {
+  } catch (err: any) {
+    console.error(`[Supabase Diagnostic] Table: site_settings | Key: ${key} | Status: NETWORK/CLIENT ERROR | Message: ${err?.message || String(err)}`);
     return null;
   }
 }
@@ -1098,25 +1183,31 @@ export async function fetchBuildMaterialEstimatorFromSupabase(): Promise<any | n
 // ---------------------------------------------------------
 export async function uploadMediaToSupabase(file: File, bucketName: 'product-media' | 'brand-assets' | 'hero-media' = 'product-media'): Promise<{ url?: string; error?: string }> {
   await initializeSupabaseRuntime();
-  if (!isSupabaseConfigured) return { error: 'Supabase not configured' };
+  if (!isSupabaseConfigured) {
+    console.warn(`[Supabase Diagnostic] Storage Bucket: ${bucketName} | Status: SKIPPED | Reason: Supabase not configured`);
+    return { error: 'Supabase not configured' };
+  }
   try {
     const fileExt = file.name.split('.').pop() || 'png';
     const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
     const filePath = `uploads/${fileName}`;
 
+    console.log(`[Supabase Diagnostic] Storage Bucket: ${bucketName} | Uploading file: ${filePath}`);
     const { error: uploadErr } = await supabase.storage.from(bucketName).upload(filePath, file, {
       cacheControl: '3600',
       upsert: true
     });
 
     if (uploadErr) {
-      console.error(`Error uploading file to bucket ${bucketName}:`, uploadErr);
+      console.error(`[Supabase Diagnostic] Storage Bucket: ${bucketName} | Upload FAILED | Message: ${uploadErr.message}`);
       return { error: uploadErr.message };
     }
 
     const { data: publicUrlData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+    console.log(`[Supabase Diagnostic] Storage Bucket: ${bucketName} | Upload SUCCESS | Public URL generated`);
     return { url: publicUrlData.publicUrl };
   } catch (err: any) {
+    console.error(`[Supabase Diagnostic] Storage Bucket: ${bucketName} | Upload ERROR | Message: ${err?.message || String(err)}`);
     return { error: err.message || 'Media upload failed' };
   }
 }

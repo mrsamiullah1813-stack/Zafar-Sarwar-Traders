@@ -1,19 +1,21 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const env = (import.meta as any).env || {};
+// Safe static access to Vite environment variables (statically replaced during build)
+const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env || {} : {};
+
 let rawUrl = (
-  env.VITE_SUPABASE_URL ||
-  env.SUPABASE_URL ||
-  env.NEXT_PUBLIC_SUPABASE_URL ||
+  metaEnv.VITE_SUPABASE_URL ||
+  metaEnv.SUPABASE_URL ||
+  metaEnv.NEXT_PUBLIC_SUPABASE_URL ||
   ''
 ).trim();
 
 let rawKey = (
-  env.VITE_SUPABASE_ANON_KEY ||
-  env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  env.SUPABASE_ANON_KEY ||
-  env.SUPABASE_PUBLISHABLE_KEY ||
-  env.SUPABASE_KEY ||
+  metaEnv.VITE_SUPABASE_ANON_KEY ||
+  metaEnv.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  metaEnv.SUPABASE_ANON_KEY ||
+  metaEnv.SUPABASE_PUBLISHABLE_KEY ||
+  metaEnv.SUPABASE_KEY ||
   ''
 ).trim();
 
@@ -88,11 +90,23 @@ function createSupabaseInstance(url: string, key: string, isReal: boolean): Supa
   }
 }
 
+// Extract safe hostname for diagnostic logging (never log keys or tokens)
+function getSafeHost(url: string): string {
+  try {
+    if (!url || isPlaceholderUrl(url)) return 'Not configured (placeholder)';
+    const parsed = new URL(url);
+    return parsed.origin;
+  } catch {
+    return 'Invalid URL format';
+  }
+}
+
 if (isSupabaseConfigured) {
   activeClient = createSupabaseInstance(rawUrl, rawKey, true);
-  console.log('✅ Supabase client initialized from build environment variables:', rawUrl);
+  console.log(`[Supabase Diagnostic] Initialization: SUCCESS | Project Host: ${getSafeHost(rawUrl)} | Key Present: ${Boolean(rawKey)}`);
 } else {
   activeClient = createSupabaseInstance(dummyUrl, dummyKey, false);
+  console.warn(`[Supabase Diagnostic] Initialization: PENDING/NOT_CONFIGURED | Detected URL: ${getSafeHost(rawUrl)} | Key Present: ${Boolean(rawKey)}`);
 }
 
 // Proxied supabase client that dynamically routes all calls to activeClient
