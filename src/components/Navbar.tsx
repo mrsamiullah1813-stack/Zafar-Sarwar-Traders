@@ -21,10 +21,11 @@ import {
   Palette
 } from 'lucide-react';
 import { AnnouncementBar } from './AnnouncementBar';
-import { BusinessConfig } from '../types';
+import { BusinessConfig, ProductCategory } from '../types';
 
 interface NavbarProps {
   config: BusinessConfig;
+  categories?: ProductCategory[];
   isAdmin: boolean;
   cartCount?: number;
   wishlistCount?: number;
@@ -46,6 +47,7 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({
   config,
+  categories,
   isAdmin,
   cartCount = 0,
   wishlistCount = 0,
@@ -86,7 +88,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     window.open(`https://wa.me/${targetWhatsAppNumber}?text=${text}`, '_blank');
   };
 
-  const categoryQuickList = [
+  const defaultCategoryQuickList = [
     { id: 'sanitaryware', name: 'Sanitary Ware' },
     { id: 'wash-basins', name: 'Wash Basins' },
     { id: 'toilets', name: 'Toilets' },
@@ -98,6 +100,10 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'hardware', name: 'Hardware' },
     { id: 'pvc-pipes', name: 'PVC Pipes' }
   ];
+
+  const activeCategoriesList = categories && categories.length > 0
+    ? categories.filter(c => c.isActive !== false).map(c => ({ id: c.id, name: c.name }))
+    : defaultCategoryQuickList;
 
   return (
     <div className="sticky top-0 z-50 bg-white border-b border-slate-200 shadow-sm transition-all">
@@ -322,7 +328,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </span>
 
           <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto whitespace-nowrap">
-            {categoryQuickList.map((cat) => (
+            {activeCategoriesList.map((cat) => (
               <button
                 key={cat.id}
                 onClick={() => onSelectCategory(cat.id)}
@@ -388,11 +394,11 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-slate-700">
-            {categoryQuickList.map((cat) => (
+            {activeCategoriesList.map((cat) => (
               <button
                 key={cat.id}
                 onClick={() => { onSelectCategory(cat.id); setMobileMenuOpen(false); }}
-                className="p-2 rounded-lg bg-slate-50 text-left hover:bg-blue-50 hover:text-blue-600"
+                className="p-2 rounded-lg bg-slate-50 text-left hover:bg-blue-50 hover:text-blue-600 truncate"
               >
                 {cat.name}
               </button>

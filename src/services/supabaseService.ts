@@ -296,46 +296,82 @@ export async function fetchCategoriesFromSupabase(): Promise<ProductCategory[] |
 
   try {
     console.log('[Supabase Direct SDK] Querying table: public.categories ...');
+    
+    // Direct select('*') avoids PostgREST column errors if display_order is absent in schema
     let { data, error, status, statusText } = await supabase
       .from('categories')
-      .select('*')
-      .order('display_order', { ascending: true });
-
-    if (error && (error.code === '42703' || error.message?.toLowerCase().includes('column'))) {
-      const fallbackRes = await supabase.from('categories').select('*');
-      data = fallbackRes.data;
-      error = fallbackRes.error;
-      status = fallbackRes.status;
-      statusText = fallbackRes.statusText;
-    }
+      .select('*');
 
     if (error) {
       console.error(`[Supabase Direct SDK] Table: categories | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
       return null;
     }
 
-    const rowCount = data ? data.length : 0;
-    console.log(`[Supabase Direct SDK] Table: categories | Status: SUCCESS | Records: ${rowCount} | HTTP: ${status || 200}`);
-    return data ? data.map((r: any) => ({
-      id: String(r.id),
-      name: r.name || '',
-      slug: r.slug || (r.name ? r.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') : ''),
-      description: r.description || '',
-      fullDescription: r.full_description || undefined,
-      image: r.image || '',
-      iconImage: r.icon_image || undefined,
-      bannerImage: r.banner_image || undefined,
-      itemCount: Number(r.item_count ?? 0),
-      badge: r.badge || undefined,
-      iconName: r.icon || r.icon_name || 'Grid',
-      group: r.group_name || r.group || 'sanitary',
-      isFeatured: Boolean(r.featured ?? r.is_featured),
-      showOnHomepage: Boolean(r.show_on_homepage ?? true),
-      isActive: Boolean(r.is_active ?? true),
-      seoTitle: r.seo_title || undefined,
-      seoDescription: r.seo_description || undefined,
-      displayOrder: Number(r.display_order ?? 0)
-    })) : [];
+    const rawRows = data || [];
+    const rowCount = rawRows.length;
+    console.log(`[Supabase Direct SDK] Table: categories | Status: SUCCESS | Raw Rows Returned: ${rowCount} | HTTP: ${status || 200}`);
+
+    const mappedCategories: ProductCategory[] = rawRows.map((r: any, idx: number) => {
+      const catId = String(r.id ?? r.category_id ?? r.cat_id ?? `cat-${idx + 1}`);
+      const catName = String(r.name ?? r.title ?? r.category_name ?? r.label ?? `Category ${idx + 1}`);
+      const rawSlug = r.slug ?? r.category_slug ?? catName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const cleanSlug = String(rawSlug).replace(/(^-|-$)+/g, '');
+
+      // Determine active status accurately
+      let isActive = true;
+      if (r.is_active !== undefined && r.is_active !== null) {
+        isActive = r.is_active === true || r.is_active === 1 || r.is_active === 'true' || r.is_active === 't';
+      } else if (r.active !== undefined && r.active !== null) {
+        isActive = Boolean(r.active);
+      } else if (r.enabled !== undefined && r.enabled !== null) {
+        isActive = Boolean(r.enabled);
+      } else if (r.status !== undefined && r.status !== null) {
+        isActive = String(r.status).toLowerCase() === 'active';
+      }
+
+      // Determine homepage visibility
+      let showOnHomepage = true;
+      if (r.show_on_homepage !== undefined && r.show_on_homepage !== null) {
+        showOnHomepage = Boolean(r.show_on_homepage);
+      } else if (r.display_on_homepage !== undefined && r.display_on_homepage !== null) {
+        showOnHomepage = Boolean(r.display_on_homepage);
+      }
+
+      const isFeatured = Boolean(r.featured ?? r.is_featured ?? false);
+      const displayOrder = Number(r.display_order ?? r.sort_order ?? r.order ?? r.position ?? idx);
+
+      return {
+        id: catId,
+        name: catName,
+        slug: cleanSlug,
+        description: r.description ?? r.desc ?? r.details ?? r.short_description ?? '',
+        fullDescription: r.full_description ?? r.fullDescription ?? undefined,
+        image: r.image ?? r.image_url ?? r.img ?? r.cover_image ?? r.thumbnail ?? r.photo ?? r.main_image ?? r.picture ?? '',
+        iconImage: r.icon_image ?? undefined,
+        bannerImage: r.banner_image ?? undefined,
+        itemCount: Number(r.item_count ?? r.count ?? r.total_items ?? 0),
+        badge: r.badge || undefined,
+        iconName: r.icon ?? r.icon_name ?? 'Grid',
+        group: (r.group_name ?? r.group ?? r.department ?? r.category_group ?? 'sanitary') as any,
+        isFeatured,
+        showOnHomepage,
+        isActive,
+        seoTitle: r.seo_title ?? undefined,
+        seoDescription: r.seo_description ?? undefined,
+        displayOrder
+      };
+    });
+
+    // In-memory sorting by displayOrder, then by name
+    mappedCategories.sort((a, b) => {
+      if ((a.displayOrder ?? 0) !== (b.displayOrder ?? 0)) {
+        return (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    console.log(`[Supabase Direct SDK] Categories mapped successfully: ${mappedCategories.length} categories ready for UI [Sample: ${mappedCategories.slice(0, 5).map(c => c.name).join(', ')}]`);
+    return mappedCategories;
   } catch (err: any) {
     console.error(`[Supabase Direct SDK] Table: categories | Status: ERROR | Message: ${err?.message || String(err)}`);
     return null;

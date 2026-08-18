@@ -182,6 +182,11 @@ export default function App() {
   const [customerOrders, setCustomerOrders] = useState(() => loadStoredOrders());
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
 
+  // Diagnostic tracking for React categories state hydration
+  useEffect(() => {
+    console.log(`[React State Diagnostics] Categories state contains ${categories.length} total categories [Sample: ${categories.slice(0, 5).map(c => c.name).join(', ')}]`);
+  }, [categories]);
+
   // Sync with server CMS data on mount
   useEffect(() => {
     trackPageView(window.location.pathname);
@@ -459,6 +464,7 @@ export default function App() {
       {/* Navigation Bar */}
       <Navbar
         config={config}
+        categories={categories}
         isAdmin={isAdmin}
         cartCount={totalCartCount}
         wishlistCount={wishlistIds.length}

@@ -114,6 +114,10 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
     );
   });
 
+  useEffect(() => {
+    console.log(`[UI Diagnostics] FeaturedProductsSection: received ${safeCategories.length} categories, rendering ${safeCategories.filter(c => c && c.showOnHomepage !== false).length} category filter pills`);
+  }, [safeCategories.length]);
+
   const targetWhatsAppNumber = "923108002863";
 
   const handleWhatsAppProduct = (e: React.MouseEvent, product: Product) => {
@@ -165,7 +169,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
               >
                 All Products
               </button>
-              {safeCategories.filter(c => c && c.showOnHomepage !== false).slice(0, 8).map((cat) => {
+              {safeCategories.filter(c => c && c.showOnHomepage !== false).map((cat) => {
                 const isCatActive = 
                   filter === cat.id || 
                   filter === cat.slug || 

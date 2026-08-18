@@ -39,14 +39,50 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
 
   const safeCategories = Array.isArray(categories) ? categories : [];
   const query = (searchTerm || '').toLowerCase();
+
+  const isMatchingTab = (cat: ProductCategory, tabId: string): boolean => {
+    if (tabId === 'all') return true;
+    const catGroup = (cat.group || '').toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const catName = (cat.name || '').toLowerCase();
+
+    if (catGroup === tabId) return true;
+
+    switch (tabId) {
+      case 'sanitary':
+        return catGroup.includes('sanitary') || catGroup.includes('bath') || catGroup.includes('vanit') ||
+          catName.includes('sanitary') || catName.includes('vanit') || catName.includes('basin') || catName.includes('toilet') || catName.includes('commode');
+      case 'faucets_showers':
+        return catGroup.includes('faucet') || catGroup.includes('shower') || catGroup.includes('tap') || catGroup.includes('mixer') ||
+          catName.includes('faucet') || catName.includes('shower') || catName.includes('tap') || catName.includes('mixer') || catName.includes('muslim');
+      case 'plumbing':
+        return catGroup.includes('plumb') || catGroup.includes('pipe') || catGroup.includes('fitting') || catGroup.includes('pvc') ||
+          catName.includes('pipe') || catName.includes('fitting') || catName.includes('valve') || catName.includes('pvc');
+      case 'paints_materials':
+        return catGroup.includes('paint') || catGroup.includes('primer') || catGroup.includes('putty') || catGroup.includes('color') ||
+          catName.includes('paint') || catName.includes('primer') || catName.includes('putty') || catName.includes('wall');
+      case 'construction':
+        return catGroup.includes('construct') || catGroup.includes('hardware') || catGroup.includes('cement') || catGroup.includes('suppl') ||
+          catName.includes('cement') || catName.includes('hardware') || catName.includes('material') || catName.includes('steel');
+      default:
+        return catGroup === tabId;
+    }
+  };
+
   const filteredCategories = safeCategories.filter((cat) => {
     if (!cat) return false;
-    const matchesTab = activeTab === 'all' || cat.group === activeTab;
+    // Show active categories by default (or all if isActive is undefined)
+    if (cat.isActive === false) return false;
+    const matchesTab = isMatchingTab(cat, activeTab);
     const catName = (cat.name || '').toLowerCase();
     const catDesc = (cat.description || '').toLowerCase();
     const matchesSearch = catName.includes(query) || catDesc.includes(query);
     return matchesTab && matchesSearch;
   });
+
+  // Diagnostic log for storefront category rendering
+  React.useEffect(() => {
+    console.log(`[UI Diagnostics] CategoriesSection: received ${safeCategories.length} categories from state, displaying ${filteredCategories.length} categories on storefront (Tab: ${activeTab}, Search: "${searchTerm || 'none'}")`);
+  }, [safeCategories.length, filteredCategories.length, activeTab, searchTerm]);
 
   const handleInquireCategory = (e: React.MouseEvent, categoryName: string) => {
     e.stopPropagation();

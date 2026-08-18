@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { VideoUploader } from './VideoUploader';
 import { MultiImageUploader } from './MultiImageUploader';
 import { AdminCategoryModal } from './AdminCategoryModal';
@@ -483,9 +483,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const nameStr = (cat.name || '').toLowerCase();
     const descStr = (cat.description || '').toLowerCase();
     const slugStr = (cat.slug || '').toLowerCase();
-    const matchesSearch = nameStr.includes(q) || descStr.includes(q) || slugStr.includes(q);
+    const matchesSearch = !q || nameStr.includes(q) || descStr.includes(q) || slugStr.includes(q);
     
-    const matchesGroup = catGroupFilter === 'all' || cat.group === catGroupFilter;
+    const catGroup = (cat.group || '').toLowerCase();
+    const selectedGroup = (catGroupFilter || '').toLowerCase();
+    const matchesGroup = selectedGroup === 'all' || catGroup === selectedGroup || catGroup.includes(selectedGroup);
 
     let matchesStatus = true;
     if (catStatusFilter === 'active') matchesStatus = cat.isActive !== false;
@@ -494,6 +496,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     return matchesSearch && matchesGroup && matchesStatus;
   });
+
+  // Diagnostic log for Admin Panel Categories
+  useEffect(() => {
+    if (activeTab === 'categories') {
+      console.log(`[UI Diagnostics] Admin Panel Categories Tab: ${categories?.length || 0} categories in state, ${filteredCategories.length} displayed in table (Search: "${catSearch || 'none'}", Group: "${catGroupFilter}", Status: "${catStatusFilter}")`);
+    }
+  }, [activeTab, categories?.length, filteredCategories.length, catSearch, catGroupFilter, catStatusFilter]);
 
   // Bulk Selection Handlers
   const handleSelectAllCategories = () => {
