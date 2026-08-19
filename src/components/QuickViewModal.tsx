@@ -201,7 +201,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
               <div className="relative rounded-2xl bg-slate-950 border border-slate-800/90 overflow-hidden group h-72 sm:h-96 flex items-center justify-center">
                 <img
                   src={currentImage}
-                  alt={product.name}
+                  alt={`${product.name} - Detailed Specification | Zafar Sarwar Traders Luxury Sanitaryware Pakistan`}
                   referrerPolicy="no-referrer"
                   className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                 />

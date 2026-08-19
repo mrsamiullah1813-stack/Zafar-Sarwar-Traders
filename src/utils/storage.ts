@@ -135,12 +135,12 @@ export const loadAnnouncementSettings = (): AnnouncementBarSettings => {
 
 export const saveAnnouncementSettings = async (settings: AnnouncementBarSettings): Promise<{ success: boolean; error?: string }> => {
   try {
-    localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, JSON.stringify(settings));
-    saveToServerCMS(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, settings);
     if (isSupabaseConfigured) {
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, settings);
       if (!res.success) return { success: false, error: res.error };
     }
+    localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, JSON.stringify(settings));
+    saveToServerCMS(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, settings);
     return { success: true };
   } catch (e: any) {
     console.error('Error saving announcement settings', e);
@@ -235,12 +235,12 @@ export const loadThemeSettings = (): ThemeSettings => {
 
 export const saveThemeSettings = async (settings: ThemeSettings): Promise<{ success: boolean; error?: string }> => {
   try {
-    localStorage.setItem(STORAGE_KEYS.THEME_SETTINGS, JSON.stringify(settings));
-    saveToServerCMS(STORAGE_KEYS.THEME_SETTINGS, settings);
     if (isSupabaseConfigured) {
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.THEME_SETTINGS, settings);
       if (!res.success) return { success: false, error: res.error };
     }
+    localStorage.setItem(STORAGE_KEYS.THEME_SETTINGS, JSON.stringify(settings));
+    saveToServerCMS(STORAGE_KEYS.THEME_SETTINGS, settings);
     return { success: true };
   } catch (e: any) {
     console.error('Error saving theme settings', e);
@@ -514,12 +514,12 @@ export const loadAiAssistantConfig = (): AiAssistantConfig => {
 
 export const saveAiAssistantConfig = async (config: AiAssistantConfig): Promise<{ success: boolean; error?: string }> => {
   try {
-    localStorage.setItem(STORAGE_KEYS.AI_ASSISTANT, JSON.stringify(config));
-    saveToServerCMS(STORAGE_KEYS.AI_ASSISTANT, config);
     if (isSupabaseConfigured) {
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.AI_ASSISTANT, config);
       if (!res.success) return { success: false, error: res.error };
     }
+    localStorage.setItem(STORAGE_KEYS.AI_ASSISTANT, JSON.stringify(config));
+    saveToServerCMS(STORAGE_KEYS.AI_ASSISTANT, config);
     return { success: true };
   } catch (e: any) {
     console.error('Error saving AI assistant config', e);
@@ -542,12 +542,12 @@ export const loadStoredConfig = (): BusinessConfig => {
 
 export const saveStoredConfig = async (config: BusinessConfig): Promise<{ success: boolean; error?: string }> => {
   try {
-    localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(config));
-    saveToServerCMS(STORAGE_KEYS.CONFIG, config);
     if (isSupabaseConfigured) {
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.CONFIG, config);
       if (!res.success) return { success: false, error: res.error };
     }
+    localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(config));
+    saveToServerCMS(STORAGE_KEYS.CONFIG, config);
     return { success: true };
   } catch (e: any) {
     console.error('Error saving stored config', e);
@@ -570,21 +570,19 @@ export const loadStoredProducts = (): Product[] => {
 
 export const saveStoredProducts = async (products: Product[]): Promise<{ success: boolean; error?: string }> => {
   try {
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
-    saveToServerCMS(STORAGE_KEYS.PRODUCTS, products);
-
     if (isSupabaseConfigured) {
       const res = await upsertProductInSupabase(products);
       if (res && res.success === false) {
-        console.error('[STEP32 ERROR] Supabase save returned error:', res.error);
+        console.error('[Supabase Save Error] Product save returned error:', res.error);
         return { success: false, error: res.error };
       }
     }
-    console.log('[STEP32 SAVE COMPLETE] saveStoredProducts result: success');
+    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
+    saveToServerCMS(STORAGE_KEYS.PRODUCTS, products);
+    console.log('[Supabase Direct SDK] Products saved and local state cached successfully');
     return { success: true };
   } catch (e: any) {
-    console.error('[STEP18] Error saving stored products', e);
-    console.log('[STEP18] saveStoredProducts result: failure -', e?.message || String(e));
+    console.error('Error saving stored products', e);
     return { success: false, error: e?.message || String(e) };
   }
 };
@@ -672,12 +670,12 @@ export const loadStoredGallery = (): GalleryItem[] => {
 
 export const saveStoredGallery = async (items: GalleryItem[]): Promise<{ success: boolean; error?: string }> => {
   try {
-    localStorage.setItem(STORAGE_KEYS.GALLERY, JSON.stringify(items));
-    saveToServerCMS(STORAGE_KEYS.GALLERY, items);
     if (isSupabaseConfigured) {
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.GALLERY, items);
       if (!res.success) return { success: false, error: res.error };
     }
+    localStorage.setItem(STORAGE_KEYS.GALLERY, JSON.stringify(items));
+    saveToServerCMS(STORAGE_KEYS.GALLERY, items);
     return { success: true };
   } catch (e: any) {
     console.error('Error saving stored gallery', e);
@@ -749,12 +747,12 @@ export const loadStoredStats = (): StatCounter[] => {
 
 export const saveStoredStats = async (stats: StatCounter[]): Promise<{ success: boolean; error?: string }> => {
   try {
-    localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(stats));
-    saveToServerCMS(STORAGE_KEYS.STATS, stats);
     if (isSupabaseConfigured) {
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.STATS, stats);
       if (!res.success) return { success: false, error: res.error };
     }
+    localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(stats));
+    saveToServerCMS(STORAGE_KEYS.STATS, stats);
     return { success: true };
   } catch (e: any) {
     console.error('Error saving stored stats', e);
@@ -779,12 +777,12 @@ export const loadPlannerConfig = (): AiDesignerConfig => {
 
 export const savePlannerConfig = async (config: AiDesignerConfig): Promise<{ success: boolean; error?: string }> => {
   try {
-    localStorage.setItem(STORAGE_KEYS.PLANNER, JSON.stringify(config));
-    saveToServerCMS(STORAGE_KEYS.PLANNER, config);
     if (isSupabaseConfigured) {
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.PLANNER, config);
       if (!res.success) return { success: false, error: res.error };
     }
+    localStorage.setItem(STORAGE_KEYS.PLANNER, JSON.stringify(config));
+    saveToServerCMS(STORAGE_KEYS.PLANNER, config);
     return { success: true };
   } catch (e: any) {
     console.error('Error saving designer config', e);
@@ -812,12 +810,12 @@ export const loadBuildMaterialEstimatorConfig = (): BuildMaterialEstimatorConfig
 
 export const saveBuildMaterialEstimatorConfig = async (config: BuildMaterialEstimatorConfig): Promise<{ success: boolean; error?: string }> => {
   try {
-    localStorage.setItem(STORAGE_KEYS.ESTIMATOR, JSON.stringify(config));
-    saveToServerCMS(STORAGE_KEYS.ESTIMATOR, config);
     if (isSupabaseConfigured) {
       const res = await saveBuildMaterialEstimatorToSupabase(config);
       if (!res.success) return { success: false, error: res.error };
     }
+    localStorage.setItem(STORAGE_KEYS.ESTIMATOR, JSON.stringify(config));
+    saveToServerCMS(STORAGE_KEYS.ESTIMATOR, config);
     return { success: true };
   } catch (e: any) {
     console.error('Error saving build material estimator config', e);
@@ -840,12 +838,12 @@ export const loadStoredContacts = (): ContactPerson[] => {
 
 export const saveStoredContacts = async (contacts: ContactPerson[]): Promise<{ success: boolean; error?: string }> => {
   try {
-    localStorage.setItem(STORAGE_KEYS.CONTACTS, JSON.stringify(contacts));
-    saveToServerCMS(STORAGE_KEYS.CONTACTS, contacts);
     if (isSupabaseConfigured) {
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.CONTACTS, contacts);
       if (!res.success) return { success: false, error: res.error };
     }
+    localStorage.setItem(STORAGE_KEYS.CONTACTS, JSON.stringify(contacts));
+    saveToServerCMS(STORAGE_KEYS.CONTACTS, contacts);
     return { success: true };
   } catch (e: any) {
     console.error('Error saving stored contacts', e);
@@ -963,12 +961,12 @@ export const loadCheckoutSettings = (): CheckoutSettings => {
 
 export const saveCheckoutSettings = async (settings: CheckoutSettings): Promise<{ success: boolean; error?: string }> => {
   try {
-    localStorage.setItem(STORAGE_KEYS.CHECKOUT_SETTINGS, JSON.stringify(settings));
-    saveToServerCMS(STORAGE_KEYS.CHECKOUT_SETTINGS, settings);
     if (isSupabaseConfigured) {
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.CHECKOUT_SETTINGS, settings);
       if (!res.success) return { success: false, error: res.error };
     }
+    localStorage.setItem(STORAGE_KEYS.CHECKOUT_SETTINGS, JSON.stringify(settings));
+    saveToServerCMS(STORAGE_KEYS.CHECKOUT_SETTINGS, settings);
     return { success: true };
   } catch (e: any) {
     console.error('Error saving checkout settings', e);
@@ -990,8 +988,6 @@ export const loadDeliverySettings = (): DeliverySettings => {
 
 export const saveDeliverySettings = async (settings: DeliverySettings): Promise<{ success: boolean; error?: string }> => {
   try {
-    localStorage.setItem(STORAGE_KEYS.DELIVERY_SETTINGS, JSON.stringify(settings));
-    saveToServerCMS(STORAGE_KEYS.DELIVERY_SETTINGS, settings);
     if (isSupabaseConfigured) {
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.DELIVERY_SETTINGS, settings);
       if (!res.success) return { success: false, error: res.error };
@@ -1000,6 +996,8 @@ export const saveDeliverySettings = async (settings: DeliverySettings): Promise<
         await saveDeliveryCitiesToSupabase(citiesList);
       }
     }
+    localStorage.setItem(STORAGE_KEYS.DELIVERY_SETTINGS, JSON.stringify(settings));
+    saveToServerCMS(STORAGE_KEYS.DELIVERY_SETTINGS, settings);
     return { success: true };
   } catch (e: any) {
     console.error('Error saving delivery settings', e);
@@ -1021,12 +1019,12 @@ export const loadHeroSettings = (): HeroSettings => {
 
 export const saveHeroSettings = async (settings: HeroSettings): Promise<{ success: boolean; error?: string }> => {
   try {
-    localStorage.setItem(STORAGE_KEYS.HERO_SETTINGS, JSON.stringify(settings));
-    saveToServerCMS(STORAGE_KEYS.HERO_SETTINGS, settings);
     if (isSupabaseConfigured) {
       const res = await saveHeroSettingsToSupabase(settings);
       if (!res.success) return { success: false, error: res.error };
     }
+    localStorage.setItem(STORAGE_KEYS.HERO_SETTINGS, JSON.stringify(settings));
+    saveToServerCMS(STORAGE_KEYS.HERO_SETTINGS, settings);
     return { success: true };
   } catch (e: any) {
     console.error('Error saving hero settings', e);
@@ -1048,12 +1046,12 @@ export const loadSmartToolsSettings = (): SmartToolsSettings => {
 
 export const saveSmartToolsSettings = async (settings: SmartToolsSettings): Promise<{ success: boolean; error?: string }> => {
   try {
-    localStorage.setItem(STORAGE_KEYS.SMART_TOOLS, JSON.stringify(settings));
-    saveToServerCMS(STORAGE_KEYS.SMART_TOOLS, settings);
     if (isSupabaseConfigured) {
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.SMART_TOOLS, settings);
       if (!res.success) return { success: false, error: res.error };
     }
+    localStorage.setItem(STORAGE_KEYS.SMART_TOOLS, JSON.stringify(settings));
+    saveToServerCMS(STORAGE_KEYS.SMART_TOOLS, settings);
     return { success: true };
   } catch (e: any) {
     console.error('Error saving smart tools settings', e);

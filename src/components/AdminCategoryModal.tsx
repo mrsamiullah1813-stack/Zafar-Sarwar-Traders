@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { ProductCategory } from '../types';
 import { CategoryImageUploader } from './CategoryImageUploader';
+import { formatSupabaseError } from '../services/supabaseService';
 
 interface AdminCategoryModalProps {
   category: ProductCategory | null; // null for new category
@@ -99,7 +100,7 @@ export const AdminCategoryModal: React.FC<AdminCategoryModalProps> = ({
       });
     } catch (err: any) {
       console.error('Error in category modal submit:', err);
-      setErrorMsg(err?.message || 'Failed to save category. Please check server connection.');
+      setErrorMsg(formatSupabaseError(err));
     } finally {
       setIsSaving(false);
     }

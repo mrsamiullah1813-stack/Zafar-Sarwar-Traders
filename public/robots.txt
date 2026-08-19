@@ -1,0 +1,19 @@
+# Robots.txt for Zafar Sarwar Traders (Pakistan)
+User-agent: *
+Allow: /
+Allow: /#products
+Allow: /#categories
+Allow: /#brands
+Allow: /#about
+Allow: /#contact
+Allow: /#faq
+Allow: /#reviews
+Allow: /#gallery
+
+# Disallow internal admin or sensitive URL parameters
+Disallow: /api/
+Disallow: /*?admin=*
+Disallow: /*&admin=*
+
+# Sitemap reference
+Sitemap: /sitemap.xml

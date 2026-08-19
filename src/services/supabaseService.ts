@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured, initializeSupabaseRuntime } from '../lib/supabase';
 export { isSupabaseConfigured, initializeSupabaseRuntime };
+import { getAdminAuthToken } from '../utils/storage';
 import { 
   Product, 
   ProductCategory, 
@@ -12,6 +13,49 @@ import {
   ThemeSettings, 
   AiAssistantConfig 
 } from '../types';
+
+// =========================================================
+// AUTH HEADERS HELPER FOR SECURE ADMIN BACKEND PROXY
+// =========================================================
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token || getAdminAuthToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  } catch (err) {
+    const token = getAdminAuthToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
+  return headers;
+}
+
+// =========================================================
+// ERROR FORMATTER
+// =========================================================
+
+export function formatSupabaseError(error: any): string {
+  if (!error) return 'Unknown database error occurred.';
+  const msg = typeof error === 'string' ? error : (error.message || JSON.stringify(error));
+  const lower = msg.toLowerCase();
+  if (lower.includes('row-level security') || lower.includes('violates row-level') || lower.includes('rls')) {
+    return 'Permission denied by Row-Level Security: You must log in as an authenticated Admin (Ctrl+Shift+A) to perform this operation in Supabase.';
+  }
+  if (lower.includes('jwt') || lower.includes('token') && (lower.includes('expired') || lower.includes('invalid'))) {
+    return 'Your admin authentication session has expired. Please log in again (Ctrl+Shift+A).';
+  }
+  if (lower.includes('failed to fetch') || lower.includes('network') || lower.includes('timeout')) {
+    return 'Network error: Unable to connect to Supabase PostgreSQL database. Please check your internet connection.';
+  }
+  return msg;
+}
 
 // =========================================================
 // DATA MAPPERS (Robust snake_case <-> camelCase conversion)
@@ -242,26 +286,22 @@ export async function upsertProductInSupabase(product: Product | Product[]): Pro
   const list = Array.isArray(product) ? product : [product];
 
   try {
-    for (const prod of list) {
-      const payload = mapProductToDb(prod);
-      let { error } = await supabase.from('products').upsert(payload, { onConflict: 'id' });
-
-      // If foreign key constraint failed on category_id or brand_id, retry without FKs
-      if (error && error.code === '23503') {
-        const sanitizedPayload = { ...payload, category_id: null, brand_id: null };
-        const retryResult = await supabase.from('products').upsert(sanitizedPayload, { onConflict: 'id' });
-        error = retryResult.error;
-      }
-
-      if (error) {
-        console.error(`[Supabase Direct SDK] Product upsert failed for ${prod.name}: ${error.message}`);
-        return { success: false, error: error.message };
-      }
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/db/products/upsert', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ products: list })
+    });
+    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
+    if (!res.ok || !result.success) {
+      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+      console.error(`[Supabase API] Product upsert failed: ${err}`);
+      return { success: false, error: err };
     }
-    console.log(`[Supabase Direct SDK] Upserted ${list.length} product(s) successfully`);
+    console.log(`[Supabase API] Upserted ${list.length} product(s) successfully`);
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err.message || String(err) };
+    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
   }
 }
 
@@ -270,15 +310,21 @@ export async function deleteProductFromSupabase(productId: string): Promise<{ su
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
   try {
-    const { error } = await supabase.from('products').delete().eq('id', productId);
-    if (error) {
-      console.error(`[Supabase Direct SDK] Product delete failed: ${error.message}`);
-      return { success: false, error: error.message };
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/db/products/${encodeURIComponent(productId)}`, {
+      method: 'DELETE',
+      headers
+    });
+    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
+    if (!res.ok || !result.success) {
+      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+      console.error(`[Supabase API] Product delete failed: ${err}`);
+      return { success: false, error: err };
     }
-    console.log(`[Supabase Direct SDK] Deleted product ID: ${productId}`);
+    console.log(`[Supabase API] Deleted product ID: ${productId}`);
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err.message };
+    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
   }
 }
 
@@ -385,32 +431,22 @@ export async function upsertCategoryInSupabase(category: ProductCategory | Produ
   const list = Array.isArray(category) ? category : [category];
 
   try {
-    const payloads = list.map(cat => ({
-      id: cat.id,
-      name: cat.name,
-      slug: (cat.slug || cat.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')).replace(/(^-|-$)+/g, ''),
-      description: cat.description || '',
-      full_description: cat.fullDescription || null,
-      image: cat.image || '',
-      icon: cat.iconName || 'Grid',
-      badge: cat.badge || null,
-      featured: Boolean(cat.isFeatured),
-      show_on_homepage: Boolean(cat.showOnHomepage ?? true),
-      is_active: Boolean(cat.isActive ?? true),
-      seo_title: cat.seoTitle || null,
-      seo_description: cat.seoDescription || null,
-      display_order: cat.displayOrder ?? 0
-    }));
-
-    const { error } = await supabase.from('categories').upsert(payloads, { onConflict: 'id' });
-    if (error) {
-      console.error(`[Supabase Direct SDK] Category upsert failed: ${error.message}`);
-      return { success: false, error: error.message };
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/db/categories/upsert', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ categories: list })
+    });
+    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
+    if (!res.ok || !result.success) {
+      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+      console.error(`[Supabase API] Category upsert failed: ${err}`);
+      return { success: false, error: err };
     }
-    console.log(`[Supabase Direct SDK] Upserted ${list.length} category/categories successfully`);
+    console.log(`[Supabase API] Upserted ${list.length} category/categories successfully`);
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err?.message || String(err) };
+    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
   }
 }
 
@@ -419,12 +455,21 @@ export async function deleteCategoryFromSupabase(categoryId: string): Promise<{ 
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
   try {
-    const { error } = await supabase.from('categories').delete().eq('id', categoryId);
-    if (error) return { success: false, error: error.message };
-    console.log(`[Supabase Direct SDK] Deleted category ID: ${categoryId}`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/db/categories/${encodeURIComponent(categoryId)}`, {
+      method: 'DELETE',
+      headers
+    });
+    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
+    if (!res.ok || !result.success) {
+      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+      console.error(`[Supabase API] Category delete failed: ${err}`);
+      return { success: false, error: err };
+    }
+    console.log(`[Supabase API] Deleted category ID: ${categoryId}`);
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err.message };
+    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
   }
 }
 
@@ -487,24 +532,22 @@ export async function upsertBrandInSupabase(brand: ProductBrand | ProductBrand[]
   const list = Array.isArray(brand) ? brand : [brand];
 
   try {
-    const payloads = list.map(b => ({
-      id: b.id,
-      name: b.name,
-      slug: (b.slug || b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')).replace(/(^-|-$)+/g, ''),
-      logo: b.logo || '',
-      description: b.description || '',
-      official_badge: b.officialBadge || null,
-      is_active: Boolean(b.isActive ?? true),
-      featured: Boolean(b.isFeatured),
-      display_order: b.displayOrder ?? 0
-    }));
-
-    const { error } = await supabase.from('brands').upsert(payloads, { onConflict: 'id' });
-    if (error) return { success: false, error: error.message };
-    console.log(`[Supabase Direct SDK] Upserted ${list.length} brand(s) successfully`);
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/db/brands/upsert', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ brands: list })
+    });
+    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
+    if (!res.ok || !result.success) {
+      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+      console.error(`[Supabase API] Brand upsert failed: ${err}`);
+      return { success: false, error: err };
+    }
+    console.log(`[Supabase API] Upserted ${list.length} brand(s) successfully`);
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err?.message || String(err) };
+    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
   }
 }
 
@@ -513,12 +556,21 @@ export async function deleteBrandFromSupabase(brandId: string): Promise<{ succes
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
   try {
-    const { error } = await supabase.from('brands').delete().eq('id', brandId);
-    if (error) return { success: false, error: error.message };
-    console.log(`[Supabase Direct SDK] Deleted brand ID: ${brandId}`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/db/brands/${encodeURIComponent(brandId)}`, {
+      method: 'DELETE',
+      headers
+    });
+    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
+    if (!res.ok || !result.success) {
+      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+      console.error(`[Supabase API] Brand delete failed: ${err}`);
+      return { success: false, error: err };
+    }
+    console.log(`[Supabase API] Deleted brand ID: ${brandId}`);
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err.message };
+    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
   }
 }
 
@@ -611,49 +663,22 @@ export async function saveHeroSettingsToSupabase(settings: HeroSettings): Promis
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
   try {
-    const payload = {
-      id: 'default',
-      is_enabled: Boolean(settings.isEnabled),
-      badge_text: settings.badgeText || '',
-      heading: settings.heading || '',
-      subheading: settings.subheading || '',
-      primary_btn_text: settings.primaryBtnText || '',
-      primary_btn_link: settings.primaryBtnLink || '',
-      enable_primary_btn: Boolean(settings.enablePrimaryBtn),
-      secondary_btn_text: settings.secondaryBtnText || '',
-      secondary_btn_link: settings.secondaryBtnLink || '',
-      enable_secondary_btn: Boolean(settings.enableSecondaryBtn),
-      tertiary_btn_text: settings.tertiaryBtnText || null,
-      tertiary_btn_link: settings.tertiaryBtnLink || null,
-      enable_tertiary_btn: settings.enableTertiaryBtn ? Boolean(settings.enableTertiaryBtn) : null,
-      rotation_duration_seconds: settings.rotationDurationSeconds || 6,
-      transition_speed_seconds: settings.transitionSpeedSeconds || 0.8,
-      transition_style: settings.transitionStyle || 'cinematic-depth',
-      autoplay: Boolean(settings.autoPlay),
-      pause_on_hover: Boolean(settings.pauseOnHover),
-      enable_parallax: Boolean(settings.enableParallax),
-      parallax_strength: settings.parallaxStrength || 15,
-      glow_intensity: settings.glowIntensity || 'medium',
-      bg_type: settings.bgType || 'ambient-dark',
-      bg_media_url: settings.bgMediaUrl || null,
-      bg_video_url: settings.bgVideoUrl || null,
-      hero_product_ids: settings.heroProductIds || [],
-      hero_mode: settings.heroMode || 'selected_or_featured',
-      product_image_overrides: settings.productImageOverrides || {},
-      product_video_overrides: settings.productVideoOverrides || {},
-      custom_product_order: settings.customProductOrder || [],
-      is_draft: Boolean(settings.isDraft)
-    };
-
-    const { error } = await supabase.from('hero_settings').upsert(payload, { onConflict: 'id' });
-    if (error) {
-      console.error(`[Supabase Direct SDK] Hero settings save failed: ${error.message}`);
-      return { success: false, error: error.message };
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/db/hero-settings/upsert', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ settings })
+    });
+    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
+    if (!res.ok || !result.success) {
+      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+      console.error(`[Supabase API] Hero settings save failed: ${err}`);
+      return { success: false, error: err };
     }
-    console.log('[Supabase Direct SDK] Saved hero_settings successfully');
+    console.log('[Supabase API] Saved hero_settings successfully');
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err.message };
+    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
   }
 }
 
@@ -821,20 +846,22 @@ export async function updateOrderStatusInSupabase(orderId: string, status: Custo
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
   try {
-    const { data: existing } = await supabase.from('orders').select('status_history').eq('id', orderId).maybeSingle();
-    const history = existing && Array.isArray(existing.status_history) ? existing.status_history : [];
-    const updatedHistory = [...history, { status, timestamp: new Date().toISOString(), note }];
-
-    const { error } = await supabase
-      .from('orders')
-      .update({ status, status_history: updatedHistory, updated_at: new Date().toISOString() })
-      .eq('id', orderId);
-
-    if (error) return { success: false, error: error.message };
-    console.log(`[Supabase Direct SDK] Updated order ${orderId} to status: ${status}`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/db/orders/${encodeURIComponent(orderId)}/status`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ status, note })
+    });
+    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
+    if (!res.ok || !result.success) {
+      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+      console.error(`[Supabase API] Order status update failed: ${err}`);
+      return { success: false, error: err };
+    }
+    console.log(`[Supabase API] Updated order ${orderId} to status: ${status}`);
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err.message };
+    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
   }
 }
 
@@ -890,37 +917,31 @@ export async function fetchDeliveryCitiesFromSupabase(): Promise<CityDeliveryInf
 }
 
 export async function upsertDeliveryCityInSupabase(city: CityDeliveryInfo): Promise<{ success: boolean; error?: string }> {
-  await initializeSupabaseRuntime();
-  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
-
-  try {
-    const payload = {
-      id: city.id,
-      name: city.cityName,
-      delivery_fee: city.deliveryFee,
-      estimated_days: city.estimatedDays || '2-4 Days',
-      enabled: Boolean(city.isEnabled),
-      same_day_available: Boolean(city.isSameDayAvailable),
-      next_day_available: Boolean(city.isNextDayAvailable),
-      display_order: city.displayOrder ?? 0,
-      notes: city.notes || null
-    };
-    const { error } = await supabase.from('delivery_cities').upsert(payload, { onConflict: 'id' });
-    if (error) return { success: false, error: error.message };
-    return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return saveDeliveryCitiesToSupabase([city]);
 }
 
 export async function saveDeliveryCitiesToSupabase(cities: CityDeliveryInfo[]): Promise<{ success: boolean; error?: string }> {
   await initializeSupabaseRuntime();
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
-  for (const city of cities) {
-    await upsertDeliveryCityInSupabase(city);
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/db/delivery-cities/upsert', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ cities })
+    });
+    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
+    if (!res.ok || !result.success) {
+      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+      console.error(`[Supabase API] Delivery cities save failed: ${err}`);
+      return { success: false, error: err };
+    }
+    console.log(`[Supabase API] Saved ${cities.length} delivery cities successfully`);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
   }
-  return { success: true };
 }
 
 // =========================================================
@@ -990,29 +1011,22 @@ export async function saveSiteSettingToSupabase(key: string, value: any): Promis
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
   try {
-    const { error: kvError } = await supabase.from('site_settings').upsert({
-      key,
-      value,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'key' });
-
-    if (!kvError) {
-      console.log(`[Supabase Direct SDK] Saved site_setting KV: ${key}`);
-      return { success: true };
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/db/site-settings/upsert', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ key, value })
+    });
+    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
+    if (!res.ok || !result.success) {
+      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+      console.error(`[Supabase API] Site setting save failed for key "${key}": ${err}`);
+      return { success: false, error: err };
     }
-
-    const colName = getSiteSettingColumnName(key);
-    if (colName) {
-      const payload = { id: 'config', [colName]: value, updated_at: new Date().toISOString() };
-      const { error: colError } = await supabase.from('site_settings').upsert(payload, { onConflict: 'id' });
-      if (colError) return { success: false, error: colError.message };
-      console.log(`[Supabase Direct SDK] Saved site_setting column ${colName}: ${key}`);
-      return { success: true };
-    }
-
-    return { success: false, error: kvError?.message };
+    console.log(`[Supabase API] Saved site_setting: ${key}`);
+    return { success: true };
   } catch (err: any) {
-    return { success: false, error: err.message };
+    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
   }
 }
 
@@ -1028,33 +1042,103 @@ export async function fetchBuildMaterialEstimatorFromSupabase(): Promise<any | n
 // 8. STORAGE MEDIA UPLOAD (Direct Supabase SDK)
 // =========================================================
 
-export async function uploadMediaToSupabase(file: File, bucketName: 'product-media' | 'brand-assets' | 'hero-media' = 'product-media'): Promise<{ url?: string; error?: string }> {
+export async function uploadMediaToSupabase(
+  fileOrDataUrl: File | Blob | string,
+  bucketName: string = 'product-media',
+  customFileName?: string
+): Promise<{ url?: string; error?: string }> {
   await initializeSupabaseRuntime();
   if (!isSupabaseConfigured) {
-    console.warn(`[Supabase Direct SDK] Storage Bucket: ${bucketName} | Status: SKIPPED | Reason: Supabase not configured`);
+    console.warn(`[Supabase Storage] Bucket: ${bucketName} | Status: SKIPPED | Reason: Supabase not configured`);
     return { error: 'Supabase not configured' };
   }
+
   try {
-    const fileExt = file.name.split('.').pop() || 'png';
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
-    const filePath = `uploads/${fileName}`;
+    let base64String: string = '';
+    let mimeType = 'image/jpeg';
+    let fileExt = 'jpg';
 
-    console.log(`[Supabase Direct SDK] Storage Bucket: ${bucketName} | Uploading file: ${filePath}`);
-    const { error: uploadErr } = await supabase.storage.from(bucketName).upload(filePath, file, {
-      cacheControl: '3600',
-      upsert: true
-    });
-
-    if (uploadErr) {
-      console.error(`[Supabase Direct SDK] Storage Bucket: ${bucketName} | Upload FAILED | Message: ${uploadErr.message}`);
-      return { error: uploadErr.message };
+    if (typeof fileOrDataUrl === 'string') {
+      if (fileOrDataUrl.startsWith('data:')) {
+        base64String = fileOrDataUrl;
+        const mimeMatch = fileOrDataUrl.match(/:(.*?);/);
+        mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+        fileExt = mimeType.split('/')[1] || 'jpg';
+      } else {
+        // Already a remote URL
+        return { url: fileOrDataUrl };
+      }
+    } else if (fileOrDataUrl instanceof File || fileOrDataUrl instanceof Blob) {
+      mimeType = fileOrDataUrl.type || 'image/jpeg';
+      fileExt = (fileOrDataUrl instanceof File ? fileOrDataUrl.name.split('.').pop() : mimeType.split('/')[1]) || 'jpg';
+      base64String = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (e) => reject(e);
+        reader.readAsDataURL(fileOrDataUrl);
+      });
     }
 
-    const { data: publicUrlData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
-    console.log(`[Supabase Direct SDK] Storage Bucket: ${bucketName} | Upload SUCCESS | Public URL generated`);
-    return { url: publicUrlData.publicUrl };
+    const fileName = customFileName || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+
+    // 1. Try secure backend upload proxy first (uses service role key on server)
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/db/upload', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          fileData: base64String,
+          fileName,
+          bucketName,
+          mimeType
+        })
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success && json?.url) {
+        console.log(`[Supabase Storage] Upload SUCCESS via backend proxy: ${json.url}`);
+        return { url: json.url };
+      }
+    } catch (proxyErr) {
+      console.warn('[Supabase Storage] Backend upload proxy attempt skipped/failed, trying direct SDK:', proxyErr);
+    }
+
+    // 2. Direct Supabase SDK fallback
+    let fileBody: Blob;
+    if (base64String.startsWith('data:')) {
+      const parts = base64String.split(',');
+      const byteString = atob(parts[1]);
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+      fileBody = new Blob([ab], { type: mimeType });
+    } else {
+      fileBody = fileOrDataUrl as Blob;
+    }
+
+    const filePath = `uploads/${fileName}`;
+    const candidateBuckets = Array.from(new Set([bucketName, 'product-media', 'products', 'categories', 'gallery', 'media', 'brand-assets', 'hero-media', 'public']));
+
+    for (const b of candidateBuckets) {
+      try {
+        const { error: uploadErr } = await supabase.storage.from(b).upload(filePath, fileBody, {
+          cacheControl: '3600',
+          upsert: true
+        });
+
+        if (!uploadErr) {
+          const { data: publicUrlData } = supabase.storage.from(b).getPublicUrl(filePath);
+          console.log(`[Supabase Direct SDK] Storage: Upload SUCCESS to "${b}". Public URL: ${publicUrlData.publicUrl}`);
+          return { url: publicUrlData.publicUrl };
+        }
+      } catch {}
+    }
+
+    return { error: 'Unable to upload to Supabase storage buckets. Please check bucket configuration.' };
   } catch (err: any) {
-    console.error(`[Supabase Direct SDK] Storage Bucket: ${bucketName} | Upload ERROR | Message: ${err?.message || String(err)}`);
-    return { error: err.message || 'Media upload failed' };
+    console.error(`[Supabase Storage] Upload Error:`, err);
+    return { error: err?.message || 'Media upload failed' };
   }
 }

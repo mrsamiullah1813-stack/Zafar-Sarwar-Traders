@@ -3,6 +3,7 @@ import { X, Check, Trash2, Video, Image as ImageIcon, Sparkles, Tag, ShieldCheck
 import { Product, ProductVideo, ProductCategory, ProductBrand } from '../types';
 import { VideoUploader } from './VideoUploader';
 import { MultiImageUploader } from './MultiImageUploader';
+import { formatSupabaseError } from '../services/supabaseService';
 
 interface AdminProductModalProps {
   product: Product | null; // null for creating new product
@@ -178,7 +179,7 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       await onSave(finalProduct);
     } catch (err: any) {
       console.error('Error saving product in modal:', err);
-      setErrorMsg(err?.message || 'Failed to save product to database.');
+      setErrorMsg(formatSupabaseError(err));
     } finally {
       setIsSaving(false);
     }

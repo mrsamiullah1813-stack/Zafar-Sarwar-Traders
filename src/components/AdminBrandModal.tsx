@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Check, Trash2, Image as ImageIcon, Sparkles, Eye, EyeOff } from 'lucide-react';
 import { ProductBrand } from '../types';
 import { MultiImageUploader } from './MultiImageUploader';
+import { formatSupabaseError } from '../services/supabaseService';
 
 interface AdminBrandModalProps {
   brand: ProductBrand | null;
@@ -67,7 +68,7 @@ export const AdminBrandModal: React.FC<AdminBrandModalProps> = ({
       await onSave(finalBrand);
     } catch (err: any) {
       console.error('Error saving brand in modal:', err);
-      setErrorMsg(err?.message || 'Failed to save brand to database.');
+      setErrorMsg(formatSupabaseError(err));
     } finally {
       setIsSaving(false);
     }

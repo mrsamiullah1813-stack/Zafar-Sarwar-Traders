@@ -611,7 +611,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                           ease: "easeInOut"
                         }}
                         src={getProductImage(currentProduct)}
-                        alt={currentProduct.name}
+                        alt={`${currentProduct.name} - Premium Sanitaryware & Luxury Bathroom Fitting | Zafar Sarwar Traders Pakistan`}
                         className="max-h-full max-w-full object-contain filter drop-shadow-[0_20px_35px_rgba(0,0,0,0.85)] transform group-hover/showcase:scale-105 transition-transform duration-700 ease-out z-10 relative"
                       />
 

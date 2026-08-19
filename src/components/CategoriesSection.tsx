@@ -164,7 +164,7 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
                 <div className="relative h-44 w-full overflow-hidden bg-slate-100">
                   <img
                     src={cat.image || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80'}
-                    alt={cat.name}
+                    alt={`${cat.name} - Luxury Sanitaryware & Building Materials | Zafar Sarwar Traders Pakistan`}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   {cat.badge && (

@@ -1,6 +1,6 @@
 {
   "name": "Zafar Sarwar Traders",
-  "description": "Ultra-premium sanitaryware, bathroom accessories, plumbing, paints, and construction materials showroom.",
+  "description": "Pakistan's premier luxury sanitaryware, bathroom accessories, plumbing pipes, paints, and construction materials showroom.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -12,6 +12,7 @@ import {
   Sliders, 
   AlertCircle 
 } from 'lucide-react';
+import { uploadMediaToSupabase } from '../services/supabaseService';
 
 interface CategoryImageUploaderProps {
   label: string;
@@ -106,7 +107,18 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
           }
 
           const processedDataUrl = canvas.toDataURL('image/jpeg', 0.88);
-          onChange(processedDataUrl);
+          // Upload to Supabase storage bucket
+          uploadMediaToSupabase(processedDataUrl, 'categories')
+            .then(res => {
+              if (res && res.url) {
+                onChange(res.url);
+              } else {
+                onChange(processedDataUrl);
+              }
+            })
+            .catch(() => {
+              onChange(processedDataUrl);
+            });
         } else {
           onChange(tempImage);
         }

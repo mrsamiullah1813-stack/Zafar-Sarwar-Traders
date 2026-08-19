@@ -139,7 +139,51 @@ async function startServer() {
     });
   });
 
-  // Database Proxy API Endpoints (Bypasses browser RLS write restrictions using service role key)
+  // Database Proxy API Endpoints (Securely handles admin writes with Supabase Auth validation & service role key)
+  const requireAdminAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        error: "Missing or invalid authorization header. You must be logged in as an Admin (Ctrl+Shift+A) to perform this operation."
+      });
+    }
+
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "Empty authentication token. Please log in as an Admin (Ctrl+Shift+A)."
+      });
+    }
+
+    if (!dbClient) {
+      return res.status(500).json({
+        success: false,
+        error: "Database client not configured on server."
+      });
+    }
+
+    try {
+      const { data: { user }, error: authError } = await dbClient.auth.getUser(token);
+      if (authError || !user) {
+        return res.status(401).json({
+          success: false,
+          error: "Invalid or expired session. Please log in again (Ctrl+Shift+A)."
+        });
+      }
+
+      // User verified by Supabase Auth
+      (req as any).adminUser = user;
+      return next();
+    } catch (err: any) {
+      return res.status(401).json({
+        success: false,
+        error: "Failed to authenticate session token."
+      });
+    }
+  };
+
   app.get("/api/db/categories", async (req, res) => {
     if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
@@ -151,7 +195,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/db/categories/upsert", async (req, res) => {
+  app.post("/api/db/categories/upsert", requireAdminAuth, async (req, res) => {
     if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { categories } = req.body;
@@ -183,7 +227,7 @@ async function startServer() {
     }
   });
 
-  app.delete("/api/db/categories/:id", async (req, res) => {
+  app.delete("/api/db/categories/:id", requireAdminAuth, async (req, res) => {
     if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { id } = req.params;
@@ -206,7 +250,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/db/brands/upsert", async (req, res) => {
+  app.post("/api/db/brands/upsert", requireAdminAuth, async (req, res) => {
     if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { brands } = req.body;
@@ -233,7 +277,7 @@ async function startServer() {
     }
   });
 
-  app.delete("/api/db/brands/:id", async (req, res) => {
+  app.delete("/api/db/brands/:id", requireAdminAuth, async (req, res) => {
     if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { id } = req.params;
@@ -351,7 +395,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/db/products/upsert", async (req, res) => {
+  app.post("/api/db/products/upsert", requireAdminAuth, async (req, res) => {
     if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { products } = req.body;
@@ -373,7 +417,7 @@ async function startServer() {
     }
   });
 
-  app.delete("/api/db/products/:id", async (req, res) => {
+  app.delete("/api/db/products/:id", requireAdminAuth, async (req, res) => {
     if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { id } = req.params;
@@ -397,7 +441,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/db/hero-settings/upsert", async (req, res) => {
+  app.post("/api/db/hero-settings/upsert", requireAdminAuth, async (req, res) => {
     if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { settings } = req.body;
@@ -461,7 +505,7 @@ async function startServer() {
     }
   });
 
-  app.patch("/api/db/orders/:id/status", async (req, res) => {
+  app.patch("/api/db/orders/:id/status", requireAdminAuth, async (req, res) => {
     if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { id } = req.params;
@@ -493,7 +537,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/db/delivery-cities/upsert", async (req, res) => {
+  app.post("/api/db/delivery-cities/upsert", requireAdminAuth, async (req, res) => {
     if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { cities } = req.body;
@@ -515,6 +559,55 @@ async function startServer() {
       const { error } = await dbClient.from("delivery_cities").upsert(payloads, { onConflict: "id" });
       if (error) return res.status(500).json({ success: false, error: error.message });
       return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  app.delete("/api/db/delivery-cities/:id", requireAdminAuth, async (req, res) => {
+    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
+    try {
+      const { id } = req.params;
+      const { error } = await dbClient.from("delivery_cities").delete().eq("id", id);
+      if (error) return res.status(500).json({ success: false, error: error.message });
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // STORAGE MEDIA UPLOAD DB Proxy (Guarded by requireAdminAuth)
+  app.post("/api/db/upload", requireAdminAuth, async (req, res) => {
+    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
+    try {
+      const { fileData, fileName, bucketName = "product-media", mimeType = "image/jpeg" } = req.body;
+      if (!fileData) return res.status(400).json({ success: false, error: "fileData is required" });
+
+      const base64Data = fileData.includes(",") ? fileData.split(",")[1] : fileData;
+      const buffer = Buffer.from(base64Data, "base64");
+      const cleanFileName = fileName || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.jpg`;
+      const filePath = `uploads/${cleanFileName}`;
+
+      const candidateBuckets = Array.from(new Set([bucketName, "product-media", "categories", "products", "gallery", "media", "brand-assets", "public"]));
+
+      for (const b of candidateBuckets) {
+        try {
+          const { error: uploadErr } = await dbClient.storage.from(b).upload(filePath, buffer, {
+            contentType: mimeType,
+            cacheControl: "3600",
+            upsert: true
+          });
+
+          if (!uploadErr) {
+            const { data: publicUrlData } = dbClient.storage.from(b).getPublicUrl(filePath);
+            return res.json({ success: true, url: publicUrlData.publicUrl });
+          }
+        } catch {
+          // try next bucket
+        }
+      }
+
+      return res.status(500).json({ success: false, error: "Failed to upload to storage buckets" });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
@@ -558,7 +651,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/db/site-settings/upsert", async (req, res) => {
+  app.post("/api/db/site-settings/upsert", requireAdminAuth, async (req, res) => {
     if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { key, value } = req.body;

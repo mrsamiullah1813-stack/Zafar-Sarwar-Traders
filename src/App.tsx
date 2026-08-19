@@ -78,6 +78,7 @@ import { AdvancedSearchModal } from './components/AdvancedSearchModal';
 import { OrderTrackingModal } from './components/OrderTrackingModal';
 import { CustomerAccountModal } from './components/CustomerAccountModal';
 import { loadCustomerProfile, saveCustomerProfile } from './utils/customerStorage';
+import { supabase, initializeSupabaseRuntime } from './lib/supabase';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { AdminProductModal } from './components/AdminProductModal';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -221,6 +222,36 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Listen to Supabase auth session changes
+  useEffect(() => {
+    let isMounted = true;
+    initializeSupabaseRuntime().then(() => {
+      supabase.auth.getSession().then(({ data }) => {
+        if (isMounted && data?.session?.user) {
+          setIsAdmin(true);
+          setIsAdminLoggedIn(true);
+        }
+      }).catch(() => {});
+    });
+
+    const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (isMounted) {
+        if (session?.user) {
+          setIsAdmin(true);
+          setIsAdminLoggedIn(true);
+        } else {
+          setIsAdmin(false);
+          setIsAdminLoggedIn(false);
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      authSub?.subscription?.unsubscribe();
+    };
+  }, []);
+
   // Cart Operations
   const handleAddToCart = (
     product: Product,
@@ -301,7 +332,7 @@ export default function App() {
   // Persistence handlers
   const handleSaveProductsState = async (updatedProducts: Product[]) => {
     const res = await saveStoredProducts(updatedProducts);
-    if (!res || res.success !== false) {
+    if (res && res.success) {
       setProducts(updatedProducts);
     }
     return res;
@@ -309,7 +340,7 @@ export default function App() {
 
   const handleSaveCategoriesState = async (updatedCategories: ProductCategory[]) => {
     const res = await saveStoredCategories(updatedCategories);
-    if (!res || res.success !== false) {
+    if (res && res.success) {
       setCategories(updatedCategories);
     }
     return res;
@@ -317,7 +348,7 @@ export default function App() {
 
   const handleSaveBrandsState = async (updatedBrands: ProductBrand[]) => {
     const res = await saveStoredBrands(updatedBrands);
-    if (!res || res.success !== false) {
+    if (res && res.success) {
       setBrands(updatedBrands);
     }
     return res;
@@ -325,7 +356,7 @@ export default function App() {
 
   const handleSaveStatsState = async (updatedStats: StatCounter[]) => {
     const res = await saveStoredStats(updatedStats);
-    if (!res || res.success !== false) {
+    if (res && res.success) {
       setStats(updatedStats);
     }
     return res;
@@ -333,7 +364,7 @@ export default function App() {
 
   const handleSaveContactsState = async (updatedContacts: ContactPerson[]) => {
     const res = await saveStoredContacts(updatedContacts);
-    if (!res || res.success !== false) {
+    if (res && res.success) {
       setContacts(updatedContacts);
     }
     return res;
@@ -341,7 +372,7 @@ export default function App() {
 
   const handleSaveConfigState = async (updatedConfig: BusinessConfig) => {
     const res = await saveStoredConfig(updatedConfig);
-    if (!res || res.success !== false) {
+    if (res && res.success) {
       setConfig(updatedConfig);
     }
     return res;
@@ -349,7 +380,7 @@ export default function App() {
 
   const handleSaveGalleryState = async (updatedGallery: GalleryItem[]) => {
     const res = await saveStoredGallery(updatedGallery);
-    if (!res || res.success !== false) {
+    if (res && res.success) {
       setGallery(updatedGallery);
     }
     return res;
@@ -361,7 +392,13 @@ export default function App() {
     setAdminDashboardOpen(true);
   };
 
-  const handleAdminLogout = () => {
+  const handleAdminLogout = async () => {
+    try {
+      await initializeSupabaseRuntime();
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn('[Admin Auth] Logout error:', err);
+    }
     setIsAdmin(false);
     setIsAdminLoggedIn(false);
     setAdminDashboardOpen(false);
@@ -747,13 +784,19 @@ export default function App() {
           onSaveConfig={handleSaveConfigState}
           onSaveGallery={handleSaveGalleryState}
           onSaveContacts={handleSaveContactsState}
-          onSaveHeroSettings={(hs) => {
-            setHeroSettings(hs);
-            saveHeroSettings(hs);
+          onSaveHeroSettings={async (hs) => {
+            const res = await saveHeroSettings(hs);
+            if (res && res.success) {
+              setHeroSettings(hs);
+            }
+            return res;
           }}
-          onSaveSmartToolsSettings={(st) => {
-            setSmartToolsSettings(st);
-            saveSmartToolsSettings(st);
+          onSaveSmartToolsSettings={async (st) => {
+            const res = await saveSmartToolsSettings(st);
+            if (res && res.success) {
+              setSmartToolsSettings(st);
+            }
+            return res;
           }}
           onLogout={handleAdminLogout}
           onClose={() => setAdminDashboardOpen(false)}

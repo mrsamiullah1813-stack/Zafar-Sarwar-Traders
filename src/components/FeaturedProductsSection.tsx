@@ -263,7 +263,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                   <div className="relative h-56 w-full bg-slate-50 overflow-hidden flex items-center justify-center p-2">
                     <img
                       src={product.image || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80'}
-                      alt={product.name}
+                      alt={`${product.name} - Luxury Sanitaryware & Bathroom Fittings Pakistan | Zafar Sarwar Traders`}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />
 

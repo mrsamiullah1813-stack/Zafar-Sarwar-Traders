@@ -42,7 +42,7 @@ export const AboutSection: React.FC<AboutSectionProps> = ({ config }) => {
               <div className="relative rounded-3xl overflow-hidden border border-slate-800/90 shadow-2xl shadow-slate-950/80 group">
                 <img
                   src="https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1200&q=80"
-                  alt="Zafar Sarwar Traders Premium Faucet"
+                  alt="Zafar Sarwar Traders - Luxury Sanitaryware Showroom & Bathroom Solutions Pakistan"
                   referrerPolicy="no-referrer"
                   className="w-full h-[450px] sm:h-[520px] object-cover group-hover:scale-105 transition-transform duration-700 filter brightness-95"
                 />

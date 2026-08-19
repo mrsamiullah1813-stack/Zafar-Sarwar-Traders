@@ -13,6 +13,7 @@ import {
   Sparkles,
   Loader2
 } from 'lucide-react';
+import { uploadMediaToSupabase } from '../services/supabaseService';
 
 interface MultiImageUploaderProps {
   label?: string;
@@ -59,13 +60,19 @@ export const MultiImageUploader: React.FC<MultiImageUploaderProps> = ({
         continue;
       }
 
-      setUploadProgress(Math.round(((i + 1) / filesArray.length) * 80));
+      setUploadProgress(Math.round(((i + 1) / filesArray.length) * 70));
 
       try {
         const dataUrl = await compressAndResizeImage(file);
-        processedDataUrls.push(dataUrl);
+        // Upload to Supabase Storage bucket
+        const uploadRes = await uploadMediaToSupabase(dataUrl, 'product-media');
+        if (uploadRes && uploadRes.url) {
+          processedDataUrls.push(uploadRes.url);
+        } else {
+          processedDataUrls.push(dataUrl);
+        }
       } catch (err) {
-        console.error('Failed to compress image:', err);
+        console.error('Failed to compress/upload image:', err);
       }
     }
 
