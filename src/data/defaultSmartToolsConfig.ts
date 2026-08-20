@@ -12,7 +12,16 @@ export const defaultSmartToolsSettings: SmartToolsSettings = {
     doubleWallBricksPerSqFt: 9.0, // 9" wall
     cementBagsPer1000Bricks: 3.2,
     sandCftPer1000Bricks: 15.0,
-    defaultWastagePercent: 5
+    defaultWastagePercent: 5,
+    defaultWallHeightFeet: 10,
+    defaultWallThicknessInches: 9,
+    defaultDoorWidthFeet: 3,
+    defaultDoorHeightFeet: 7,
+    defaultWindowWidthFeet: 4,
+    defaultWindowHeightFeet: 4,
+    defaultBrickLengthInches: 9,
+    defaultBrickWidthInches: 4.5,
+    defaultBrickHeightInches: 3
   },
   paintSettings: {
     sqFtPerLitrePerCoat: 130,
@@ -119,17 +128,17 @@ export const defaultSmartToolsSettings: SmartToolsSettings = {
     },
     {
       id: "bricks",
-      title: "Bricks Estimator",
-      urduTitle: "اینٹوں کا تخمینہ کیلکولیٹر",
-      tagline: "Calculate approximate brick requirements with openings and wastage.",
-      description: "Enter wall length, height, and thickness (4.5\" or 9\" standard double leaf) with door and window openings deduction to find exact brick quantities.",
-      badge: "Masonry Tool",
+      title: "House Brick Calculator",
+      urduTitle: "گھر کے لیے اینٹوں کا کیلکولیٹر",
+      tagline: "Simple step-by-step brick estimator for Pakistani houses.",
+      description: "Enter your house type, dimensions, rooms, kitchens, washrooms, and openings to easily calculate required bricks, estimated range, and mortar bags.",
+      badge: "House Wizard",
       iconName: "Boxes",
-      buttonText: "Open Tool",
+      buttonText: "Calculate Bricks",
       isEnabled: true,
       showOnHomepage: true,
       displayOrder: 7,
-      disclaimer: "Actual brick requirement depends on brick size, wall thickness, mortar joints, openings such as doors/windows and construction method."
+      disclaimer: "This is an estimated brick quantity. Actual requirements may vary depending on wall design, brick size, openings, construction method, and structural requirements. For final construction quantities, consult a qualified engineer or contractor."
     },
     {
       id: "paint",

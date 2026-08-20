@@ -45,14 +45,17 @@ export function formatSupabaseError(error: any): string {
   if (!error) return 'Unknown database error occurred.';
   const msg = typeof error === 'string' ? error : (error.message || JSON.stringify(error));
   const lower = msg.toLowerCase();
+  if (lower.includes('categories_slug_key') || lower.includes('duplicate key value') && lower.includes('slug')) {
+    return 'A category with this URL slug already exists. Please choose a distinct category name or slug.';
+  }
   if (lower.includes('row-level security') || lower.includes('violates row-level') || lower.includes('rls')) {
     return 'Permission denied by Row-Level Security: You must log in as an authenticated Admin (Ctrl+Shift+A) to perform this operation in Supabase.';
   }
-  if (lower.includes('jwt') || lower.includes('token') && (lower.includes('expired') || lower.includes('invalid'))) {
+  if (lower.includes('jwt') || (lower.includes('token') && (lower.includes('expired') || lower.includes('invalid')))) {
     return 'Your admin authentication session has expired. Please log in again (Ctrl+Shift+A).';
   }
   if (lower.includes('failed to fetch') || lower.includes('network') || lower.includes('timeout')) {
-    return 'Network error: Unable to connect to Supabase PostgreSQL database. Please check your internet connection.';
+    return 'Network connection issue: Unable to connect to Supabase PostgreSQL database. Please check your internet connection.';
   }
   return msg;
 }
@@ -133,7 +136,8 @@ export function mapDbProductToProduct(row: any): Product {
     rating: typeof row.rating === 'number' ? row.rating : (typeof rawSpecs._rating === 'number' ? rawSpecs._rating : (row.rating ? parseFloat(String(row.rating)) : 4.8)),
     reviewsCount: Number(row.reviews_count ?? row.reviewsCount ?? rawSpecs._reviews_count ?? 12),
     reviews_count: Number(row.reviews_count ?? row.reviewsCount ?? rawSpecs._reviews_count ?? 12),
-    displayOrder: Number(row.display_order ?? row.displayOrder ?? rawSpecs._display_order ?? 0)
+    displayOrder: Number(row.display_order ?? row.displayOrder ?? rawSpecs._display_order ?? 0),
+    deliveryConfig: rawSpecs._delivery_config || row.delivery_config || undefined
   };
 }
 
@@ -189,6 +193,7 @@ export function mapProductToDb(product: Product): any {
     _tags: product.tags || [],
     _seo_title: product.seoTitle || null,
     _seo_description: product.seoDescription || null,
+    _delivery_config: product.deliveryConfig || null,
     _rating: typeof product.rating === 'number' ? product.rating : (product.rating ? parseFloat(String(product.rating)) : 4.8),
     _reviews_count: typeof product.reviewsCount === 'number' ? product.reviewsCount : (typeof product.reviews_count === 'number' ? product.reviews_count : 12),
     _display_order: product.displayOrder ?? 0
@@ -233,50 +238,174 @@ export function mapProductToDb(product: Product): any {
   };
 }
 
+export function mapDbCategoryToCategory(r: any, idx: number): ProductCategory {
+  const catId = String(r.id ?? r.category_id ?? r.cat_id ?? `cat-${idx + 1}`);
+  const catName = String(r.name ?? r.title ?? r.category_name ?? r.label ?? `Category ${idx + 1}`);
+  const rawSlug = r.slug ?? r.category_slug ?? catName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const cleanSlug = String(rawSlug).replace(/(^-|-$)+/g, '');
+
+  let isActive = true;
+  if (r.is_active !== undefined && r.is_active !== null) {
+    isActive = r.is_active === true || r.is_active === 1 || r.is_active === 'true' || r.is_active === 't';
+  } else if (r.active !== undefined && r.active !== null) {
+    isActive = Boolean(r.active);
+  } else if (r.enabled !== undefined && r.enabled !== null) {
+    isActive = Boolean(r.enabled);
+  } else if (r.status !== undefined && r.status !== null) {
+    isActive = String(r.status).toLowerCase() === 'active';
+  }
+
+  let showOnHomepage = true;
+  if (r.show_on_homepage !== undefined && r.show_on_homepage !== null) {
+    showOnHomepage = Boolean(r.show_on_homepage);
+  } else if (r.display_on_homepage !== undefined && r.display_on_homepage !== null) {
+    showOnHomepage = Boolean(r.display_on_homepage);
+  }
+
+  const isFeatured = Boolean(r.featured ?? r.is_featured ?? false);
+  const displayOrder = Number(r.display_order ?? r.sort_order ?? r.order ?? r.position ?? idx);
+
+  return {
+    id: catId,
+    name: catName,
+    slug: cleanSlug,
+    description: r.description ?? r.desc ?? r.details ?? r.short_description ?? '',
+    fullDescription: r.full_description ?? r.fullDescription ?? undefined,
+    image: r.image ?? r.image_url ?? r.img ?? r.cover_image ?? r.thumbnail ?? r.photo ?? r.main_image ?? r.picture ?? '',
+    iconImage: r.icon_image ?? undefined,
+    bannerImage: r.banner_image ?? undefined,
+    itemCount: Number(r.item_count ?? r.count ?? r.total_items ?? 0),
+    badge: r.badge || undefined,
+    iconName: r.icon ?? r.icon_name ?? 'Grid',
+    group: (r.group_name ?? r.group ?? r.department ?? r.category_group ?? 'sanitary') as any,
+    isFeatured,
+    showOnHomepage,
+    isActive,
+    seoTitle: r.seo_title ?? undefined,
+    seoDescription: r.seo_description ?? undefined,
+    displayOrder
+  };
+}
+
+export function mapDbBrandToBrand(r: any, idx: number): ProductBrand {
+  return {
+    id: String(r.id),
+    name: r.name || '',
+    slug: r.slug || (r.name ? r.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') : `brand-${idx + 1}`),
+    logo: r.logo || '',
+    bannerImage: r.banner_image || undefined,
+    description: r.description || '',
+    officialBadge: r.official_badge || undefined,
+    isFeatured: Boolean(r.featured ?? r.is_featured),
+    isActive: Boolean(r.enabled ?? r.is_active ?? true),
+    displayOrder: Number(r.display_order ?? idx)
+  };
+}
+
+export function mapDbHeroSettings(data: any, slideProductIds: string[] = []): HeroSettings {
+  return {
+    isEnabled: Boolean(data.is_enabled ?? true),
+    badgeText: data.badge_text || 'DIRECT DISTRIBUTOR & SANITARY SPECIALIST',
+    heading: data.heading || 'INNOVATION & ELEGANCE IN SANITARYWARE',
+    subheading: data.subheading || 'Premium Faucets, Luxury Bathroom Suites, Smart Showers & Complete Building Solutions',
+    primaryBtnText: data.primary_btn_text || 'Explore Collection',
+    primaryBtnLink: data.primary_btn_link || '#products',
+    enablePrimaryBtn: Boolean(data.enable_primary_btn ?? true),
+    secondaryBtnText: data.secondary_btn_text || 'Contact Sales',
+    secondaryBtnLink: data.secondary_btn_link || '#contact',
+    enableSecondaryBtn: Boolean(data.enable_secondary_btn ?? true),
+    tertiaryBtnText: data.tertiary_btn_text || undefined,
+    tertiaryBtnLink: data.tertiary_btn_link || undefined,
+    enableTertiaryBtn: data.enable_tertiary_btn ? Boolean(data.enable_tertiary_btn) : undefined,
+    rotationDurationSeconds: Number(data.rotation_duration_seconds ?? (data.slide_duration ? data.slide_duration / 1000 : 6)),
+    transitionSpeedSeconds: Number(data.transition_speed_seconds ?? 0.8),
+    transitionStyle: data.transition_style || 'cinematic-depth',
+    autoPlay: Boolean(data.autoplay ?? true),
+    pauseOnHover: Boolean(data.pause_on_hover ?? true),
+    enableParallax: Boolean(data.enable_parallax ?? true),
+    parallaxStrength: Number(data.parallax_strength ?? 15),
+    glowIntensity: data.glow_intensity || 'medium',
+    bgType: data.bg_type || 'ambient-dark',
+    bgMediaUrl: data.bg_media_url || undefined,
+    bgVideoUrl: data.bg_video_url || undefined,
+    heroProductIds: Array.isArray(data.hero_product_ids) && data.hero_product_ids.length > 0 ? data.hero_product_ids : slideProductIds,
+    heroMode: data.hero_mode || 'selected_or_featured',
+    productImageOverrides: typeof data.product_image_overrides === 'object' ? data.product_image_overrides : {},
+    productVideoOverrides: typeof data.product_video_overrides === 'object' ? data.product_video_overrides : {},
+    customProductOrder: Array.isArray(data.custom_product_order) ? data.custom_product_order : [],
+    isDraft: Boolean(data.is_draft)
+  };
+}
+
+export function mapDbDeliveryCity(r: any, idx: number): CityDeliveryInfo {
+  return {
+    id: String(r.id),
+    cityName: r.name || r.city_name || '',
+    areaTown: r.area_town || r.areaTown || undefined,
+    status: (r.status === 'available' || r.status === 'unavailable' || r.status === 'contact_to_confirm') ? r.status : (r.enabled === false ? 'unavailable' : 'available'),
+    deliveryFee: Number(r.delivery_fee ?? 0),
+    deliveryFeeType: r.delivery_fee_type || r.deliveryFeeType || (Number(r.delivery_fee ?? 0) === 0 ? 'free' : 'fixed'),
+    deliveryFeeCustomText: r.delivery_fee_custom_text || r.deliveryFeeCustomText || undefined,
+    estimatedDays: r.estimated_days || r.estimatedDays || '2-4 Days',
+    isEnabled: Boolean(r.enabled ?? true),
+    isSameDayAvailable: Boolean(r.same_day_available ?? r.isSameDayAvailable),
+    isNextDayAvailable: Boolean(r.next_day_available ?? r.isNextDayAvailable),
+    displayOrder: Number(r.display_order ?? idx),
+    notes: r.notes || undefined,
+    coverageAreas: Array.isArray(r.coverage_areas) ? r.coverage_areas : (Array.isArray(r.coverageAreas) ? r.coverageAreas : undefined)
+  };
+}
+
 // =========================================================
-// 1. PRODUCTS CRUD (Direct Supabase SDK)
+// 1. PRODUCTS CRUD (Direct Supabase SDK + Server Fallback)
 // =========================================================
 
 export async function fetchProductsFromSupabase(): Promise<Product[] | null> {
   await initializeSupabaseRuntime();
 
-  if (!isSupabaseConfigured) {
-    console.warn('[Supabase Direct SDK] Table: products | Status: SKIPPED | Reason: Supabase not configured in environment');
-    return null;
+  // 1. Attempt Direct Supabase SDK Query
+  if (isSupabaseConfigured) {
+    try {
+      let { data, error, status, statusText } = await supabase
+        .from('products')
+        .select('*')
+        .order('display_order', { ascending: true })
+        .order('created_at', { ascending: false });
+
+      if (error && (error.code === '42703' || error.message?.toLowerCase().includes('column'))) {
+        const fallbackRes = await supabase.from('products').select('*');
+        data = fallbackRes.data;
+        error = fallbackRes.error;
+        status = fallbackRes.status;
+        statusText = fallbackRes.statusText;
+      }
+
+      if (!error && Array.isArray(data)) {
+        console.log(`[Supabase Direct SDK] Table: products | Status: SUCCESS | Records: ${data.length} | HTTP: ${status || 200}`);
+        return data.map(mapDbProductToProduct);
+      }
+      
+      console.warn(`[Supabase Direct SDK] Direct products fetch failed (HTTP ${status || 0}), attempting server proxy fallback...`);
+    } catch (err: any) {
+      console.warn('[Supabase Direct SDK] Direct products fetch network exception, attempting server proxy fallback...');
+    }
   }
 
+  // 2. Server Proxy Fallback
   try {
-    console.log('[Supabase Direct SDK] Querying table: public.products ...');
-    
-    // Attempt standard query with ordering
-    let { data, error, status, statusText } = await supabase
-      .from('products')
-      .select('*')
-      .order('display_order', { ascending: true })
-      .order('created_at', { ascending: false });
-
-    // Fallback if column ordering fails due to schema variations
-    if (error && (error.code === '42703' || error.message?.toLowerCase().includes('column'))) {
-      console.warn('[Supabase Direct SDK] Table: products | Retrying without column ordering');
-      const fallbackRes = await supabase.from('products').select('*');
-      data = fallbackRes.data;
-      error = fallbackRes.error;
-      status = fallbackRes.status;
-      statusText = fallbackRes.statusText;
+    const res = await fetch('/api/db/products', { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        console.log(`[Supabase Proxy] Loaded ${json.data.length} products via server proxy`);
+        return json.data.map(mapDbProductToProduct);
+      }
     }
-
-    if (error) {
-      console.error(`[Supabase Direct SDK] Table: products | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
-      return null;
-    }
-
-    const rowCount = data ? data.length : 0;
-    console.log(`[Supabase Direct SDK] Table: products | Status: SUCCESS | Records: ${rowCount} | HTTP: ${status || 200}`);
-    return data ? data.map(mapDbProductToProduct) : [];
-  } catch (err: any) {
-    console.error(`[Supabase Direct SDK] Table: products | Status: ERROR | Message: ${err?.message || String(err)}`);
-    return null;
+  } catch (proxyErr) {
+    // Network offline or static host fallback
   }
+
+  return null;
 }
 
 export async function upsertProductInSupabase(product: Product | Product[]): Promise<{ success: boolean; error?: string }> {
@@ -329,99 +458,58 @@ export async function deleteProductFromSupabase(productId: string): Promise<{ su
 }
 
 // =========================================================
-// 2. CATEGORIES CRUD (Direct Supabase SDK)
+// 2. CATEGORIES CRUD (Direct Supabase SDK + Server Fallback)
 // =========================================================
 
 export async function fetchCategoriesFromSupabase(): Promise<ProductCategory[] | null> {
   await initializeSupabaseRuntime();
 
-  if (!isSupabaseConfigured) {
-    console.warn('[Supabase Direct SDK] Table: categories | Status: SKIPPED | Reason: Supabase not configured');
-    return null;
-  }
+  // 1. Attempt Direct Supabase SDK Query
+  if (isSupabaseConfigured) {
+    try {
+      let { data, error, status } = await supabase
+        .from('categories')
+        .select('*');
 
-  try {
-    console.log('[Supabase Direct SDK] Querying table: public.categories ...');
-    
-    // Direct select('*') avoids PostgREST column errors if display_order is absent in schema
-    let { data, error, status, statusText } = await supabase
-      .from('categories')
-      .select('*');
-
-    if (error) {
-      console.error(`[Supabase Direct SDK] Table: categories | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
-      return null;
+      if (!error && Array.isArray(data)) {
+        const mappedCategories: ProductCategory[] = data.map((r: any, idx: number) => mapDbCategoryToCategory(r, idx));
+        mappedCategories.sort((a, b) => {
+          if ((a.displayOrder ?? 0) !== (b.displayOrder ?? 0)) {
+            return (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+          }
+          return a.name.localeCompare(b.name);
+        });
+        console.log(`[Supabase Direct SDK] Categories mapped successfully: ${mappedCategories.length} categories ready`);
+        return mappedCategories;
+      }
+      console.warn(`[Supabase Direct SDK] Direct categories fetch failed (HTTP ${status || 0}), attempting server proxy fallback...`);
+    } catch (err: any) {
+      console.warn('[Supabase Direct SDK] Direct categories fetch network exception, attempting server proxy fallback...');
     }
-
-    const rawRows = data || [];
-    const rowCount = rawRows.length;
-    console.log(`[Supabase Direct SDK] Table: categories | Status: SUCCESS | Raw Rows Returned: ${rowCount} | HTTP: ${status || 200}`);
-
-    const mappedCategories: ProductCategory[] = rawRows.map((r: any, idx: number) => {
-      const catId = String(r.id ?? r.category_id ?? r.cat_id ?? `cat-${idx + 1}`);
-      const catName = String(r.name ?? r.title ?? r.category_name ?? r.label ?? `Category ${idx + 1}`);
-      const rawSlug = r.slug ?? r.category_slug ?? catName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      const cleanSlug = String(rawSlug).replace(/(^-|-$)+/g, '');
-
-      // Determine active status accurately
-      let isActive = true;
-      if (r.is_active !== undefined && r.is_active !== null) {
-        isActive = r.is_active === true || r.is_active === 1 || r.is_active === 'true' || r.is_active === 't';
-      } else if (r.active !== undefined && r.active !== null) {
-        isActive = Boolean(r.active);
-      } else if (r.enabled !== undefined && r.enabled !== null) {
-        isActive = Boolean(r.enabled);
-      } else if (r.status !== undefined && r.status !== null) {
-        isActive = String(r.status).toLowerCase() === 'active';
-      }
-
-      // Determine homepage visibility
-      let showOnHomepage = true;
-      if (r.show_on_homepage !== undefined && r.show_on_homepage !== null) {
-        showOnHomepage = Boolean(r.show_on_homepage);
-      } else if (r.display_on_homepage !== undefined && r.display_on_homepage !== null) {
-        showOnHomepage = Boolean(r.display_on_homepage);
-      }
-
-      const isFeatured = Boolean(r.featured ?? r.is_featured ?? false);
-      const displayOrder = Number(r.display_order ?? r.sort_order ?? r.order ?? r.position ?? idx);
-
-      return {
-        id: catId,
-        name: catName,
-        slug: cleanSlug,
-        description: r.description ?? r.desc ?? r.details ?? r.short_description ?? '',
-        fullDescription: r.full_description ?? r.fullDescription ?? undefined,
-        image: r.image ?? r.image_url ?? r.img ?? r.cover_image ?? r.thumbnail ?? r.photo ?? r.main_image ?? r.picture ?? '',
-        iconImage: r.icon_image ?? undefined,
-        bannerImage: r.banner_image ?? undefined,
-        itemCount: Number(r.item_count ?? r.count ?? r.total_items ?? 0),
-        badge: r.badge || undefined,
-        iconName: r.icon ?? r.icon_name ?? 'Grid',
-        group: (r.group_name ?? r.group ?? r.department ?? r.category_group ?? 'sanitary') as any,
-        isFeatured,
-        showOnHomepage,
-        isActive,
-        seoTitle: r.seo_title ?? undefined,
-        seoDescription: r.seo_description ?? undefined,
-        displayOrder
-      };
-    });
-
-    // In-memory sorting by displayOrder, then by name
-    mappedCategories.sort((a, b) => {
-      if ((a.displayOrder ?? 0) !== (b.displayOrder ?? 0)) {
-        return (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
-      }
-      return a.name.localeCompare(b.name);
-    });
-
-    console.log(`[Supabase Direct SDK] Categories mapped successfully: ${mappedCategories.length} categories ready for UI [Sample: ${mappedCategories.slice(0, 5).map(c => c.name).join(', ')}]`);
-    return mappedCategories;
-  } catch (err: any) {
-    console.error(`[Supabase Direct SDK] Table: categories | Status: ERROR | Message: ${err?.message || String(err)}`);
-    return null;
   }
+
+  // 2. Server Proxy Fallback
+  try {
+    const res = await fetch('/api/db/categories', { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        const mappedCategories: ProductCategory[] = json.data.map((r: any, idx: number) => mapDbCategoryToCategory(r, idx));
+        mappedCategories.sort((a, b) => {
+          if ((a.displayOrder ?? 0) !== (b.displayOrder ?? 0)) {
+            return (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+          }
+          return a.name.localeCompare(b.name);
+        });
+        console.log(`[Supabase Proxy] Loaded ${mappedCategories.length} categories via server proxy`);
+        return mappedCategories;
+      }
+    }
+  } catch (proxyErr) {
+    // offline or static hosting
+  }
+
+  return null;
 }
 
 export async function upsertCategoryInSupabase(category: ProductCategory | ProductCategory[]): Promise<{ success: boolean; error?: string }> {
@@ -474,55 +562,51 @@ export async function deleteCategoryFromSupabase(categoryId: string): Promise<{ 
 }
 
 // =========================================================
-// 3. BRANDS CRUD (Direct Supabase SDK)
+// 3. BRANDS CRUD (Direct Supabase SDK + Server Fallback)
 // =========================================================
 
 export async function fetchBrandsFromSupabase(): Promise<ProductBrand[] | null> {
   await initializeSupabaseRuntime();
 
-  if (!isSupabaseConfigured) {
-    console.warn('[Supabase Direct SDK] Table: brands | Status: SKIPPED | Reason: Supabase not configured');
-    return null;
+  // 1. Attempt Direct Supabase SDK Query
+  if (isSupabaseConfigured) {
+    try {
+      let { data, error, status } = await supabase
+        .from('brands')
+        .select('*')
+        .order('display_order', { ascending: true });
+
+      if (error && (error.code === '42703' || error.message?.toLowerCase().includes('column'))) {
+        const fallbackRes = await supabase.from('brands').select('*');
+        data = fallbackRes.data;
+        error = fallbackRes.error;
+      }
+
+      if (!error && Array.isArray(data)) {
+        console.log(`[Supabase Direct SDK] Table: brands | Status: SUCCESS | Records: ${data.length} | HTTP: ${status || 200}`);
+        return data.map((r: any, idx: number) => mapDbBrandToBrand(r, idx));
+      }
+      console.warn(`[Supabase Direct SDK] Direct brands fetch failed (HTTP ${status || 0}), attempting server proxy fallback...`);
+    } catch (err: any) {
+      console.warn('[Supabase Direct SDK] Direct brands fetch network exception, attempting server proxy fallback...');
+    }
   }
 
+  // 2. Server Proxy Fallback
   try {
-    console.log('[Supabase Direct SDK] Querying table: public.brands ...');
-    let { data, error, status, statusText } = await supabase
-      .from('brands')
-      .select('*')
-      .order('display_order', { ascending: true });
-
-    if (error && (error.code === '42703' || error.message?.toLowerCase().includes('column'))) {
-      const fallbackRes = await supabase.from('brands').select('*');
-      data = fallbackRes.data;
-      error = fallbackRes.error;
-      status = fallbackRes.status;
-      statusText = fallbackRes.statusText;
+    const res = await fetch('/api/db/brands', { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        console.log(`[Supabase Proxy] Loaded ${json.data.length} brands via server proxy`);
+        return json.data.map((r: any, idx: number) => mapDbBrandToBrand(r, idx));
+      }
     }
-
-    if (error) {
-      console.error(`[Supabase Direct SDK] Table: brands | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
-      return null;
-    }
-
-    const rowCount = data ? data.length : 0;
-    console.log(`[Supabase Direct SDK] Table: brands | Status: SUCCESS | Records: ${rowCount} | HTTP: ${status || 200}`);
-    return data ? data.map((r: any) => ({
-      id: String(r.id),
-      name: r.name || '',
-      slug: r.slug || (r.name ? r.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') : ''),
-      logo: r.logo || '',
-      bannerImage: r.banner_image || undefined,
-      description: r.description || '',
-      officialBadge: r.official_badge || undefined,
-      isFeatured: Boolean(r.featured ?? r.is_featured),
-      isActive: Boolean(r.enabled ?? r.is_active ?? true),
-      displayOrder: Number(r.display_order ?? 0)
-    })) : [];
-  } catch (err: any) {
-    console.error(`[Supabase Direct SDK] Table: brands | Status: ERROR | Message: ${err?.message || String(err)}`);
-    return null;
+  } catch (proxyErr) {
+    // offline or static host fallback
   }
+
+  return null;
 }
 
 export async function upsertBrandInSupabase(brand: ProductBrand | ProductBrand[]): Promise<{ success: boolean; error?: string }> {
@@ -575,87 +659,65 @@ export async function deleteBrandFromSupabase(brandId: string): Promise<{ succes
 }
 
 // =========================================================
-// 4. HERO SETTINGS & SLIDES (Direct Supabase SDK)
+// 4. HERO SETTINGS & SLIDES (Direct Supabase SDK + Server Fallback)
 // =========================================================
 
 export async function fetchHeroSettingsFromSupabase(): Promise<HeroSettings | null> {
   await initializeSupabaseRuntime();
 
-  if (!isSupabaseConfigured) {
-    console.warn('[Supabase Direct SDK] Table: hero_settings | Status: SKIPPED | Reason: Supabase not configured');
-    return null;
-  }
-
-  try {
-    console.log('[Supabase Direct SDK] Querying table: public.hero_settings ...');
-    const { data, error, status, statusText } = await supabase
-      .from('hero_settings')
-      .select('*')
-      .eq('id', 'default')
-      .maybeSingle();
-
-    if (error) {
-      console.error(`[Supabase Direct SDK] Table: hero_settings | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
-      return null;
-    }
-
-    if (!data) {
-      console.log(`[Supabase Direct SDK] Table: hero_settings | Status: SUCCESS (No default row) | HTTP: ${status || 200}`);
-      return null;
-    }
-
-    console.log(`[Supabase Direct SDK] Table: hero_settings | Status: SUCCESS | Config Found: true | HTTP: ${status || 200}`);
-
-    // Query slides
-    let slideProductIds: string[] = [];
+  // 1. Attempt Direct Supabase SDK Query
+  if (isSupabaseConfigured) {
     try {
-      const { data: slideData, error: slideErr } = await supabase
-        .from('hero_slides')
+      const { data, error, status } = await supabase
+        .from('hero_settings')
         .select('*')
-        .eq('enabled', true)
-        .order('display_order', { ascending: true });
+        .eq('id', 'default')
+        .maybeSingle();
 
-      if (!slideErr && slideData && slideData.length > 0) {
-        slideProductIds = slideData.map((s: any) => String(s.product_id)).filter(Boolean);
+      if (!error && data) {
+        let slideProductIds: string[] = [];
+        try {
+          const { data: slideData } = await supabase
+            .from('hero_slides')
+            .select('*')
+            .eq('enabled', true)
+            .order('display_order', { ascending: true });
+
+          if (slideData && slideData.length > 0) {
+            slideProductIds = slideData.map((s: any) => String(s.product_id)).filter(Boolean);
+          }
+        } catch {}
+
+        console.log(`[Supabase Direct SDK] Table: hero_settings | Status: SUCCESS | Config Found: true | HTTP: ${status || 200}`);
+        return mapDbHeroSettings(data, slideProductIds);
       }
-    } catch {}
+      
+      if (!error && !data) {
+        console.log(`[Supabase Direct SDK] Table: hero_settings | Status: SUCCESS (No default row)`);
+        return null;
+      }
 
-    return {
-      isEnabled: Boolean(data.is_enabled ?? true),
-      badgeText: data.badge_text || 'DIRECT DISTRIBUTOR & SANITARY SPECIALIST',
-      heading: data.heading || 'INNOVATION & ELEGANCE IN SANITARYWARE',
-      subheading: data.subheading || 'Premium Faucets, Luxury Bathroom Suites, Smart Showers & Complete Building Solutions',
-      primaryBtnText: data.primary_btn_text || 'Explore Collection',
-      primaryBtnLink: data.primary_btn_link || '#products',
-      enablePrimaryBtn: Boolean(data.enable_primary_btn ?? true),
-      secondaryBtnText: data.secondary_btn_text || 'Contact Sales',
-      secondaryBtnLink: data.secondary_btn_link || '#contact',
-      enableSecondaryBtn: Boolean(data.enable_secondary_btn ?? true),
-      tertiaryBtnText: data.tertiary_btn_text || undefined,
-      tertiaryBtnLink: data.tertiary_btn_link || undefined,
-      enableTertiaryBtn: data.enable_tertiary_btn ? Boolean(data.enable_tertiary_btn) : undefined,
-      rotationDurationSeconds: Number(data.rotation_duration_seconds ?? (data.slide_duration ? data.slide_duration / 1000 : 6)),
-      transitionSpeedSeconds: Number(data.transition_speed_seconds ?? 0.8),
-      transitionStyle: data.transition_style || 'cinematic-depth',
-      autoPlay: Boolean(data.autoplay ?? true),
-      pauseOnHover: Boolean(data.pause_on_hover ?? true),
-      enableParallax: Boolean(data.enable_parallax ?? true),
-      parallaxStrength: Number(data.parallax_strength ?? 15),
-      glowIntensity: data.glow_intensity || 'medium',
-      bgType: data.bg_type || 'ambient-dark',
-      bgMediaUrl: data.bg_media_url || undefined,
-      bgVideoUrl: data.bg_video_url || undefined,
-      heroProductIds: Array.isArray(data.hero_product_ids) && data.hero_product_ids.length > 0 ? data.hero_product_ids : slideProductIds,
-      heroMode: data.hero_mode || 'selected_or_featured',
-      productImageOverrides: typeof data.product_image_overrides === 'object' ? data.product_image_overrides : {},
-      productVideoOverrides: typeof data.product_video_overrides === 'object' ? data.product_video_overrides : {},
-      customProductOrder: Array.isArray(data.custom_product_order) ? data.custom_product_order : [],
-      isDraft: Boolean(data.is_draft)
-    };
-  } catch (err: any) {
-    console.error(`[Supabase Direct SDK] Table: hero_settings | Status: ERROR | Message: ${err?.message || String(err)}`);
-    return null;
+      console.warn(`[Supabase Direct SDK] Direct hero settings fetch failed (HTTP ${status || 0}), attempting server proxy fallback...`);
+    } catch (err: any) {
+      console.warn('[Supabase Direct SDK] Direct hero settings fetch network exception, attempting server proxy fallback...');
+    }
   }
+
+  // 2. Server Proxy Fallback
+  try {
+    const res = await fetch('/api/db/hero-settings', { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data) {
+        console.log('[Supabase Proxy] Loaded hero settings via server proxy');
+        return mapDbHeroSettings(json.data);
+      }
+    }
+  } catch (proxyErr) {
+    // offline or static host fallback
+  }
+
+  return null;
 }
 
 export async function saveHeroSettingsToSupabase(settings: HeroSettings): Promise<{ success: boolean; error?: string }> {
@@ -683,7 +745,7 @@ export async function saveHeroSettingsToSupabase(settings: HeroSettings): Promis
 }
 
 // =========================================================
-// 5. ORDERS CRUD (Direct Supabase SDK)
+// 5. ORDERS CRUD (Direct Supabase SDK + Server Fallback)
 // =========================================================
 
 const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
@@ -691,43 +753,51 @@ const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4
 export async function fetchOrdersFromSupabase(customerId?: string): Promise<CustomerOrder[] | null> {
   await initializeSupabaseRuntime();
 
-  if (!isSupabaseConfigured) {
-    console.warn('[Supabase Direct SDK] Table: orders | Status: SKIPPED | Reason: Supabase not configured');
-    return null;
+  // 1. Attempt Direct Supabase SDK Query
+  if (isSupabaseConfigured) {
+    try {
+      let query = supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false });
+      if (customerId) {
+        if (isUUID(customerId)) {
+          query = query.eq('customer_id', customerId);
+        } else {
+          query = query.or(`customer_phone.eq.${customerId},id.eq.${customerId}`);
+        }
+      }
+      let { data, error, status } = await query;
+
+      if (error && (error.code === '42703' || error.message?.toLowerCase().includes('column'))) {
+        const fallbackRes = await supabase.from('orders').select('*');
+        data = fallbackRes.data;
+        error = fallbackRes.error;
+      }
+
+      if (!error && Array.isArray(data)) {
+        console.log(`[Supabase Direct SDK] Table: orders | Status: SUCCESS | Records: ${data.length} | HTTP: ${status || 200}`);
+        return data.map(mapDbOrderToCustomerOrder);
+      }
+      console.warn(`[Supabase Direct SDK] Direct orders fetch failed (HTTP ${status || 0}), attempting server proxy fallback...`);
+    } catch (err: any) {
+      console.warn('[Supabase Direct SDK] Direct orders fetch network exception, attempting server proxy fallback...');
+    }
   }
 
+  // 2. Server Proxy Fallback
   try {
-    console.log('[Supabase Direct SDK] Querying table: public.orders ...');
-    let query = supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false });
-    if (customerId) {
-      if (isUUID(customerId)) {
-        query = query.eq('customer_id', customerId);
-      } else {
-        query = query.or(`customer_phone.eq.${customerId},id.eq.${customerId}`);
+    const url = `/api/db/orders${customerId ? `?customerId=${encodeURIComponent(customerId)}` : ''}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        console.log(`[Supabase Proxy] Loaded ${json.data.length} orders via server proxy`);
+        return json.data.map(mapDbOrderToCustomerOrder);
       }
     }
-    let { data, error, status, statusText } = await query;
-
-    if (error && (error.code === '42703' || error.message?.toLowerCase().includes('column'))) {
-      const fallbackRes = await supabase.from('orders').select('*');
-      data = fallbackRes.data;
-      error = fallbackRes.error;
-      status = fallbackRes.status;
-      statusText = fallbackRes.statusText;
-    }
-
-    if (error) {
-      console.error(`[Supabase Direct SDK] Table: orders | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
-      return null;
-    }
-
-    const count = data ? data.length : 0;
-    console.log(`[Supabase Direct SDK] Table: orders | Status: SUCCESS | Records: ${count} | HTTP: ${status || 200}`);
-    return data ? data.map(mapDbOrderToCustomerOrder) : [];
-  } catch (err: any) {
-    console.error(`[Supabase Direct SDK] Table: orders | Status: ERROR | Message: ${err?.message || String(err)}`);
-    return null;
+  } catch (proxyErr) {
+    // offline or static host fallback
   }
+
+  return null;
 }
 
 function mapDbOrderToCustomerOrder(r: any): CustomerOrder {
@@ -866,54 +936,51 @@ export async function updateOrderStatusInSupabase(orderId: string, status: Custo
 }
 
 // =========================================================
-// 6. DELIVERY CITIES CRUD (Direct Supabase SDK)
+// 6. DELIVERY CITIES CRUD (Direct Supabase SDK + Server Fallback)
 // =========================================================
 
 export async function fetchDeliveryCitiesFromSupabase(): Promise<CityDeliveryInfo[] | null> {
   await initializeSupabaseRuntime();
 
-  if (!isSupabaseConfigured) {
-    console.warn('[Supabase Direct SDK] Table: delivery_cities | Status: SKIPPED | Reason: Supabase not configured');
-    return null;
+  // 1. Attempt Direct Supabase SDK Query
+  if (isSupabaseConfigured) {
+    try {
+      let { data, error, status } = await supabase
+        .from('delivery_cities')
+        .select('*')
+        .order('display_order', { ascending: true });
+
+      if (error && (error.code === '42703' || error.message?.toLowerCase().includes('column'))) {
+        const fallbackRes = await supabase.from('delivery_cities').select('*');
+        data = fallbackRes.data;
+        error = fallbackRes.error;
+      }
+
+      if (!error && Array.isArray(data)) {
+        console.log(`[Supabase Direct SDK] Table: delivery_cities | Status: SUCCESS | Records: ${data.length} | HTTP: ${status || 200}`);
+        return data.map((r: any, idx: number) => mapDbDeliveryCity(r, idx));
+      }
+      console.warn(`[Supabase Direct SDK] Direct delivery cities fetch failed (HTTP ${status || 0}), attempting server proxy fallback...`);
+    } catch (err: any) {
+      console.warn('[Supabase Direct SDK] Direct delivery cities fetch network exception, attempting server proxy fallback...');
+    }
   }
 
+  // 2. Server Proxy Fallback
   try {
-    console.log('[Supabase Direct SDK] Querying table: public.delivery_cities ...');
-    let { data, error, status, statusText } = await supabase
-      .from('delivery_cities')
-      .select('*')
-      .order('display_order', { ascending: true });
-
-    if (error && (error.code === '42703' || error.message?.toLowerCase().includes('column'))) {
-      const fallbackRes = await supabase.from('delivery_cities').select('*');
-      data = fallbackRes.data;
-      error = fallbackRes.error;
-      status = fallbackRes.status;
-      statusText = fallbackRes.statusText;
+    const res = await fetch('/api/db/delivery-cities', { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        console.log(`[Supabase Proxy] Loaded ${json.data.length} delivery cities via server proxy`);
+        return json.data.map((r: any, idx: number) => mapDbDeliveryCity(r, idx));
+      }
     }
-
-    if (error) {
-      console.error(`[Supabase Direct SDK] Table: delivery_cities | Status: FAILED | Error Code: ${error.code || 'UNKNOWN'} | Message: ${error.message} | HTTP: ${status} (${statusText || 'Error'})`);
-      return null;
-    }
-
-    const count = data ? data.length : 0;
-    console.log(`[Supabase Direct SDK] Table: delivery_cities | Status: SUCCESS | Records: ${count} | HTTP: ${status || 200}`);
-    return data ? data.map((r: any) => ({
-      id: String(r.id),
-      cityName: r.name || r.city_name || '',
-      deliveryFee: Number(r.delivery_fee ?? 0),
-      estimatedDays: r.estimated_days || '2-4 Days',
-      isEnabled: Boolean(r.enabled),
-      isSameDayAvailable: Boolean(r.same_day_available),
-      isNextDayAvailable: Boolean(r.next_day_available),
-      displayOrder: Number(r.display_order ?? 0),
-      notes: r.notes || undefined
-    })) : [];
-  } catch (err: any) {
-    console.error(`[Supabase Direct SDK] Table: delivery_cities | Status: ERROR | Message: ${err?.message || String(err)}`);
-    return null;
+  } catch (proxyErr) {
+    // offline or static host fallback
   }
+
+  return null;
 }
 
 export async function upsertDeliveryCityInSupabase(city: CityDeliveryInfo): Promise<{ success: boolean; error?: string }> {
@@ -966,44 +1033,55 @@ function getSiteSettingColumnName(key: string): string | null {
 export async function fetchSiteSettingFromSupabase<T>(key: string): Promise<T | null> {
   await initializeSupabaseRuntime();
 
-  if (!isSupabaseConfigured) {
-    console.warn(`[Supabase Direct SDK] Table: site_settings | Key: ${key} | Status: SKIPPED | Reason: Supabase not configured`);
-    return null;
-  }
-
-  try {
-    // 1. Try key-value table (key, value)
-    const { data: kvData, error: kvErr, status: kvStatus } = await supabase
-      .from('site_settings')
-      .select('value')
-      .eq('key', key)
-      .maybeSingle();
-
-    if (!kvErr && kvData && kvData.value !== undefined) {
-      console.log(`[Supabase Direct SDK] Table: site_settings (KV) | Key: ${key} | Status: SUCCESS | HTTP: ${kvStatus || 200}`);
-      return kvData.value as T;
-    }
-
-    // 2. Try single row config with named column (id = 'config')
-    const colName = getSiteSettingColumnName(key);
-    if (colName) {
-      const { data: colData, error: colErr, status: colStatus } = await supabase
+  // 1. Attempt Direct Supabase SDK Query
+  if (isSupabaseConfigured) {
+    try {
+      // 1a. Try key-value table (key, value)
+      const { data: kvData, error: kvErr, status: kvStatus } = await supabase
         .from('site_settings')
-        .select(colName)
-        .eq('id', 'config')
+        .select('value')
+        .eq('key', key)
         .maybeSingle();
 
-      if (!colErr && colData && (colData as any)[colName] !== undefined && (colData as any)[colName] !== null) {
-        console.log(`[Supabase Direct SDK] Table: site_settings (Column: ${colName}) | Key: ${key} | Status: SUCCESS | HTTP: ${colStatus || 200}`);
-        return (colData as any)[colName] as T;
+      if (!kvErr && kvData && kvData.value !== undefined) {
+        console.log(`[Supabase Direct SDK] Table: site_settings (KV) | Key: ${key} | Status: SUCCESS | HTTP: ${kvStatus || 200}`);
+        return kvData.value as T;
+      }
+
+      // 1b. Try single row config with named column (id = 'config')
+      const colName = getSiteSettingColumnName(key);
+      if (colName) {
+        const { data: colData, error: colErr, status: colStatus } = await supabase
+          .from('site_settings')
+          .select(colName)
+          .eq('id', 'config')
+          .maybeSingle();
+
+        if (!colErr && colData && (colData as any)[colName] !== undefined && (colData as any)[colName] !== null) {
+          console.log(`[Supabase Direct SDK] Table: site_settings (Column: ${colName}) | Key: ${key} | Status: SUCCESS | HTTP: ${colStatus || 200}`);
+          return (colData as any)[colName] as T;
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[Supabase Direct SDK] Site setting (${key}) fetch exception, attempting proxy fallback...`);
+    }
+  }
+
+  // 2. Server Proxy Fallback
+  try {
+    const res = await fetch(`/api/db/site-settings/${encodeURIComponent(key)}`, { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data !== undefined) {
+        console.log(`[Supabase Proxy] Loaded site setting "${key}" via server proxy`);
+        return json.data as T;
       }
     }
-    console.log(`[Supabase Direct SDK] Table: site_settings | Key: ${key} | Status: NO_DATA (Using local default)`);
-    return null;
-  } catch (err: any) {
-    console.error(`[Supabase Direct SDK] Table: site_settings | Key: ${key} | Status: ERROR | Message: ${err?.message || String(err)}`);
-    return null;
+  } catch (proxyErr) {
+    // offline or static host fallback
   }
+
+  return null;
 }
 
 export async function saveSiteSettingToSupabase(key: string, value: any): Promise<{ success: boolean; error?: string }> {

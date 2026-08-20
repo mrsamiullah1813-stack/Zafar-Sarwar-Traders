@@ -123,6 +123,36 @@ export interface Product {
   seoTitle?: string;
   seoDescription?: string;
   displayOrder?: number;
+  deliveryConfig?: ProductDeliveryConfig;
+}
+
+export interface ProductDeliveryConfig {
+  deliveryType?: 'standard' | 'custom' | 'both' | 'inherit';
+  // Numeric / Range options
+  minDeliveryTime?: number;
+  maxDeliveryTime?: number;
+  deliveryTimeUnit?: 'Days' | 'Hours' | 'Working Days';
+  customDeliveryTimeLabel?: string; // e.g. "Estimated Delivery:", "Estimated Arrival:", "Shipping Time:"
+  
+  // Custom Delivery Text / Normal English Message
+  customDeliveryMessage?: string; // e.g. "Price on Call", "Delivery charges depend on your location.", "Delivery Available — Contact Us"
+  customMessageLabel?: string; // e.g. "Delivery Info:", "Note:"
+  
+  // Delivery Fee
+  deliveryFeeType?: 'free' | 'fixed' | 'contact' | 'custom' | 'inherit';
+  deliveryFeeAmount?: number;
+  deliveryFeeCustomText?: string; // e.g. "Delivery charges depend on location and order quantity."
+  deliveryFeeLabel?: string; // e.g. "Delivery Fee:"
+  
+  // Delivery Coverage Area
+  deliveryAreaText?: string; // e.g. "Chiniot & Selected Areas across Punjab"
+  deliveryAreaLabel?: string; // e.g. "Delivery Area:"
+  
+  // Optional Special Note
+  deliveryNote?: string; // e.g. "Delivery time may vary depending on location."
+  
+  // Hide toggle for this product
+  hideDeliveryInfo?: boolean;
 }
 
 export interface ProductBrand {
@@ -601,18 +631,33 @@ export interface CheckoutSettings {
 export interface CityDeliveryInfo {
   id: string;
   cityName: string;
+  areaTown?: string; // Specific area/town e.g. "Chiniot City", "Chenab Nagar", "Lalian", "Bhowana"
+  status?: 'available' | 'unavailable' | 'contact_to_confirm'; // Availability status
   estimatedDays: string;
   deliveryFee: number;
+  deliveryFeeType?: 'free' | 'fixed' | 'contact' | 'custom';
+  deliveryFeeCustomText?: string;
   isSameDayAvailable?: boolean;
   isNextDayAvailable?: boolean;
   isEnabled: boolean;
   displayOrder?: number;
   notes?: string;
+  coverageAreas?: string[]; // Multiple specific neighborhoods or towns
 }
 
 export interface DeliverySettings {
   isEnabled: boolean;
   acrossPakistanHeadline?: string;
+  globalDeliveryType?: 'standard' | 'custom' | 'both';
+  globalMinDeliveryTime?: number;
+  globalMaxDeliveryTime?: number;
+  globalDeliveryTimeUnit?: 'Days' | 'Hours' | 'Working Days';
+  globalCustomDeliveryMessage?: string;
+  globalDeliveryFeeType?: 'free' | 'fixed' | 'contact' | 'custom';
+  globalDeliveryFeeAmount?: number;
+  globalDeliveryFeeText?: string;
+  globalDeliveryAreaNote?: string;
+  globalDeliveryNote?: string;
   deliveryPartner?: string;
   storeOpeningTime?: string;
   storeClosingTime?: string;
@@ -842,9 +887,18 @@ export interface SmartToolsSettings {
     bricksPerCft: number; // default ~13.5
     singleWallBricksPerSqFt: number; // 4.5" wall default ~4.5
     doubleWallBricksPerSqFt: number; // 9" wall default ~9.0
-    cementBagsPer1000Bricks: number; // default ~3.0
+    cementBagsPer1000Bricks: number; // default ~3.2
     sandCftPer1000Bricks: number; // default ~15.0
     defaultWastagePercent: number; // default 5%
+    defaultWallHeightFeet?: number; // default 10 ft
+    defaultWallThicknessInches?: number; // default 9 inches
+    defaultDoorWidthFeet?: number; // default 3 ft
+    defaultDoorHeightFeet?: number; // default 7 ft
+    defaultWindowWidthFeet?: number; // default 4 ft
+    defaultWindowHeightFeet?: number; // default 4 ft
+    defaultBrickLengthInches?: number; // default 9 in
+    defaultBrickWidthInches?: number; // default 4.5 in
+    defaultBrickHeightInches?: number; // default 3 in
   };
   paintSettings?: {
     sqFtPerLitrePerCoat: number; // default ~130
@@ -979,6 +1033,111 @@ export interface BricksEstimatorResult {
   summaryText: string;
   urduSummaryText: string;
   disclaimer: string;
+}
+
+// ---------------------------------------------------------
+// 3.1 HOUSE BRICK ESTIMATOR (WIZARD & FULL-HOUSE ENGINE)
+// ---------------------------------------------------------
+export type HouseStoreyType = 'single' | 'double' | 'triple';
+
+export interface HouseFloorDetail {
+  storeyId: 'ground' | 'first' | 'second';
+  label: string;
+  lengthFeet: number;
+  widthFeet: number;
+  heightFeet: number;
+}
+
+export type RoomCategoryType = 
+  | 'bedroom' 
+  | 'living' 
+  | 'drawing' 
+  | 'dining' 
+  | 'kitchen' 
+  | 'washroom' 
+  | 'store' 
+  | 'laundry' 
+  | 'office' 
+  | 'garage' 
+  | 'other';
+
+export interface HouseRoomItem {
+  id: string;
+  category: RoomCategoryType;
+  name: string;
+  lengthFeet: number;
+  widthFeet: number;
+  heightFeet: number;
+  floorId?: 'ground' | 'first' | 'second' | 'all';
+}
+
+export interface BrickDimensions {
+  type: 'standard-pakistani' | 'custom';
+  lengthInches: number; // 9"
+  widthInches: number;  // 4.5"
+  heightInches: number; // 3"
+}
+
+export interface HouseBrickEstimatorInputs {
+  houseType: HouseStoreyType;
+  houseLengthFeet: number;
+  houseWidthFeet: number;
+  defaultWallHeightFeet: number;
+  floors: HouseFloorDetail[];
+  rooms: HouseRoomItem[];
+  kitchens: HouseRoomItem[];
+  washrooms: HouseRoomItem[];
+  otherSpaces: HouseRoomItem[];
+  wallThicknessType: '9-inch' | '4.5-inch' | 'dual' | 'custom'; // dual = 9" exterior + 4.5" interior partitions
+  customThicknessInches?: number;
+  doorsCount: number;
+  doorWidthFeet: number;
+  doorHeightFeet: number;
+  windowsCount: number;
+  windowWidthFeet: number;
+  windowHeightFeet: number;
+  customOpenings?: OpeningItem[];
+  brickDimensions: BrickDimensions;
+  wastagePercent: number; // default 5%
+}
+
+export interface FloorBrickBreakdown {
+  floorId: 'ground' | 'first' | 'second';
+  label: string;
+  exteriorWallAreaSqFt: number;
+  interiorWallAreaSqFt: number;
+  openingsDeductionSqFt: number;
+  netMasonryAreaSqFt: number;
+  rawBricks: number;
+  wastageBricks: number;
+  totalBricks: number;
+}
+
+export interface HouseBrickEstimatorResult {
+  inputs: HouseBrickEstimatorInputs;
+  totalCoveredAreaSqFt: number;
+  approxMarla: number;
+  exteriorWallAreaSqFt: number;
+  interiorWallAreaSqFt: number;
+  grossWallAreaSqFt: number;
+  doorsDeductionAreaSqFt: number;
+  windowsDeductionAreaSqFt: number;
+  totalOpeningsDeductionSqFt: number;
+  netWallAreaSqFt: number;
+  netMasonryVolumeCft: number;
+  rawBricksCount: number;
+  wastageBricksCount: number;
+  totalBricksMin: number;
+  totalBricksMax: number;
+  recommendedBricks: number;
+  floorBreakdowns: FloorBrickBreakdown[];
+  roomBreakdowns: { name: string; category: string; bricksCount: number; areaSqFt: number }[];
+  approxCementBags: number;
+  approxSandCft: number;
+  summaryText: string;
+  urduSummaryText: string;
+  disclaimer: string;
+  brickSizeLabel: string;
 }
 
 // ---------------------------------------------------------

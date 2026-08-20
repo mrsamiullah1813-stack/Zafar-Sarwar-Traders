@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Trash2, Video, Image as ImageIcon, Sparkles, Tag, ShieldCheck, Layers, Star } from 'lucide-react';
-import { Product, ProductVideo, ProductCategory, ProductBrand } from '../types';
+import { X, Check, Trash2, Video, Image as ImageIcon, Sparkles, Tag, ShieldCheck, Layers, Star, Truck, Clock, MapPin, Info, DollarSign, MessageSquare, AlertCircle } from 'lucide-react';
+import { Product, ProductVideo, ProductCategory, ProductBrand, ProductDeliveryConfig } from '../types';
 import { VideoUploader } from './VideoUploader';
 import { MultiImageUploader } from './MultiImageUploader';
 import { formatSupabaseError } from '../services/supabaseService';
@@ -57,6 +57,23 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Delivery configuration states
+  const [hasCustomDelivery, setHasCustomDelivery] = useState<boolean>(false);
+  const [deliveryType, setDeliveryType] = useState<'standard' | 'custom' | 'both'>('standard');
+  const [minDeliveryTime, setMinDeliveryTime] = useState<number>(3);
+  const [maxDeliveryTime, setMaxDeliveryTime] = useState<number>(5);
+  const [deliveryTimeUnit, setDeliveryTimeUnit] = useState<'Days' | 'Hours' | 'Working Days'>('Days');
+  const [customDeliveryTimeLabel, setCustomDeliveryTimeLabel] = useState<string>('Estimated Delivery:');
+  const [customDeliveryMessage, setCustomDeliveryMessage] = useState<string>('');
+  const [customMessageLabel, setCustomMessageLabel] = useState<string>('Delivery Info:');
+  const [deliveryFeeType, setDeliveryFeeType] = useState<'free' | 'fixed' | 'contact' | 'custom'>('contact');
+  const [deliveryFeeAmount, setDeliveryFeeAmount] = useState<number>(350);
+  const [deliveryFeeCustomText, setDeliveryFeeCustomText] = useState<string>('');
+  const [deliveryFeeLabel, setDeliveryFeeLabel] = useState<string>('Delivery Fee:');
+  const [deliveryAreaText, setDeliveryAreaText] = useState<string>('');
+  const [deliveryNote, setDeliveryNote] = useState<string>('');
+  const [hideDeliveryInfo, setHideDeliveryInfo] = useState<boolean>(false);
+
   useEffect(() => {
     if (product) {
       setFormData({
@@ -75,9 +92,58 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       } else {
         setSpecPairs([{ key: 'Material', value: 'Solid Brass' }]);
       }
+
+      if (product.deliveryConfig) {
+        setHasCustomDelivery(true);
+        setDeliveryType(product.deliveryConfig.deliveryType && product.deliveryConfig.deliveryType !== 'inherit' ? product.deliveryConfig.deliveryType : 'standard');
+        setMinDeliveryTime(product.deliveryConfig.minDeliveryTime ?? 3);
+        setMaxDeliveryTime(product.deliveryConfig.maxDeliveryTime ?? 5);
+        setDeliveryTimeUnit(product.deliveryConfig.deliveryTimeUnit || 'Days');
+        setCustomDeliveryTimeLabel(product.deliveryConfig.customDeliveryTimeLabel || 'Estimated Delivery:');
+        setCustomDeliveryMessage(product.deliveryConfig.customDeliveryMessage || '');
+        setCustomMessageLabel(product.deliveryConfig.customMessageLabel || 'Delivery Info:');
+        setDeliveryFeeType(product.deliveryConfig.deliveryFeeType && product.deliveryConfig.deliveryFeeType !== 'inherit' ? product.deliveryConfig.deliveryFeeType : 'contact');
+        setDeliveryFeeAmount(product.deliveryConfig.deliveryFeeAmount ?? 350);
+        setDeliveryFeeCustomText(product.deliveryConfig.deliveryFeeCustomText || '');
+        setDeliveryFeeLabel(product.deliveryConfig.deliveryFeeLabel || 'Delivery Fee:');
+        setDeliveryAreaText(product.deliveryConfig.deliveryAreaText || '');
+        setDeliveryNote(product.deliveryConfig.deliveryNote || '');
+        setHideDeliveryInfo(Boolean(product.deliveryConfig.hideDeliveryInfo));
+      } else {
+        setHasCustomDelivery(false);
+        setDeliveryType('standard');
+        setMinDeliveryTime(3);
+        setMaxDeliveryTime(5);
+        setDeliveryTimeUnit('Days');
+        setCustomDeliveryTimeLabel('Estimated Delivery:');
+        setCustomDeliveryMessage('');
+        setCustomMessageLabel('Delivery Info:');
+        setDeliveryFeeType('contact');
+        setDeliveryFeeAmount(350);
+        setDeliveryFeeCustomText('');
+        setDeliveryFeeLabel('Delivery Fee:');
+        setDeliveryAreaText('');
+        setDeliveryNote('');
+        setHideDeliveryInfo(false);
+      }
     } else {
       setFeaturesInput('High Durability\n10 Year Official Warranty\nPrecision Engineering');
       setSpecPairs([{ key: 'Material', value: 'Solid Brass / Porcelain' }, { key: 'Origin', value: 'Imported' }]);
+      setHasCustomDelivery(false);
+      setDeliveryType('standard');
+      setMinDeliveryTime(3);
+      setMaxDeliveryTime(5);
+      setDeliveryTimeUnit('Days');
+      setCustomDeliveryTimeLabel('Estimated Delivery:');
+      setCustomDeliveryMessage('');
+      setCustomMessageLabel('Delivery Info:');
+      setDeliveryFeeType('contact');
+      setDeliveryFeeAmount(350);
+      setDeliveryFeeCustomText('');
+      setDeliveryFeeLabel('Delivery Fee:');
+      setDeliveryAreaText('');
+      setDeliveryNote('');
+      setHideDeliveryInfo(false);
     }
   }, [product]);
 
@@ -143,6 +209,23 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       }
     });
 
+    const deliveryConfig: ProductDeliveryConfig | undefined = hasCustomDelivery ? {
+      deliveryType,
+      minDeliveryTime: Number(minDeliveryTime) > 0 ? Number(minDeliveryTime) : 1,
+      maxDeliveryTime: Number(maxDeliveryTime) >= Number(minDeliveryTime) ? Number(maxDeliveryTime) : Number(minDeliveryTime),
+      deliveryTimeUnit,
+      customDeliveryTimeLabel: customDeliveryTimeLabel.trim() || 'Estimated Delivery:',
+      customDeliveryMessage: customDeliveryMessage.trim() || undefined,
+      customMessageLabel: customMessageLabel.trim() || 'Delivery Info:',
+      deliveryFeeType,
+      deliveryFeeAmount: deliveryFeeType === 'fixed' ? Number(deliveryFeeAmount) : undefined,
+      deliveryFeeCustomText: deliveryFeeType === 'custom' ? deliveryFeeCustomText.trim() : undefined,
+      deliveryFeeLabel: deliveryFeeLabel.trim() || 'Delivery Fee:',
+      deliveryAreaText: deliveryAreaText.trim() || undefined,
+      deliveryNote: deliveryNote.trim() || undefined,
+      hideDeliveryInfo
+    } : undefined;
+
     const finalProduct: Product = {
       id: formData.id || `prod-${Date.now()}`,
       name: formData.name,
@@ -170,7 +253,8 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       rating: typeof formData.rating === 'number' ? formData.rating : (formData.rating ? parseFloat(String(formData.rating)) : 4.8),
       reviewsCount: typeof formData.reviewsCount === 'number' ? formData.reviewsCount : 12,
       reviews_count: typeof formData.reviewsCount === 'number' ? formData.reviewsCount : 12,
-      videos: formData.videos || []
+      videos: formData.videos || [],
+      deliveryConfig: deliveryConfig
     };
 
     setIsSaving(true);
@@ -559,6 +643,380 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
               videos={formData.videos || []}
               onChange={(updatedVideos) => setFormData(prev => ({ ...prev, videos: updatedVideos }))}
             />
+          </div>
+
+          {/* Product Delivery Information Section */}
+          <div className="p-5 rounded-2xl bg-slate-950/90 border border-amber-500/20 shadow-lg space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <Truck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    Delivery Information
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 font-semibold border border-amber-500/20">
+                      Product-Specific Override
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    Configure standard days, custom English notes, fees, or inherit global settings
+                  </p>
+                </div>
+              </div>
+
+              {/* Toggle Custom vs Global */}
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setHasCustomDelivery(!hasCustomDelivery)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    hasCustomDelivery
+                      ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  {hasCustomDelivery ? '⚡ Custom Delivery Active' : '🌐 Using Global Store Rules'}
+                </button>
+              </div>
+            </div>
+
+            {!hasCustomDelivery ? (
+              <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs text-slate-400 flex items-start gap-2.5">
+                <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                <p>
+                  This product currently inherits the <strong className="text-slate-200">Global Delivery Settings & City Rules</strong> configured in the Delivery Manager. Click <strong>"Using Global Store Rules"</strong> above to customize delivery times, custom messages, or special shipping fees specifically for this item.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4 pt-1 animate-fadeIn">
+                {/* Delivery Type Selector */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Delivery Display Format
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryType('standard')}
+                      className={`p-2.5 rounded-xl text-xs font-bold border transition-all text-center ${
+                        deliveryType === 'standard'
+                          ? 'bg-amber-500/10 border-amber-500 text-amber-300 shadow-sm'
+                          : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-800'
+                      }`}
+                    >
+                      ⏱️ Standard (Numeric)
+                      <span className="block text-[10px] font-normal text-slate-400 mt-0.5">e.g. 3–5 Days</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryType('custom')}
+                      className={`p-2.5 rounded-xl text-xs font-bold border transition-all text-center ${
+                        deliveryType === 'custom'
+                          ? 'bg-amber-500/10 border-amber-500 text-amber-300 shadow-sm'
+                          : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-800'
+                      }`}
+                    >
+                      ✍️ Custom Text
+                      <span className="block text-[10px] font-normal text-slate-400 mt-0.5">e.g. Price on Call / Free</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryType('both')}
+                      className={`p-2.5 rounded-xl text-xs font-bold border transition-all text-center ${
+                        deliveryType === 'both'
+                          ? 'bg-amber-500/10 border-amber-500 text-amber-300 shadow-sm'
+                          : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-800'
+                      }`}
+                    >
+                      ✨ Both (Number + Text)
+                      <span className="block text-[10px] font-normal text-slate-400 mt-0.5">Days + Special Note</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Numeric Settings (Standard or Both) */}
+                {(deliveryType === 'standard' || deliveryType === 'both') && (
+                  <div className="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 space-y-3">
+                    <h5 className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      Delivery Duration & Time Range
+                    </h5>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                          Minimum Time
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="90"
+                          value={minDeliveryTime}
+                          onChange={(e) => setMinDeliveryTime(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                          Maximum Time
+                        </label>
+                        <input
+                          type="number"
+                          min={minDeliveryTime}
+                          max="120"
+                          value={maxDeliveryTime}
+                          onChange={(e) => setMaxDeliveryTime(Math.max(minDeliveryTime, parseInt(e.target.value) || minDeliveryTime))}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                          Time Unit
+                        </label>
+                        <select
+                          value={deliveryTimeUnit}
+                          onChange={(e) => setDeliveryTimeUnit(e.target.value as any)}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                        >
+                          <option value="Days">Days</option>
+                          <option value="Hours">Hours</option>
+                          <option value="Working Days">Working Days</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        Custom Time Label (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={customDeliveryTimeLabel}
+                        onChange={(e) => setCustomDeliveryTimeLabel(e.target.value)}
+                        placeholder="Estimated Delivery:"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Custom Text Settings (Custom or Both) */}
+                {(deliveryType === 'custom' || deliveryType === 'both') && (
+                  <div className="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 space-y-3">
+                    <h5 className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      Custom Delivery Message & English Notes
+                    </h5>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-medium text-slate-300">
+                          Custom Delivery Text / Message
+                        </label>
+                        <span className="text-[10px] text-slate-400">Supports normal English sentences</span>
+                      </div>
+                      <textarea
+                        rows={2}
+                        value={customDeliveryMessage}
+                        onChange={(e) => setCustomDeliveryMessage(e.target.value)}
+                        placeholder="e.g. Delivery charges depend on your location. Contact us before ordering."
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                      />
+
+                      {/* Quick Presets for Admin Convenience */}
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        <span className="text-[10px] text-slate-400 font-semibold self-center mr-1">Quick Presets:</span>
+                        {[
+                          'Price on Call',
+                          'Delivery Available — Contact Us',
+                          'Delivery charges depend on location and quantity.',
+                          'Free delivery available in Chiniot on selected orders.',
+                          'Delivery available across Punjab.',
+                          'Contact us for exact delivery timing.'
+                        ].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setCustomDeliveryMessage(preset)}
+                            className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 transition-colors border border-slate-700"
+                          >
+                            + {preset.length > 25 ? preset.substring(0, 25) + '...' : preset}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        Custom Message Label (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={customMessageLabel}
+                        onChange={(e) => setCustomMessageLabel(e.target.value)}
+                        placeholder="Delivery Info:"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Delivery Fee Section */}
+                <div className="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 space-y-3">
+                  <h5 className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                    <DollarSign className="w-3.5 h-3.5" />
+                    Delivery Fee Configuration
+                  </h5>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        Fee Type
+                      </label>
+                      <select
+                        value={deliveryFeeType}
+                        onChange={(e) => setDeliveryFeeType(e.target.value as any)}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                      >
+                        <option value="free">🎉 Free Delivery</option>
+                        <option value="fixed">💰 Fixed Amount (PKR)</option>
+                        <option value="contact">📞 Contact Us for Charges / Price</option>
+                        <option value="custom">✍️ Custom Text Message</option>
+                      </select>
+                    </div>
+
+                    {deliveryFeeType === 'fixed' && (
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                          Fixed Fee Amount (PKR)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={deliveryFeeAmount}
+                          onChange={(e) => setDeliveryFeeAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                    )}
+
+                    {deliveryFeeType === 'custom' && (
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                          Custom Fee Text
+                        </label>
+                        <input
+                          type="text"
+                          value={deliveryFeeCustomText}
+                          onChange={(e) => setDeliveryFeeCustomText(e.target.value)}
+                          placeholder="e.g. Calculated based on distance & weight"
+                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Additional Delivery Notes & Area */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Delivery Coverage / Area (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={deliveryAreaText}
+                      onChange={(e) => setDeliveryAreaText(e.target.value)}
+                      placeholder="e.g. Chiniot, Faisalabad, Lahore & Major Cities"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Special Delivery Note (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={deliveryNote}
+                      onChange={(e) => setDeliveryNote(e.target.value)}
+                      placeholder="e.g. Delivery time may vary for heavy freight."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Hide Delivery Option */}
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="hideDeliveryCheck"
+                    checked={hideDeliveryInfo}
+                    onChange={(e) => setHideDeliveryInfo(e.target.checked)}
+                    className="rounded border-slate-700 text-amber-500 focus:ring-amber-500 bg-slate-950"
+                  />
+                  <label htmlFor="hideDeliveryCheck" className="text-xs text-slate-300 cursor-pointer">
+                    Hide delivery information block entirely for this product
+                  </label>
+                </div>
+
+                {/* LIVE PREVIEW BOX */}
+                <div className="mt-2 p-3 rounded-xl bg-gradient-to-br from-slate-900 to-slate-950 border border-amber-500/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                      <Truck className="w-3 h-3" /> Live Customer View Preview
+                    </span>
+                    <span className="text-[10px] text-slate-400">As shown on product page</span>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs text-slate-200">
+                    {(deliveryType === 'standard' || deliveryType === 'both') && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-400 font-medium">{customDeliveryTimeLabel || 'Estimated Delivery:'}</span>
+                        <span className="font-bold text-amber-400">
+                          {minDeliveryTime === maxDeliveryTime ? `${minDeliveryTime} ${deliveryTimeUnit}` : `${minDeliveryTime}–${maxDeliveryTime} ${deliveryTimeUnit}`}
+                        </span>
+                      </div>
+                    )}
+
+                    {(deliveryType === 'custom' || deliveryType === 'both') && customDeliveryMessage && (
+                      <div className="flex items-start gap-2">
+                        <span className="text-slate-400 font-medium shrink-0">{customMessageLabel || 'Delivery Info:'}</span>
+                        <span className="text-slate-200 font-medium">{customDeliveryMessage}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 font-medium">{deliveryFeeLabel || 'Delivery Fee:'}</span>
+                      <span className="font-bold text-emerald-400">
+                        {deliveryFeeType === 'free' && 'Free Delivery'}
+                        {deliveryFeeType === 'fixed' && `Rs. ${deliveryFeeAmount.toLocaleString()}`}
+                        {deliveryFeeType === 'contact' && 'Contact Us'}
+                        {deliveryFeeType === 'custom' && (deliveryFeeCustomText || 'Custom Charges')}
+                      </span>
+                    </div>
+
+                    {deliveryAreaText && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-400 font-medium">Coverage:</span>
+                        <span className="text-slate-300">{deliveryAreaText}</span>
+                      </div>
+                    )}
+
+                    {deliveryNote && (
+                      <div className="text-[11px] text-slate-400 italic">
+                        Note: {deliveryNote}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {errorMsg && (

@@ -272,6 +272,16 @@ export const setActiveTheme = (themeId: string) => {
 export const defaultDeliverySettings: DeliverySettings = {
   isEnabled: true,
   acrossPakistanHeadline: 'Express & Secure Delivery Available Across Pakistan',
+  globalDeliveryType: 'standard',
+  globalMinDeliveryTime: 2,
+  globalMaxDeliveryTime: 4,
+  globalDeliveryTimeUnit: 'Days',
+  globalCustomDeliveryMessage: 'Delivery available across Punjab & major cities of Pakistan. Contact us for bulk orders.',
+  globalDeliveryFeeType: 'contact',
+  globalDeliveryFeeAmount: 250,
+  globalDeliveryFeeText: 'Contact for exact charges',
+  globalDeliveryAreaNote: 'Chiniot, Faisalabad, Lahore, Islamabad & 50+ Cities Nationwide',
+  globalDeliveryNote: 'Delivery time may vary depending on exact location and product dimensions.',
   deliveryPartner: 'Leopard Courier / TCS / Private Showroom Logistics Fleet',
   storeOpeningTime: '09:00 AM',
   storeClosingTime: '09:00 PM',
@@ -280,34 +290,36 @@ export const defaultDeliverySettings: DeliverySettings = {
   orderCutoffTime: '05:00 PM',
   holidaySchedule: 'Closed on Sundays & Gazetted Public Holidays',
   whatsappSupportNumber: '+92 310 8002863',
-  defaultSelectedCityId: 'city-lahore',
+  defaultSelectedCityId: 'city-chiniot',
   enableCustomCity: true,
   customCityLabel: '➕ Custom City / Address',
   customCityNotice: 'Delivery time for this location will be confirmed by our team.',
   deliveryNotes: [
-    '✓ Delivery time depends on your selected city.',
+    '✓ Direct showroom delivery truck available for Chiniot, Faisalabad, Sargodha, & Lahore.',
+    '✓ Nationwide tracked courier & cargo dispatch across Pakistan via TCS & Leopard.',
     '✓ Orders placed before 5:00 PM will be processed the same working day.',
-    '✓ Orders placed after 5:00 PM will be processed on the next working day.',
     '✓ If your delivery is delayed due to weather, courier, holidays, or other operational reasons, you will be informed immediately.',
-    '✓ Our customer support team will contact you directly on WhatsApp or Phone if any change in delivery schedule occurs.'
+    '✓ Contact our support team on WhatsApp anytime for live tracking and special delivery arrangements.'
   ],
   cities: [
-    { id: 'city-lahore', cityName: 'Lahore', estimatedDays: '1–2 Working Days', deliveryFee: 250, isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 1 },
-    { id: 'city-karachi', cityName: 'Karachi', estimatedDays: '3–5 Working Days', deliveryFee: 450, isSameDayAvailable: false, isNextDayAvailable: false, isEnabled: true, displayOrder: 2 },
-    { id: 'city-islamabad', cityName: 'Islamabad', estimatedDays: '2–3 Working Days', deliveryFee: 350, isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 3 },
-    { id: 'city-rawalpindi', cityName: 'Rawalpindi', estimatedDays: '2–3 Working Days', deliveryFee: 350, isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 4 },
-    { id: 'city-faisalabad', cityName: 'Faisalabad', estimatedDays: '1–2 Working Days', deliveryFee: 300, isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 5 },
-    { id: 'city-multan', cityName: 'Multan', estimatedDays: '2–3 Working Days', deliveryFee: 350, isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 6 },
-    { id: 'city-gujranwala', cityName: 'Gujranwala', estimatedDays: '1–2 Working Days', deliveryFee: 250, isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 7 },
-    { id: 'city-sialkot', cityName: 'Sialkot', estimatedDays: '1–2 Working Days', deliveryFee: 250, isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 8 },
-    { id: 'city-chiniot', cityName: 'Chiniot', estimatedDays: 'Same Day / Next Working Day', deliveryFee: 150, isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 9 },
-    { id: 'city-jhang', cityName: 'Jhang', estimatedDays: '1–2 Working Days', deliveryFee: 200, isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 10 },
-    { id: 'city-sargodha', cityName: 'Sargodha', estimatedDays: '1–2 Working Days', deliveryFee: 250, isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 11 },
-    { id: 'city-bahawalpur', cityName: 'Bahawalpur', estimatedDays: '2–3 Working Days', deliveryFee: 350, isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 12 },
-    { id: 'city-peshawar', cityName: 'Peshawar', estimatedDays: '3–4 Working Days', deliveryFee: 400, isSameDayAvailable: false, isNextDayAvailable: false, isEnabled: true, displayOrder: 13 },
-    { id: 'city-quetta', cityName: 'Quetta', estimatedDays: '4–6 Working Days', deliveryFee: 500, isSameDayAvailable: false, isNextDayAvailable: false, isEnabled: true, displayOrder: 14 },
-    { id: 'city-hyderabad', cityName: 'Hyderabad', estimatedDays: '3–5 Working Days', deliveryFee: 450, isSameDayAvailable: false, isNextDayAvailable: false, isEnabled: true, displayOrder: 15 },
-    { id: 'city-sukkur', cityName: 'Sukkur', estimatedDays: '3–4 Working Days', deliveryFee: 400, isSameDayAvailable: false, isNextDayAvailable: false, isEnabled: true, displayOrder: 16 }
+    { id: 'city-chiniot', cityName: 'Chiniot', areaTown: 'Chiniot City & Tehsil', status: 'available', estimatedDays: 'Same Day / 1 Day', deliveryFee: 0, deliveryFeeType: 'free', deliveryFeeCustomText: 'Free Local Delivery', isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 1, notes: 'Express direct delivery from our Chiniot showroom.', coverageAreas: ['Chiniot City', 'Katchery Road', 'Jhang Road', 'Faisalabad Road', 'Chenab Nagar / Rabwah', 'Bhowana', 'Lalian'] },
+    { id: 'city-bhowana', cityName: 'Bhowana', areaTown: 'Bhowana Tehsil & Surrounding Area', status: 'available', estimatedDays: '1 Working Day', deliveryFee: 200, deliveryFeeType: 'fixed', isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 2, notes: 'Direct showroom vehicle route.' },
+    { id: 'city-lalian', cityName: 'Lalian', areaTown: 'Lalian Tehsil & Surrounding Area', status: 'available', estimatedDays: '1 Working Day', deliveryFee: 200, deliveryFeeType: 'fixed', isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 3, notes: 'Direct showroom vehicle route.' },
+    { id: 'city-faisalabad', cityName: 'Faisalabad', areaTown: 'All Towns & Industrial Zones', status: 'available', estimatedDays: '1–2 Working Days', deliveryFee: 300, deliveryFeeType: 'fixed', isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 4, notes: 'Daily delivery shuttle available.' },
+    { id: 'city-jhang', cityName: 'Jhang', areaTown: 'Jhang City, Saddar & Shorkot', status: 'available', estimatedDays: '1–2 Working Days', deliveryFee: 250, deliveryFeeType: 'fixed', isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 5, notes: 'Showroom delivery route.' },
+    { id: 'city-sargodha', cityName: 'Sargodha', areaTown: 'Sargodha City, Cantt & Satellite Town', status: 'available', estimatedDays: '1–2 Working Days', deliveryFee: 250, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 6, notes: 'Direct truck delivery route.' },
+    { id: 'city-lahore', cityName: 'Lahore', areaTown: 'All Zones (DHA, Gulberg, Bahria, Johar Town, etc.)', status: 'available', estimatedDays: '1–2 Working Days', deliveryFee: 250, deliveryFeeType: 'fixed', isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 7, notes: 'Daily direct courier & cargo service.' },
+    { id: 'city-islamabad', cityName: 'Islamabad', areaTown: 'Federal Capital (All Sectors & DHA/Bahria)', status: 'available', estimatedDays: '2–3 Working Days', deliveryFee: 350, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 8 },
+    { id: 'city-rawalpindi', cityName: 'Rawalpindi', areaTown: 'Rawalpindi City & Cantt', status: 'available', estimatedDays: '2–3 Working Days', deliveryFee: 350, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 9 },
+    { id: 'city-multan', cityName: 'Multan', areaTown: 'Multan Cantt, Bosan Road & City', status: 'available', estimatedDays: '2–3 Working Days', deliveryFee: 350, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 10 },
+    { id: 'city-gujranwala', cityName: 'Gujranwala', areaTown: 'Gujranwala City & Cantt', status: 'available', estimatedDays: '1–2 Working Days', deliveryFee: 250, deliveryFeeType: 'fixed', isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 11 },
+    { id: 'city-sialkot', cityName: 'Sialkot', areaTown: 'Sialkot City & Cantt', status: 'available', estimatedDays: '1–2 Working Days', deliveryFee: 250, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 12 },
+    { id: 'city-karachi', cityName: 'Karachi', areaTown: 'All Districts & Port Area', status: 'available', estimatedDays: '3–5 Working Days', deliveryFee: 450, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: false, isEnabled: true, displayOrder: 13, notes: 'Express air & overland cargo.' },
+    { id: 'city-bahawalpur', cityName: 'Bahawalpur', areaTown: 'Bahawalpur City & Cantt', status: 'available', estimatedDays: '2–3 Working Days', deliveryFee: 350, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 14 },
+    { id: 'city-peshawar', cityName: 'Peshawar', areaTown: 'Peshawar City, Hayatabad & Cantt', status: 'available', estimatedDays: '3–4 Working Days', deliveryFee: 400, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: false, isEnabled: true, displayOrder: 15 },
+    { id: 'city-quetta', cityName: 'Quetta', areaTown: 'Quetta City & Cantt', status: 'contact_to_confirm', estimatedDays: '4–6 Working Days', deliveryFee: 500, deliveryFeeType: 'contact', isSameDayAvailable: false, isNextDayAvailable: false, isEnabled: true, displayOrder: 16, notes: 'Please contact WhatsApp to confirm cargo schedule.' },
+    { id: 'city-hyderabad', cityName: 'Hyderabad', areaTown: 'Hyderabad City, Latifabad & Qasimabad', status: 'available', estimatedDays: '3–5 Working Days', deliveryFee: 450, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: false, isEnabled: true, displayOrder: 17 },
+    { id: 'city-sukkur', cityName: 'Sukkur', areaTown: 'Sukkur City & Rohri', status: 'available', estimatedDays: '3–4 Working Days', deliveryFee: 400, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: false, isEnabled: true, displayOrder: 18 }
   ]
 };
 
@@ -555,6 +567,43 @@ export const saveStoredConfig = async (config: BusinessConfig): Promise<{ succes
   }
 };
 
+const sanitizeProductForLocalStorage = (p: Product): Partial<Product> => {
+  const isDataUrl = (str?: string) => Boolean(str && (str.startsWith('data:') || str.startsWith('blob:')));
+  return {
+    id: p.id,
+    name: p.name,
+    category: p.category,
+    categoryId: p.categoryId,
+    brand: p.brand,
+    brandId: p.brandId,
+    price: p.price,
+    salePrice: p.salePrice,
+    image: isDataUrl(p.image) ? '' : p.image,
+    images: Array.isArray(p.images) ? p.images.filter(img => !isDataUrl(img)).slice(0, 3) : undefined,
+    badge: p.badge,
+    isFeatured: p.isFeatured,
+    stockStatus: p.stockStatus,
+    stockQuantity: p.stockQuantity,
+    sku: p.sku,
+    rating: p.rating,
+    reviewsCount: p.reviewsCount,
+    displayOrder: p.displayOrder,
+    description: typeof p.description === 'string' ? p.description.slice(0, 200) : ''
+  };
+};
+
+export const safeSetLocalStorage = (key: string, value: any): boolean => {
+  try {
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') return false;
+    const strVal = typeof value === 'string' ? value : JSON.stringify(value);
+    localStorage.setItem(key, strVal);
+    return true;
+  } catch (e: any) {
+    console.warn(`[storage] LocalStorage quota reached or error for key "${key}", safely skipped.`, e?.message);
+    return false;
+  }
+};
+
 export const loadStoredProducts = (): Product[] => {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
@@ -577,7 +626,9 @@ export const saveStoredProducts = async (products: Product[]): Promise<{ success
         return { success: false, error: res.error };
       }
     }
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
+    // Quota-safe lightweight caching (max 60 recent items, no base64/blobs)
+    const sanitized = Array.isArray(products) ? products.slice(0, 60).map(sanitizeProductForLocalStorage) : [];
+    safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, sanitized);
     saveToServerCMS(STORAGE_KEYS.PRODUCTS, products);
     console.log('[Supabase Direct SDK] Products saved and local state cached successfully');
     return { success: true };
@@ -598,7 +649,8 @@ export const deleteProductFromStorage = async (productId: string): Promise<{ suc
     }
     const current = loadStoredProducts();
     const updated = current.filter(p => p.id !== productId);
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(updated));
+    const sanitized = updated.slice(0, 60).map(sanitizeProductForLocalStorage);
+    safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, sanitized);
     saveToServerCMS(STORAGE_KEYS.PRODUCTS, updated);
     return { success: true };
   } catch (err: any) {
@@ -628,7 +680,7 @@ export const saveStoredCategories = async (categories: ProductCategory[]): Promi
         return { success: false, error: res.error };
       }
     }
-    localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(categories));
+    safeSetLocalStorage(STORAGE_KEYS.CATEGORIES, categories);
     saveToServerCMS(STORAGE_KEYS.CATEGORIES, categories);
     return { success: true };
   } catch (e: any) {
@@ -647,7 +699,7 @@ export const deleteCategoryFromStorage = async (categoryId: string): Promise<{ s
     }
     const current = loadStoredCategories();
     const updated = current.filter(c => c.id !== categoryId);
-    localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(updated));
+    safeSetLocalStorage(STORAGE_KEYS.CATEGORIES, updated);
     saveToServerCMS(STORAGE_KEYS.CATEGORIES, updated);
     return { success: true };
   } catch (err: any) {
@@ -674,7 +726,7 @@ export const saveStoredGallery = async (items: GalleryItem[]): Promise<{ success
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.GALLERY, items);
       if (!res.success) return { success: false, error: res.error };
     }
-    localStorage.setItem(STORAGE_KEYS.GALLERY, JSON.stringify(items));
+    safeSetLocalStorage(STORAGE_KEYS.GALLERY, items);
     saveToServerCMS(STORAGE_KEYS.GALLERY, items);
     return { success: true };
   } catch (e: any) {
@@ -705,7 +757,7 @@ export const saveStoredBrands = async (brands: ProductBrand[]): Promise<{ succes
         return { success: false, error: res.error };
       }
     }
-    localStorage.setItem(STORAGE_KEYS.BRANDS, JSON.stringify(brands));
+    safeSetLocalStorage(STORAGE_KEYS.BRANDS, brands);
     saveToServerCMS(STORAGE_KEYS.BRANDS, brands);
     return { success: true };
   } catch (e: any) {
@@ -724,7 +776,7 @@ export const deleteBrandFromStorage = async (brandId: string): Promise<{ success
     }
     const current = loadStoredBrands();
     const updated = current.filter(b => b.id !== brandId);
-    localStorage.setItem(STORAGE_KEYS.BRANDS, JSON.stringify(updated));
+    safeSetLocalStorage(STORAGE_KEYS.BRANDS, updated);
     saveToServerCMS(STORAGE_KEYS.BRANDS, updated);
     return { success: true };
   } catch (err: any) {
@@ -751,7 +803,7 @@ export const saveStoredStats = async (stats: StatCounter[]): Promise<{ success: 
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.STATS, stats);
       if (!res.success) return { success: false, error: res.error };
     }
-    localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(stats));
+    safeSetLocalStorage(STORAGE_KEYS.STATS, stats);
     saveToServerCMS(STORAGE_KEYS.STATS, stats);
     return { success: true };
   } catch (e: any) {
@@ -781,7 +833,7 @@ export const savePlannerConfig = async (config: AiDesignerConfig): Promise<{ suc
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.PLANNER, config);
       if (!res.success) return { success: false, error: res.error };
     }
-    localStorage.setItem(STORAGE_KEYS.PLANNER, JSON.stringify(config));
+    safeSetLocalStorage(STORAGE_KEYS.PLANNER, config);
     saveToServerCMS(STORAGE_KEYS.PLANNER, config);
     return { success: true };
   } catch (e: any) {
@@ -814,7 +866,7 @@ export const saveBuildMaterialEstimatorConfig = async (config: BuildMaterialEsti
       const res = await saveBuildMaterialEstimatorToSupabase(config);
       if (!res.success) return { success: false, error: res.error };
     }
-    localStorage.setItem(STORAGE_KEYS.ESTIMATOR, JSON.stringify(config));
+    safeSetLocalStorage(STORAGE_KEYS.ESTIMATOR, config);
     saveToServerCMS(STORAGE_KEYS.ESTIMATOR, config);
     return { success: true };
   } catch (e: any) {
@@ -842,7 +894,7 @@ export const saveStoredContacts = async (contacts: ContactPerson[]): Promise<{ s
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.CONTACTS, contacts);
       if (!res.success) return { success: false, error: res.error };
     }
-    localStorage.setItem(STORAGE_KEYS.CONTACTS, JSON.stringify(contacts));
+    safeSetLocalStorage(STORAGE_KEYS.CONTACTS, contacts);
     saveToServerCMS(STORAGE_KEYS.CONTACTS, contacts);
     return { success: true };
   } catch (e: any) {
@@ -865,11 +917,7 @@ export const loadStoredCart = (): CartItem[] => {
 };
 
 export const saveStoredCart = (cart: CartItem[]) => {
-  try {
-    localStorage.setItem(STORAGE_KEYS.CART, JSON.stringify(cart));
-  } catch (e) {
-    console.error('Error saving stored cart', e);
-  }
+  safeSetLocalStorage(STORAGE_KEYS.CART, cart);
 };
 
 export const loadStoredOrders = (): CustomerOrder[] => {
@@ -905,12 +953,8 @@ export const generateNextOrderId = (): string => {
 };
 
 export const saveStoredOrders = (orders: CustomerOrder[]) => {
-  try {
-    localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(orders));
-    saveToServerCMS(STORAGE_KEYS.ORDERS, orders);
-  } catch (e) {
-    console.error('Error saving stored orders', e);
-  }
+  safeSetLocalStorage(STORAGE_KEYS.ORDERS, orders);
+  saveToServerCMS(STORAGE_KEYS.ORDERS, orders);
 };
 
 export const addOrderToStorage = async (order: CustomerOrder): Promise<{ success: boolean; orderId: string; error?: string }> => {
@@ -965,7 +1009,7 @@ export const saveCheckoutSettings = async (settings: CheckoutSettings): Promise<
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.CHECKOUT_SETTINGS, settings);
       if (!res.success) return { success: false, error: res.error };
     }
-    localStorage.setItem(STORAGE_KEYS.CHECKOUT_SETTINGS, JSON.stringify(settings));
+    safeSetLocalStorage(STORAGE_KEYS.CHECKOUT_SETTINGS, settings);
     saveToServerCMS(STORAGE_KEYS.CHECKOUT_SETTINGS, settings);
     return { success: true };
   } catch (e: any) {
@@ -996,7 +1040,7 @@ export const saveDeliverySettings = async (settings: DeliverySettings): Promise<
         await saveDeliveryCitiesToSupabase(citiesList);
       }
     }
-    localStorage.setItem(STORAGE_KEYS.DELIVERY_SETTINGS, JSON.stringify(settings));
+    safeSetLocalStorage(STORAGE_KEYS.DELIVERY_SETTINGS, settings);
     saveToServerCMS(STORAGE_KEYS.DELIVERY_SETTINGS, settings);
     return { success: true };
   } catch (e: any) {
@@ -1023,7 +1067,7 @@ export const saveHeroSettings = async (settings: HeroSettings): Promise<{ succes
       const res = await saveHeroSettingsToSupabase(settings);
       if (!res.success) return { success: false, error: res.error };
     }
-    localStorage.setItem(STORAGE_KEYS.HERO_SETTINGS, JSON.stringify(settings));
+    safeSetLocalStorage(STORAGE_KEYS.HERO_SETTINGS, settings);
     saveToServerCMS(STORAGE_KEYS.HERO_SETTINGS, settings);
     return { success: true };
   } catch (e: any) {
@@ -1050,22 +1094,12 @@ export const saveSmartToolsSettings = async (settings: SmartToolsSettings): Prom
       const res = await saveSiteSettingToSupabase(STORAGE_KEYS.SMART_TOOLS, settings);
       if (!res.success) return { success: false, error: res.error };
     }
-    localStorage.setItem(STORAGE_KEYS.SMART_TOOLS, JSON.stringify(settings));
+    safeSetLocalStorage(STORAGE_KEYS.SMART_TOOLS, settings);
     saveToServerCMS(STORAGE_KEYS.SMART_TOOLS, settings);
     return { success: true };
   } catch (e: any) {
     console.error('Error saving smart tools settings', e);
     return { success: false, error: e?.message || String(e) };
-  }
-};
-
-const safeSetLocalStorage = (key: string, value: any) => {
-  try {
-    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
-      localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
-    }
-  } catch (e) {
-    console.warn(`[storage] Could not write to localStorage for key ${key}:`, e);
   }
 };
 

@@ -43,6 +43,8 @@ interface NavbarProps {
   onOpenOrderTracking?: () => void;
   onSelectCategory: (categoryId: string) => void;
   onOpenSmartTool?: (toolId: any) => void;
+  onOpenDeliveryChecker?: () => void;
+  onOpenDeliveryAreas?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -64,7 +66,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSearchClick,
   onOpenOrderTracking,
   onSelectCategory,
-  onOpenSmartTool
+  onOpenSmartTool,
+  onOpenDeliveryChecker,
+  onOpenDeliveryAreas
 }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -143,13 +147,33 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Right Links & Phone / Admin */}
           <div className="flex items-center gap-3">
-            {onOpenOrderTracking && (
+            {onOpenDeliveryChecker && (
               <button
-                onClick={onOpenOrderTracking}
+                type="button"
+                onClick={onOpenDeliveryChecker}
                 className="hover:text-amber-300 text-amber-400 font-bold transition-colors flex items-center gap-1 mr-1"
+                title="Check Delivery Availability for Your Area"
               >
                 <Truck className="w-3.5 h-3.5" />
+                <span>Delivery Checker</span>
+              </button>
+            )}
+            {onOpenOrderTracking && (
+              <button
+                type="button"
+                onClick={onOpenOrderTracking}
+                className="hover:text-blue-300 text-slate-300 font-medium transition-colors flex items-center gap-1 mr-1"
+              >
                 <span>Track Order</span>
+              </button>
+            )}
+            {onOpenDeliveryAreas && (
+              <button
+                type="button"
+                onClick={onOpenDeliveryAreas}
+                className="hover:text-white transition-colors hidden lg:inline text-slate-300"
+              >
+                Delivery Areas
               </button>
             )}
             <a href="#about" className="hover:text-white transition-colors hidden lg:inline">
@@ -406,6 +430,26 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           <div className="pt-2 border-t border-slate-100 space-y-2">
+            {onOpenDeliveryChecker && (
+              <button
+                onClick={() => { onOpenDeliveryChecker(); setMobileMenuOpen(false); }}
+                className="w-full py-2.5 rounded-xl bg-amber-50 text-amber-900 font-bold text-xs flex items-center justify-center gap-2 border border-amber-200 hover:bg-amber-100 transition-colors"
+              >
+                <Truck className="w-4 h-4 text-amber-600" />
+                <span>Smart Delivery Checker (Pakistan)</span>
+              </button>
+            )}
+
+            {onOpenDeliveryAreas && (
+              <button
+                onClick={() => { onOpenDeliveryAreas(); setMobileMenuOpen(false); }}
+                className="w-full py-2.5 rounded-xl bg-slate-50 text-slate-800 font-bold text-xs flex items-center justify-center gap-2 border border-slate-200 hover:bg-slate-100 transition-colors"
+              >
+                <MapPin className="w-4 h-4 text-blue-600" />
+                <span>Delivery Coverage & Logistics Hub</span>
+              </button>
+            )}
+
             {onOpenThemeModal && (
               <button
                 onClick={() => { onOpenThemeModal(); setMobileMenuOpen(false); }}

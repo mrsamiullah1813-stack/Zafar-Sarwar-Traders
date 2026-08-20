@@ -88,7 +88,7 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({ reviews, onAddRe
           {reviews.map((rev) => (
             <div
               key={rev.id}
-              className="relative p-6 rounded-3xl glass-card glass-card-hover border border-slate-800/80 hover:border-amber-500/40 transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-amber-950/20 flex flex-col justify-between"
+              className="relative p-6 sm:p-7 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-amber-500/50 transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-amber-950/20 flex flex-col justify-between"
             >
               <div>
                 {/* Rating Stars & Quote Icon */}
@@ -101,31 +101,31 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({ reviews, onAddRe
                       />
                     ))}
                   </div>
-                  <Quote className="w-6 h-6 text-amber-500/20" />
+                  <Quote className="w-6 h-6 text-amber-500/30" />
                 </div>
 
                 {/* Comment */}
-                <p className="text-slate-300 text-xs sm:text-sm leading-relaxed font-light italic">
+                <p className="text-slate-100 text-sm leading-relaxed font-normal italic">
                   "{rev.comment}"
                 </p>
               </div>
 
               {/* Author Footer */}
-              <div className="mt-6 pt-4 border-t border-slate-800/60 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-400 flex items-center justify-center text-slate-950 font-black text-xs shadow-md">
+              <div className="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 shrink-0 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-400 flex items-center justify-center text-slate-950 font-black text-sm shadow-md">
                     {rev.name.charAt(0)}
                   </div>
-                  <div>
-                    <h4 className="text-white font-bold text-xs sm:text-sm flex items-center gap-1">
+                  <div className="min-w-0">
+                    <h4 className="text-white font-bold text-sm flex items-center gap-1 truncate">
                       <span>{rev.name}</span>
-                      <UserCheck className="w-3 h-3 text-amber-400" />
+                      <UserCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     </h4>
-                    <p className="text-slate-400 text-[11px] font-light">{rev.role} • {rev.location}</p>
+                    <p className="text-slate-300 text-xs font-normal truncate">{rev.role} • {rev.location}</p>
                   </div>
                 </div>
 
-                <span className="text-[10px] text-amber-300 font-mono bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-lg">
+                <span className="shrink-0 text-xs text-amber-300 font-medium bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-lg">
                   {rev.projectType}
                 </span>
               </div>

@@ -86,6 +86,8 @@ import { CartDrawer } from './components/CartDrawer';
 import { OrderCheckoutModal } from './components/OrderCheckoutModal';
 import { CinematicIntro } from './components/CinematicIntro';
 import { LuxuryCursorEffect } from './components/LuxuryCursorEffect';
+import { DeliveryCheckerModal } from './components/DeliveryCheckerModal';
+import { DeliveryAreasPage } from './components/DeliveryAreasPage';
 
 export default function App() {
   const [showIntro, setShowIntro] = useState<boolean>(() => {
@@ -182,6 +184,8 @@ export default function App() {
   const [customerProfile, setCustomerProfile] = useState(() => loadCustomerProfile());
   const [customerOrders, setCustomerOrders] = useState(() => loadStoredOrders());
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
+  const [deliveryCheckerOpen, setDeliveryCheckerOpen] = useState(false);
+  const [viewDeliveryAreasPage, setViewDeliveryAreasPage] = useState(false);
 
   // Diagnostic tracking for React categories state hydration
   useEffect(() => {
@@ -531,77 +535,89 @@ export default function App() {
         onOpenOrderTracking={() => setOrderTrackingOpen(true)}
         onSelectCategory={handleSelectCategory}
         onOpenSmartTool={(toolId) => setActiveToolId(toolId)}
+        onOpenDeliveryChecker={() => setDeliveryCheckerOpen(true)}
+        onOpenDeliveryAreas={() => setViewDeliveryAreasPage(true)}
       />
 
-      {/* Main Page Sections */}
-      <main id="main-content" className="relative z-10">
-        <HeroSection
-          products={products}
-          categories={categories}
-          brands={brands}
-          heroSettings={heroSettings}
-          onSelectProduct={(prod) => setSelectedProduct(prod)}
-          onAddToCart={handleAddToCart}
-          onOpenAiConsultant={() => setAiModalOpen(true)}
+      {/* Main Page Sections OR Delivery Areas Page */}
+      {viewDeliveryAreasPage ? (
+        <DeliveryAreasPage
+          onBackToHome={() => setViewDeliveryAreasPage(false)}
+          onOpenProductQuickView={(prodId) => {
+            const found = products.find(p => p.id === prodId);
+            if (found) setSelectedProduct(found);
+          }}
         />
+      ) : (
+        <main id="main-content" className="relative z-10">
+          <HeroSection
+            products={products}
+            categories={categories}
+            brands={brands}
+            heroSettings={heroSettings}
+            onSelectProduct={(prod) => setSelectedProduct(prod)}
+            onAddToCart={handleAddToCart}
+            onOpenAiConsultant={() => setAiModalOpen(true)}
+          />
 
-        {/* Feature Highlights Bar */}
-        <FeatureBar />
+          {/* Feature Highlights Bar */}
+          <FeatureBar />
 
-        <AboutSection config={config} />
+          <AboutSection config={config} />
 
-        {/* Categories / Departments Navigation */}
-        <CategoriesSection
-          categories={categories}
-          config={config}
-          onSelectCategory={handleSelectCategory}
-        />
+          {/* Categories / Departments Navigation */}
+          <CategoriesSection
+            categories={categories}
+            config={config}
+            onSelectCategory={handleSelectCategory}
+          />
 
-        {/* Authorized Brands */}
-        <BrandsSection
-          brands={brands}
-          products={products}
-        />
+          {/* Authorized Brands */}
+          <BrandsSection
+            brands={brands}
+            products={products}
+          />
 
-        {/* Featured Products & Storefront Catalog */}
-        <FeaturedProductsSection
-          products={products}
-          categories={categories}
-          config={config}
-          isAdmin={isAdmin}
-          wishlistIds={wishlistIds}
-          compareIds={compareIds}
-          onQuickView={handleQuickViewProduct}
-          onAddToCart={handleAddToCart}
-          onToggleWishlist={handleToggleWishlist}
-          onToggleCompare={handleToggleCompare}
-          onAddProduct={handleOpenAddProduct}
-          onEditProduct={handleOpenEditProduct}
-          onDeleteProduct={handleDeleteProduct}
-          selectedCategoryFilter={selectedCategoryFilter}
-        />
+          {/* Featured Products & Storefront Catalog */}
+          <FeaturedProductsSection
+            products={products}
+            categories={categories}
+            config={config}
+            isAdmin={isAdmin}
+            wishlistIds={wishlistIds}
+            compareIds={compareIds}
+            onQuickView={handleQuickViewProduct}
+            onAddToCart={handleAddToCart}
+            onToggleWishlist={handleToggleWishlist}
+            onToggleCompare={handleToggleCompare}
+            onAddProduct={handleOpenAddProduct}
+            onEditProduct={handleOpenEditProduct}
+            onDeleteProduct={handleDeleteProduct}
+            selectedCategoryFilter={selectedCategoryFilter}
+          />
 
-        {/* COMPACT SMART TOOLS HUB (Cement Calculator, Bathroom Planner, Material Estimator, Budget Finder, Water Tank & Pump Guide) */}
-        <SmartToolsSection
-          settings={smartToolsSettings}
-          onOpenTool={(toolId) => setActiveToolId(toolId)}
-        />
+          {/* COMPACT SMART TOOLS HUB (Cement Calculator, Bathroom Planner, Material Estimator, Budget Finder, Water Tank & Pump Guide) */}
+          <SmartToolsSection
+            settings={smartToolsSettings}
+            onOpenTool={(toolId) => setActiveToolId(toolId)}
+          />
 
-        <StatsSection stats={stats} />
+          <StatsSection stats={stats} />
 
-        <WhyChooseUs />
+          <WhyChooseUs />
 
-        <GallerySection items={gallery} />
+          <GallerySection items={gallery} />
 
-        <ReviewsSection
-          reviews={reviews}
-          onAddReview={handleAddReview}
-        />
+          <ReviewsSection
+            reviews={reviews}
+            onAddReview={handleAddReview}
+          />
 
-        <FaqSection faqs={faqItems} />
+          <FaqSection faqs={faqItems} />
 
-        <ContactSection config={config} contacts={contacts} />
-      </main>
+          <ContactSection config={config} contacts={contacts} />
+        </main>
+      )}
 
       {/* Sticky Floating WhatsApp */}
       <FloatingWhatsApp config={config} />
@@ -632,6 +648,8 @@ export default function App() {
         onOpenAdminLogin={() => setAdminLoginOpen(true)}
         onReplayIntro={() => setShowIntro(true)}
         onOpenThemeModal={() => setThemeModalOpen(true)}
+        onOpenDeliveryChecker={() => setDeliveryCheckerOpen(true)}
+        onOpenDeliveryAreas={() => setViewDeliveryAreasPage(true)}
       />
 
       {/* Cart Drawer */}
@@ -837,6 +855,11 @@ export default function App() {
         onClose={() => setActiveToolId(null)}
         onOpenQuickView={(prod) => setSelectedProduct(prod)}
         onAddToCart={handleAddToCart}
+      />
+      {/* Delivery Checker Modal Across Pakistan */}
+      <DeliveryCheckerModal
+        isOpen={deliveryCheckerOpen}
+        onClose={() => setDeliveryCheckerOpen(false)}
       />
     </div>
   );

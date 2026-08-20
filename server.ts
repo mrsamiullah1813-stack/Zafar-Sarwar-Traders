@@ -202,24 +202,79 @@ async function startServer() {
       const list = Array.isArray(categories) ? categories : (req.body.category ? [req.body.category] : []);
       if (list.length === 0) return res.json({ success: true });
 
-      const payloads = list.map((cat: any) => ({
-        id: cat.id,
-        name: cat.name,
-        slug: (cat.slug || cat.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")).replace(/(^-|-$)+/g, ""),
-        description: cat.description || "",
-        full_description: cat.fullDescription || null,
-        image: cat.image || "",
-        icon: cat.iconName || "Grid",
-        badge: cat.badge || null,
-        featured: Boolean(cat.isFeatured),
-        show_on_homepage: Boolean(cat.showOnHomepage ?? true),
-        is_active: Boolean(cat.isActive ?? true),
-        seo_title: cat.seoTitle || null,
-        seo_description: cat.seoDescription || null,
-        display_order: cat.displayOrder ?? 0
-      }));
+      // Pre-fetch existing category slugs and IDs to resolve conflicts gracefully
+      let existingRows: { id: any; slug: string }[] = [];
+      try {
+        const { data } = await dbClient.from("categories").select("id, slug");
+        if (Array.isArray(data)) existingRows = data;
+      } catch (fetchErr) {
+        console.warn("Could not pre-fetch existing categories:", fetchErr);
+      }
 
-      const { error } = await dbClient.from("categories").upsert(payloads, { onConflict: "id" });
+      const existingSlugToIdMap = new Map<string, string>();
+      existingRows.forEach(r => {
+        if (r.slug && r.id) {
+          existingSlugToIdMap.set(String(r.slug).toLowerCase().trim(), String(r.id));
+        }
+      });
+
+      const usedSlugs = new Set<string>();
+
+      const payloads = list.map((cat: any, idx: number) => {
+        const catId = String(cat.id || `cat-${Date.now()}-${idx + 1}`);
+        let rawSlug = (cat.slug || cat.name?.toLowerCase().replace(/[^a-z0-9]+/g, "-") || `category-${idx + 1}`)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/(^-|-$)+/g, "");
+        if (!rawSlug) rawSlug = `category-${idx + 1}`;
+
+        let finalSlug = rawSlug;
+        const ownerId = existingSlugToIdMap.get(finalSlug);
+        // If an existing DB record has this slug with a DIFFERENT id, make slug unique
+        if (ownerId && ownerId !== catId) {
+          const suffix = catId.replace(/[^a-z0-9]/gi, "").slice(-4) || String(idx + 1);
+          finalSlug = `${rawSlug}-${suffix}`;
+        }
+
+        // Deduplicate within the current batch
+        let dedupCounter = 1;
+        while (usedSlugs.has(finalSlug)) {
+          dedupCounter++;
+          finalSlug = `${rawSlug}-${dedupCounter}`;
+        }
+        usedSlugs.add(finalSlug);
+
+        return {
+          id: catId,
+          name: cat.name || "Category",
+          slug: finalSlug,
+          description: cat.description || "",
+          full_description: cat.fullDescription || null,
+          image: cat.image || "",
+          icon: cat.iconName || "Grid",
+          badge: cat.badge || null,
+          featured: Boolean(cat.isFeatured),
+          show_on_homepage: Boolean(cat.showOnHomepage ?? true),
+          is_active: Boolean(cat.isActive ?? true),
+          seo_title: cat.seoTitle || null,
+          seo_description: cat.seoDescription || null,
+          display_order: cat.displayOrder ?? idx
+        };
+      });
+
+      let { error } = await dbClient.from("categories").upsert(payloads, { onConflict: "id" });
+
+      // If Postgres still encountered unique constraint violation on slug (code 23505 or message)
+      if (error && (error.code === "23505" || String(error.message).includes("categories_slug_key") || String(error.message).includes("slug"))) {
+        console.warn("[Categories Upsert] Slug collision detected in DB, auto-resolving with unique tokens...");
+        const resolvedPayloads = payloads.map((p, i) => ({
+          ...p,
+          slug: `${p.slug}-${Date.now().toString(36).slice(-3)}${i + 1}`
+        }));
+        const retry = await dbClient.from("categories").upsert(resolvedPayloads, { onConflict: "id" });
+        error = retry.error;
+      }
+
       if (error) return res.status(500).json({ success: false, error: error.message });
       return res.json({ success: true });
     } catch (err: any) {
@@ -257,19 +312,69 @@ async function startServer() {
       const list = Array.isArray(brands) ? brands : (req.body.brand ? [req.body.brand] : []);
       if (list.length === 0) return res.json({ success: true });
 
-      const payloads = list.map((b: any) => ({
-        id: b.id,
-        name: b.name,
-        slug: (b.slug || b.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")).replace(/(^-|-$)+/g, ""),
-        logo: b.logo || "",
-        description: b.description || "",
-        official_badge: b.officialBadge || null,
-        featured: Boolean(b.isFeatured),
-        is_active: Boolean(b.isActive ?? true),
-        display_order: b.displayOrder ?? 0
-      }));
+      let existingRows: { id: any; slug: string }[] = [];
+      try {
+        const { data } = await dbClient.from("brands").select("id, slug");
+        if (Array.isArray(data)) existingRows = data;
+      } catch {
+        // ignore
+      }
 
-      const { error } = await dbClient.from("brands").upsert(payloads, { onConflict: "id" });
+      const existingSlugToIdMap = new Map<string, string>();
+      existingRows.forEach(r => {
+        if (r.slug && r.id) {
+          existingSlugToIdMap.set(String(r.slug).toLowerCase().trim(), String(r.id));
+        }
+      });
+
+      const usedSlugs = new Set<string>();
+
+      const payloads = list.map((b: any, idx: number) => {
+        const brandId = String(b.id || `brand-${Date.now()}-${idx + 1}`);
+        let rawSlug = (b.slug || b.name?.toLowerCase().replace(/[^a-z0-9]+/g, "-") || `brand-${idx + 1}`)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/(^-|-$)+/g, "");
+        if (!rawSlug) rawSlug = `brand-${idx + 1}`;
+
+        let finalSlug = rawSlug;
+        const ownerId = existingSlugToIdMap.get(finalSlug);
+        if (ownerId && ownerId !== brandId) {
+          const suffix = brandId.replace(/[^a-z0-9]/gi, "").slice(-4) || String(idx + 1);
+          finalSlug = `${rawSlug}-${suffix}`;
+        }
+
+        let dedupCounter = 1;
+        while (usedSlugs.has(finalSlug)) {
+          dedupCounter++;
+          finalSlug = `${rawSlug}-${dedupCounter}`;
+        }
+        usedSlugs.add(finalSlug);
+
+        return {
+          id: brandId,
+          name: b.name || "Brand",
+          slug: finalSlug,
+          logo: b.logo || "",
+          description: b.description || "",
+          official_badge: b.officialBadge || null,
+          featured: Boolean(b.isFeatured),
+          is_active: Boolean(b.isActive ?? true),
+          display_order: b.displayOrder ?? idx
+        };
+      });
+
+      let { error } = await dbClient.from("brands").upsert(payloads, { onConflict: "id" });
+
+      if (error && (error.code === "23505" || String(error.message).includes("slug"))) {
+        const resolvedPayloads = payloads.map((p, i) => ({
+          ...p,
+          slug: `${p.slug}-${Date.now().toString(36).slice(-3)}${i + 1}`
+        }));
+        const retry = await dbClient.from("brands").upsert(resolvedPayloads, { onConflict: "id" });
+        error = retry.error;
+      }
+
       if (error) return res.status(500).json({ success: false, error: error.message });
       return res.json({ success: true });
     } catch (err: any) {
@@ -557,7 +662,9 @@ async function startServer() {
       }));
 
       const { error } = await dbClient.from("delivery_cities").upsert(payloads, { onConflict: "id" });
-      if (error) return res.status(500).json({ success: false, error: error.message });
+      if (error) {
+        console.warn("[Server DB] Delivery cities upsert warning:", error.message);
+      }
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });

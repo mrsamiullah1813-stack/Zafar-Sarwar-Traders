@@ -489,6 +489,57 @@ export const AdminSmartToolsManager: React.FC<AdminSmartToolsManagerProps> = ({
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs"
                 />
               </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Sand CFT per 1,000 Bricks</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  value={formData.brickSettings?.sandCftPer1000Bricks || 15.0}
+                  onChange={(e) => setFormData(prev => ({
+                    ...prev,
+                    brickSettings: {
+                      ...prev.brickSettings,
+                      sandCftPer1000Bricks: parseFloat(e.target.value) || 15.0
+                    }
+                  }))}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Default Wastage Allowance (%)</label>
+                <input
+                  type="number"
+                  step="1"
+                  value={formData.brickSettings?.defaultWastagePercent || 5}
+                  onChange={(e) => setFormData(prev => ({
+                    ...prev,
+                    brickSettings: {
+                      ...prev.brickSettings,
+                      defaultWastagePercent: parseFloat(e.target.value) || 5
+                    }
+                  }))}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Default Wall Height (Feet)</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  value={formData.brickSettings?.defaultWallHeightFeet || 10}
+                  onChange={(e) => setFormData(prev => ({
+                    ...prev,
+                    brickSettings: {
+                      ...prev.brickSettings,
+                      defaultWallHeightFeet: parseFloat(e.target.value) || 10
+                    }
+                  }))}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs"
+                />
+              </div>
             </div>
           </div>
 

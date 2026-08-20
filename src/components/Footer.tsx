@@ -18,9 +18,19 @@ interface FooterProps {
   onOpenAdminLogin?: () => void;
   onReplayIntro?: () => void;
   onOpenThemeModal?: () => void;
+  onOpenDeliveryChecker?: () => void;
+  onOpenDeliveryAreas?: () => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ config, onSelectCategory, onOpenAdminLogin, onReplayIntro, onOpenThemeModal }) => {
+export const Footer: React.FC<FooterProps> = ({ 
+  config, 
+  onSelectCategory, 
+  onOpenAdminLogin, 
+  onReplayIntro, 
+  onOpenThemeModal,
+  onOpenDeliveryChecker,
+  onOpenDeliveryAreas 
+}) => {
   const handleWhatsApp = () => {
     const text = encodeURIComponent(`Hello ${config.name}, I am visiting your website footer.`);
     window.open(`https://wa.me/${config.whatsapp.replace(/[^0-9]/g, '')}?text=${text}`, '_blank');
@@ -67,6 +77,28 @@ export const Footer: React.FC<FooterProps> = ({ config, onSelectCategory, onOpen
           <div className="lg:col-span-2 space-y-3">
             <h4 className="text-white font-bold text-sm font-serif">Quick Navigation</h4>
             <ul className="space-y-2">
+              {onOpenDeliveryChecker && (
+                <li>
+                  <button
+                    type="button"
+                    onClick={onOpenDeliveryChecker}
+                    className="text-amber-400 hover:text-amber-300 font-bold transition-colors flex items-center gap-1 text-left"
+                  >
+                    <span>🚚 Delivery Checker</span>
+                  </button>
+                </li>
+              )}
+              {onOpenDeliveryAreas && (
+                <li>
+                  <button
+                    type="button"
+                    onClick={onOpenDeliveryAreas}
+                    className="text-slate-300 hover:text-white transition-colors text-left"
+                  >
+                    Delivery Areas Directory
+                  </button>
+                </li>
+              )}
               {['Home', 'About Us', 'Categories', 'Products', 'Why Us', 'Gallery', 'Reviews', 'FAQ', 'Contact'].map((item) => (
                 <li key={item}>
                   <a
