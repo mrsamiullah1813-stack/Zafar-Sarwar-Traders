@@ -22,6 +22,8 @@ import {
   VolumeX
 } from 'lucide-react';
 import { Product, ProductCategory, ProductBrand, HeroSettings } from '../types';
+import { ProductSaleBadge } from './ProductSaleBadge';
+import { getProductPricingDetails } from '../utils/pricingUtils';
 
 interface HeroSectionProps {
   products: Product[];
@@ -201,10 +203,13 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   const handleWhatsAppOrder = (e: React.MouseEvent, prod: Product) => {
     e.stopPropagation();
     const phone = '923108002863';
-    const numPrice = Number(prod.price);
-    const displayPrice = prod.price ? (!isNaN(numPrice) && numPrice > 0 ? numPrice.toLocaleString() : prod.price) : 'Quote Requested';
+    const pricing = getProductPricingDetails(prod);
+    let priceText = pricing.effectivePriceString;
+    if (pricing.isSaleActive && pricing.discountPercentage > 0) {
+      priceText = `${pricing.formattedSalePrice} (Special Sale: ${pricing.discountPercentage}% OFF — Regular: ${pricing.formattedRegularPrice})`;
+    }
     const text = encodeURIComponent(
-      `Assalam-o-Alaikum! I am interested in purchasing from Zafar Sarwar Traders:\n\n*Product:* ${prod.name}\n*Price:* Rs. ${displayPrice}\n*SKU:* ${prod.sku || prod.id}\n\nPlease share price discount, delivery time & availability.`
+      `Assalam-o-Alaikum! I am interested in purchasing from Zafar Sarwar Traders:\n\n*Product:* ${prod.name}\n*Price:* ${priceText}\n*SKU:* ${prod.sku || prod.id}\n\nPlease share availability and order confirmation.`
     );
     window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
   };
@@ -584,9 +589,12 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                     <div className="absolute -inset-full top-0 block w-1/2 h-full bg-gradient-to-r from-transparent via-white/10 to-transparent transform -skew-x-12 -translate-x-full group-hover/showcase:animate-shimmer pointer-events-none" />
 
                     {/* Floating Quality Spec Badges */}
-                    <div className="absolute top-4 left-4 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-950/80 border border-slate-700/80 text-[11px] font-bold text-slate-200 backdrop-blur-md shadow-md">
-                      <Sparkle className="w-3 h-3 text-cyan-400" />
-                      <span>Featured Product</span>
+                    <div className="absolute top-4 left-4 z-20 flex items-center gap-1.5">
+                      <ProductSaleBadge product={currentProduct} />
+                      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-950/80 border border-slate-700/80 text-[11px] font-bold text-slate-200 backdrop-blur-md shadow-md">
+                        <Sparkle className="w-3 h-3 text-cyan-400" />
+                        <span>Featured Product</span>
+                      </div>
                     </div>
 
                     <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-950/80 border border-blue-500/40 text-[11px] font-bold text-cyan-300 backdrop-blur-md shadow-md">
@@ -639,13 +647,37 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                       </div>
 
                       <div className="shrink-0 text-right">
-                        {currentProduct.price ? (
-                          <span className="text-base sm:text-lg font-black text-cyan-300 font-mono">
-                            Rs. {!isNaN(Number(currentProduct.price)) && Number(currentProduct.price) > 0 ? Number(currentProduct.price).toLocaleString() : currentProduct.price}
-                          </span>
-                        ) : (
-                          <span className="text-xs font-semibold text-slate-300">Contact for Quote</span>
-                        )}
+                        {(() => {
+                          const pricing = getProductPricingDetails(currentProduct);
+                          if (pricing.isSaleActive) {
+                            return (
+                              <div className="flex flex-col items-end">
+                                <span className="text-base sm:text-lg font-black text-rose-400 font-mono">
+                                  {pricing.formattedSalePrice}
+                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  {pricing.showRegularPriceStrike && (
+                                    <span className="text-xs text-slate-400 line-through font-mono">
+                                      {pricing.formattedRegularPrice}
+                                    </span>
+                                  )}
+                                  {pricing.showDiscountPercentage && pricing.discountPercentage > 0 && (
+                                    <span className="px-1.5 py-0.2 rounded bg-rose-500/30 text-rose-300 font-bold text-[10px] font-mono border border-rose-500/40">
+                                      {pricing.discountPercentage}% OFF
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          }
+                          return currentProduct.price ? (
+                            <span className="text-base sm:text-lg font-black text-cyan-300 font-mono">
+                              Rs. {!isNaN(Number(currentProduct.price)) && Number(currentProduct.price) > 0 ? Number(currentProduct.price).toLocaleString() : currentProduct.price}
+                            </span>
+                          ) : (
+                            <span className="text-xs font-semibold text-slate-300">Contact for Quote</span>
+                          );
+                        })()}
                       </div>
                     </div>
 

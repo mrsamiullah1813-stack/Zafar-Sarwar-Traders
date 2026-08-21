@@ -246,7 +246,8 @@ export const FloatingAiChat: React.FC<FloatingAiChatProps> = ({
           recommendedCategory: recommendedCategory || undefined,
           deliveryInfoCard: deliveryInfoCard || undefined,
           comparisonTable: comparisonTable || undefined,
-          launchPlanner: !!launchPlanner,
+          launchPlanner: !!launchPlanner || json.data.suggestedSmartTool === 'bathroom_planner',
+          suggestedSmartTool: json.data.suggestedSmartTool || undefined,
           needsWhatsAppEscalation: !!needsWhatsAppEscalation,
           suggestedReplies: suggestedReplies || ['Order on WhatsApp', 'Browse Products', 'Bathroom Planner']
         };
@@ -689,6 +690,33 @@ export const FloatingAiChat: React.FC<FloatingAiChatProps> = ({
                                 className="w-full py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-md"
                               >
                                 <span>Launch AI Bathroom Planner</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+
+                          {/* SMART TOOLS CARDS */}
+                          {msg.suggestedSmartTool && msg.suggestedSmartTool !== 'bathroom_planner' && (
+                            <div className="mt-3 p-3 rounded-xl bg-gradient-to-r from-cyan-950/80 to-slate-900 border border-cyan-500/40 space-y-2">
+                              <span className="text-[11px] font-bold text-cyan-300 flex items-center gap-1.5 font-mono">
+                                <Sliders className="w-3.5 h-3.5 text-cyan-400" />
+                                <span>
+                                  {msg.suggestedSmartTool === 'cement_estimator' && 'Material & Cement Estimator'}
+                                  {msg.suggestedSmartTool === 'tank_calculator' && 'Water Tank & Pump Calculator'}
+                                  {msg.suggestedSmartTool === 'tile_calculator' && 'Tile Box & Area Estimator'}
+                                </span>
+                              </span>
+                              <p className="text-[10px] text-slate-300">
+                                Launch our official engineering calculators to calculate exact quantities and estimates:
+                              </p>
+                              <button
+                                onClick={() => {
+                                  const el = document.getElementById('smart-tools') || document.getElementById('products');
+                                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                                }}
+                                className="w-full py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-md"
+                              >
+                                <span>Open Interactive Calculator</span>
                                 <ArrowRight className="w-3.5 h-3.5" />
                               </button>
                             </div>

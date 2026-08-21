@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Trash2, Video, Image as ImageIcon, Sparkles, Tag, ShieldCheck, Layers, Star, Truck, Clock, MapPin, Info, DollarSign, MessageSquare, AlertCircle } from 'lucide-react';
-import { Product, ProductVideo, ProductCategory, ProductBrand, ProductDeliveryConfig } from '../types';
+import { X, Check, Trash2, Video, Image as ImageIcon, Sparkles, Tag, ShieldCheck, Layers, Star, Truck, Clock, MapPin, Info, DollarSign, MessageSquare, AlertCircle, Flame, Percent, Calendar, Timer } from 'lucide-react';
+import { Product, ProductVideo, ProductCategory, ProductBrand, ProductDeliveryConfig, ProductSaleConfig } from '../types';
 import { VideoUploader } from './VideoUploader';
 import { MultiImageUploader } from './MultiImageUploader';
 import { formatSupabaseError } from '../services/supabaseService';
+import { parseNumericPrice, calculateDiscountPercentage, calculateSavingsAmount, formatPakistaniPrice } from '../utils/pricingUtils';
 
 interface AdminProductModalProps {
   product: Product | null; // null for creating new product
@@ -74,6 +75,18 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
   const [deliveryNote, setDeliveryNote] = useState<string>('');
   const [hideDeliveryInfo, setHideDeliveryInfo] = useState<boolean>(false);
 
+  // Sale & Discount configuration states
+  const [saleEnabled, setSaleEnabled] = useState<boolean>(false);
+  const [salePrice, setSalePrice] = useState<string>('');
+  const [saleStartDate, setSaleStartDate] = useState<string>('');
+  const [saleEndDate, setSaleEndDate] = useState<string>('');
+  const [saleLabel, setSaleLabel] = useState<string>('SALE');
+  const [saleBadgeColor, setSaleBadgeColor] = useState<string>('red');
+  const [saleMessage, setSaleMessage] = useState<string>('');
+  const [showSaleCountdown, setShowSaleCountdown] = useState<boolean>(true);
+  const [showDiscountPercentage, setShowDiscountPercentage] = useState<boolean>(true);
+  const [showSavingsAmount, setShowSavingsAmount] = useState<boolean>(true);
+
   useEffect(() => {
     if (product) {
       setFormData({
@@ -92,6 +105,19 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       } else {
         setSpecPairs([{ key: 'Material', value: 'Solid Brass' }]);
       }
+
+      // Populate sale states
+      const isProductSaleOn = Boolean(product.saleEnabled || product.saleConfig?.saleEnabled);
+      setSaleEnabled(isProductSaleOn);
+      setSalePrice(String(product.salePrice ?? product.saleConfig?.salePrice ?? ''));
+      setSaleStartDate(product.saleStartDate ?? product.saleConfig?.saleStartDate ?? '');
+      setSaleEndDate(product.saleEndDate ?? product.saleConfig?.saleEndDate ?? '');
+      setSaleLabel(product.saleLabel ?? product.saleConfig?.saleLabel ?? 'SALE');
+      setSaleBadgeColor(product.saleBadgeColor ?? product.saleConfig?.saleBadgeColor ?? 'red');
+      setSaleMessage(product.saleMessage ?? product.saleConfig?.saleMessage ?? '');
+      setShowSaleCountdown(product.showSaleCountdown ?? product.saleConfig?.showCountdown ?? true);
+      setShowDiscountPercentage(product.showDiscountPercentage ?? product.saleConfig?.showDiscountPercentage ?? true);
+      setShowSavingsAmount(product.showSavingsAmount ?? product.saleConfig?.showSavings ?? true);
 
       if (product.deliveryConfig) {
         setHasCustomDelivery(true);
@@ -129,6 +155,16 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
     } else {
       setFeaturesInput('High Durability\n10 Year Official Warranty\nPrecision Engineering');
       setSpecPairs([{ key: 'Material', value: 'Solid Brass / Porcelain' }, { key: 'Origin', value: 'Imported' }]);
+      setSaleEnabled(false);
+      setSalePrice('');
+      setSaleStartDate('');
+      setSaleEndDate('');
+      setSaleLabel('SALE');
+      setSaleBadgeColor('red');
+      setSaleMessage('');
+      setShowSaleCountdown(true);
+      setShowDiscountPercentage(true);
+      setShowSavingsAmount(true);
       setHasCustomDelivery(false);
       setDeliveryType('standard');
       setMinDeliveryTime(3);
@@ -226,6 +262,24 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       hideDeliveryInfo
     } : undefined;
 
+    const numRegularPrice = parseNumericPrice(formData.price);
+    const numSalePrice = parseNumericPrice(salePrice);
+    const isSaleValid = saleEnabled && numRegularPrice > 0 && numSalePrice > 0 && numSalePrice < numRegularPrice;
+
+    const saleConfigObj: ProductSaleConfig | undefined = saleEnabled ? {
+      saleEnabled: true,
+      salePrice: salePrice.trim() || undefined,
+      saleStartDate: saleStartDate.trim() || undefined,
+      saleEndDate: saleEndDate.trim() || undefined,
+      saleLabel: saleLabel.trim() || 'SALE',
+      saleBadgeColor: saleBadgeColor || 'red',
+      saleMessage: saleMessage.trim() || undefined,
+      showCountdown: showSaleCountdown,
+      showDiscountPercentage: showDiscountPercentage,
+      showSavings: showSavingsAmount,
+      showRegularPriceStrike: true
+    } : undefined;
+
     const finalProduct: Product = {
       id: formData.id || `prod-${Date.now()}`,
       name: formData.name,
@@ -235,6 +289,17 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       images: uploadedImages,
       description: formData.description || 'Premium building material and sanitaryware.',
       price: formData.isPriceOnRequest ? 'Price on Request' : (formData.price || 'Call for Price'),
+      salePrice: saleEnabled && salePrice ? salePrice.trim() : undefined,
+      saleEnabled: Boolean(saleEnabled),
+      saleStartDate: saleEnabled && saleStartDate ? saleStartDate.trim() : undefined,
+      saleEndDate: saleEnabled && saleEndDate ? saleEndDate.trim() : undefined,
+      saleLabel: saleEnabled && saleLabel ? saleLabel.trim() : undefined,
+      saleBadgeColor: saleEnabled && saleBadgeColor ? saleBadgeColor : undefined,
+      saleMessage: saleEnabled && saleMessage ? saleMessage.trim() : undefined,
+      showSaleCountdown: showSaleCountdown,
+      showDiscountPercentage: showDiscountPercentage,
+      showSavingsAmount: showSavingsAmount,
+      saleConfig: saleConfigObj,
       features: parsedFeatures.length > 0 ? parsedFeatures : ['100% Genuine', 'Warranty Covered'],
       specs: specsObj,
       availableColors: parsedColors.length > 0 ? parsedColors : undefined,
@@ -390,6 +455,289 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
               />
             </div>
           </div>
+
+          {/* 🔥 PRODUCT SALE & DISCOUNT PRICING SYSTEM (OPTIONAL PER PRODUCT) */}
+          {(() => {
+            const regNum = parseNumericPrice(formData.price);
+            const saleNum = parseNumericPrice(salePrice);
+            const liveDiscountPercent = calculateDiscountPercentage(regNum, saleNum);
+            const liveSavings = calculateSavingsAmount(regNum, saleNum);
+            const isSalePriceTooHigh = saleEnabled && salePrice && regNum > 0 && saleNum >= regNum;
+
+            return (
+              <div className={`p-4 sm:p-5 rounded-2xl border transition-all duration-300 space-y-4 ${
+                saleEnabled 
+                  ? 'bg-gradient-to-b from-rose-950/40 via-slate-900 to-slate-950 border-rose-500/50 shadow-xl shadow-rose-950/20' 
+                  : 'bg-slate-950/70 border-slate-800'
+              }`}>
+                {/* Header with Enable Switch */}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`p-2 rounded-xl border transition-colors ${
+                      saleEnabled 
+                        ? 'bg-rose-600 text-white border-rose-400 shadow-md shadow-rose-600/30' 
+                        : 'bg-slate-800 text-slate-400 border-slate-700'
+                    }`}>
+                      <Flame className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white uppercase tracking-wider">
+                          Sale & Discount Pricing
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          saleEnabled 
+                            ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' 
+                            : 'bg-slate-800 text-slate-400 border border-slate-700'
+                        }`}>
+                          {saleEnabled ? 'ACTIVE / ON' : 'DISABLED / OFF'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        {saleEnabled 
+                          ? 'Sale pricing and badges will be displayed for this specific product.' 
+                          : 'Normal product pricing is active. Enable below to set a discounted sale price.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Toggle Switch */}
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={saleEnabled}
+                      onChange={(e) => setSaleEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                  </label>
+                </div>
+
+                {/* Expanded Sale Options (Only when Sale Enabled = ON) */}
+                {saleEnabled && (
+                  <div className="pt-3 border-t border-rose-500/20 space-y-4 animate-fadeIn">
+                    
+                    {/* Price Inputs & Live Discount Calculation */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">
+                          Regular / Base Price (PKR)
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.price || ''}
+                          onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                          placeholder="e.g. 10,000"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-rose-500 font-mono"
+                        />
+                        <span className="text-[10px] text-slate-500 mt-0.5 block">
+                          Current regular price: {regNum > 0 ? formatPakistaniPrice(regNum) : 'Not specified'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-rose-300 mb-1 flex items-center justify-between">
+                          <span>Sale Price / Discounted Rate (PKR) *</span>
+                          {liveDiscountPercent > 0 && (
+                            <span className="px-2 py-0.5 rounded-md bg-rose-600 text-white font-black text-[10px] font-mono animate-pulse">
+                              {liveDiscountPercent}% OFF
+                            </span>
+                          )}
+                        </label>
+                        <input
+                          type="text"
+                          required={saleEnabled}
+                          value={salePrice}
+                          onChange={(e) => setSalePrice(e.target.value)}
+                          placeholder="e.g. 7,500"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-rose-500/50 text-xs text-rose-200 placeholder-slate-600 focus:outline-none focus:border-rose-400 font-mono font-bold"
+                        />
+                        <span className="text-[10px] text-rose-400/80 mt-0.5 block">
+                          Customer will pay: {saleNum > 0 ? formatPakistaniPrice(saleNum) : 'Enter sale price'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Auto-Calculated Discount & Savings Live Card */}
+                    {regNum > 0 && saleNum > 0 && !isSalePriceTooHigh && (
+                      <div className="p-3.5 rounded-xl bg-slate-950/90 border border-emerald-500/30 flex items-center justify-between gap-4 flex-wrap">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
+                            <Percent className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Automatic Discount Calculation</span>
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-sm font-extrabold text-emerald-400 font-mono">
+                                {liveDiscountPercent}% OFF
+                              </span>
+                              <span className="text-xs text-slate-400 font-mono">
+                                (~~{formatPakistaniPrice(regNum)}~~ → <strong className="text-white">{formatPakistaniPrice(saleNum)}</strong>)
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {liveSavings > 0 && (
+                          <div className="text-right">
+                            <span className="text-[10px] uppercase font-bold text-emerald-400 block">Customer Savings</span>
+                            <span className="text-xs font-black text-amber-300 font-mono">
+                              🎉 {formatPakistaniPrice(liveSavings)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Warning if Sale Price >= Regular Price */}
+                    {isSalePriceTooHigh && (
+                      <div className="p-3 rounded-xl bg-amber-950/50 border border-amber-500/40 text-amber-300 text-xs flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <strong className="font-bold block">Invalid Sale Price</strong>
+                          Sale price ({formatPakistaniPrice(saleNum)}) must be strictly less than the regular price ({formatPakistaniPrice(regNum)}) for discount calculations to activate.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Sale Schedule Dates (Optional Countdown Timer) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5 text-blue-400" />
+                          <span>Sale Start Date (Optional)</span>
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={saleStartDate}
+                          onChange={(e) => setSaleStartDate(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-rose-500"
+                        />
+                        <span className="text-[10px] text-slate-500 mt-0.5 block">Leave empty to start sale immediately</span>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                          <Timer className="w-3.5 h-3.5 text-rose-400" />
+                          <span>Sale End Date & Time (Optional Countdown)</span>
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={saleEndDate}
+                          onChange={(e) => setSaleEndDate(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-rose-500"
+                        />
+                        <span className="text-[10px] text-slate-500 mt-0.5 block">Triggers dynamic live countdown timer</span>
+                      </div>
+                    </div>
+
+                    {/* Sale Badge Label & Color Selector */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">
+                          Sale Badge Label
+                        </label>
+                        <input
+                          type="text"
+                          value={saleLabel}
+                          onChange={(e) => setSaleLabel(e.target.value)}
+                          placeholder="e.g. SALE, HOT DEAL, RAMADAN OFFER"
+                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-rose-500 uppercase tracking-wider font-bold"
+                        />
+                        {/* Quick Presets */}
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          {['SALE', 'HOT DEAL', 'RAMADAN OFFER', 'SPECIAL OFFER', 'LIMITED TIME', 'CLEARANCE', 'EID SPECIAL'].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => setSaleLabel(preset)}
+                              className={`px-2 py-0.5 rounded text-[9px] font-bold transition-colors ${
+                                saleLabel === preset 
+                                  ? 'bg-rose-600 text-white' 
+                                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                              }`}
+                            >
+                              {preset}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">
+                          Badge Color Theme
+                        </label>
+                        <select
+                          value={saleBadgeColor}
+                          onChange={(e) => setSaleBadgeColor(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-rose-500"
+                        >
+                          <option value="red">Ruby Red (Classic Sale)</option>
+                          <option value="emerald">Emerald Green (Spring / Festive)</option>
+                          <option value="amber">Amber Gold (Luxury / Ramadan)</option>
+                          <option value="blue">Cobalt Blue (Corporate Offer)</option>
+                          <option value="purple">Royal Purple (VIP Deal)</option>
+                          <option value="cyan">Electric Cyan (Flash Promo)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Promotional Sale Message */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Promotional Sale Message (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={saleMessage}
+                        onChange={(e) => setSaleMessage(e.target.value)}
+                        placeholder="e.g. Ramadan Special: Save Rs. 2,500 today with nationwide fast delivery!"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-rose-500"
+                      />
+                    </div>
+
+                    {/* Sale Display Checkboxes */}
+                    <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-2">
+                      <span className="text-[11px] font-bold text-slate-300 block">Frontend Display Options:</span>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={showDiscountPercentage}
+                            onChange={(e) => setShowDiscountPercentage(e.target.checked)}
+                            className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 bg-slate-900 border-slate-800"
+                          />
+                          <span>Show Discount % Pill</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={showSavingsAmount}
+                            onChange={(e) => setShowSavingsAmount(e.target.checked)}
+                            className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 bg-slate-900 border-slate-800"
+                          />
+                          <span>Show Savings Callout</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={showSaleCountdown}
+                            onChange={(e) => setShowSaleCountdown(e.target.checked)}
+                            className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 bg-slate-900 border-slate-800"
+                          />
+                          <span>Show Live Countdown</span>
+                        </label>
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* AVAILABILITY SYSTEM CONTROLS */}
           <div className="p-4 rounded-2xl bg-slate-950/90 border border-blue-900/40 space-y-3">

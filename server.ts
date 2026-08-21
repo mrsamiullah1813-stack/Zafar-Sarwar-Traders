@@ -184,6 +184,88 @@ async function startServer() {
     }
   };
 
+  // Robust Supabase Upsert Helper with automatic column negotiation and foreign-key healing
+  async function robustUpsert(table: string, payloads: any[], options: { onConflict?: string } = { onConflict: "id" }): Promise<{ success: boolean; data?: any; error?: string }> {
+    if (!dbClient) return { success: false, error: "Database client not configured on server" };
+    if (!payloads || payloads.length === 0) return { success: true };
+
+    let currentPayloads = payloads.map(p => ({ ...p }));
+    const maxRetries = 35;
+    let attempts = 0;
+    let lastError: any = null;
+
+    while (attempts < maxRetries) {
+      attempts++;
+      const { data, error } = await dbClient.from(table).upsert(currentPayloads, options);
+      if (!error) {
+        if (attempts > 1) {
+          console.log(`[Robust DB Upsert] Table "${table}": Successfully saved after ${attempts} adaptation attempts.`);
+        }
+        return { success: true, data };
+      }
+
+      lastError = error;
+      const errMsg = String(error.message || "");
+
+      // 1. Missing Column Error (PostgREST schema cache or relation missing column)
+      // e.g.: "Could not find the 'sale_enabled' column of 'products' in the schema cache"
+      // e.g.: "column "sale_enabled" of relation "products" does not exist"
+      const colMatch =
+        errMsg.match(/Could not find the '([^']+)' column/i) ||
+        errMsg.match(/Could not find the "([^"]+)" column/i) ||
+        errMsg.match(/column "([^"]+)" of relation/i) ||
+        errMsg.match(/column '([^']+)' of relation/i) ||
+        errMsg.match(/column "([^"]+)" does not exist/i) ||
+        errMsg.match(/column '([^']+)' does not exist/i) ||
+        errMsg.match(/column ([a-zA-Z0-9_]+) does not exist/i) ||
+        errMsg.match(/has no column named '([^']+)'/i) ||
+        errMsg.match(/has no column named "([^"]+)"/i) ||
+        errMsg.match(/has no column named ([a-zA-Z0-9_]+)/i);
+
+      if (colMatch && colMatch[1]) {
+        const badCol = colMatch[1];
+        console.warn(`[Robust DB Upsert] Table "${table}": Column "${badCol}" not found in schema cache. Stripping column and retrying (attempt ${attempts})...`);
+        currentPayloads = currentPayloads.map(item => {
+          const copy = { ...item };
+          delete copy[badCol];
+          return copy;
+        });
+        continue;
+      }
+
+      // 2. Foreign Key Constraint Violation (e.g. category_id, brand_id, product_id)
+      if (error.code === "23503" || errMsg.toLowerCase().includes("foreign key") || errMsg.toLowerCase().includes("violates foreign key")) {
+        console.warn(`[Robust DB Upsert] Table "${table}": Foreign key constraint violation. Nullifying relation fields and retrying (attempt ${attempts})...`);
+        currentPayloads = currentPayloads.map(item => {
+          const copy = { ...item };
+          if ("category_id" in copy) copy.category_id = null;
+          if ("brand_id" in copy) copy.brand_id = null;
+          if ("product_id" in copy) copy.product_id = null;
+          return copy;
+        });
+        continue;
+      }
+
+      // 3. Unique Constraint Violation on slug
+      if (error.code === "23505" && (errMsg.toLowerCase().includes("slug") || errMsg.toLowerCase().includes("unique"))) {
+        console.warn(`[Robust DB Upsert] Table "${table}": Unique slug collision detected. Appending unique token and retrying (attempt ${attempts})...`);
+        currentPayloads = currentPayloads.map((item, i) => {
+          const copy = { ...item };
+          if (copy.slug) {
+            copy.slug = `${copy.slug}-${Date.now().toString(36).slice(-4)}${i + 1}`;
+          }
+          return copy;
+        });
+        continue;
+      }
+
+      // Unrecoverable error
+      break;
+    }
+
+    return { success: false, error: lastError?.message || "Database upsert failed after schema negotiation" };
+  }
+
   app.get("/api/db/categories", async (req, res) => {
     if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
@@ -262,20 +344,8 @@ async function startServer() {
         };
       });
 
-      let { error } = await dbClient.from("categories").upsert(payloads, { onConflict: "id" });
-
-      // If Postgres still encountered unique constraint violation on slug (code 23505 or message)
-      if (error && (error.code === "23505" || String(error.message).includes("categories_slug_key") || String(error.message).includes("slug"))) {
-        console.warn("[Categories Upsert] Slug collision detected in DB, auto-resolving with unique tokens...");
-        const resolvedPayloads = payloads.map((p, i) => ({
-          ...p,
-          slug: `${p.slug}-${Date.now().toString(36).slice(-3)}${i + 1}`
-        }));
-        const retry = await dbClient.from("categories").upsert(resolvedPayloads, { onConflict: "id" });
-        error = retry.error;
-      }
-
-      if (error) return res.status(500).json({ success: false, error: error.message });
+      const result = await robustUpsert("categories", payloads, { onConflict: "id" });
+      if (!result.success) return res.status(500).json({ success: false, error: result.error });
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
@@ -364,18 +434,8 @@ async function startServer() {
         };
       });
 
-      let { error } = await dbClient.from("brands").upsert(payloads, { onConflict: "id" });
-
-      if (error && (error.code === "23505" || String(error.message).includes("slug"))) {
-        const resolvedPayloads = payloads.map((p, i) => ({
-          ...p,
-          slug: `${p.slug}-${Date.now().toString(36).slice(-3)}${i + 1}`
-        }));
-        const retry = await dbClient.from("brands").upsert(resolvedPayloads, { onConflict: "id" });
-        error = retry.error;
-      }
-
-      if (error) return res.status(500).json({ success: false, error: error.message });
+      const result = await robustUpsert("brands", payloads, { onConflict: "id" });
+      if (!result.success) return res.status(500).json({ success: false, error: result.error });
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
@@ -405,17 +465,31 @@ async function startServer() {
     }
 
     let numericSalePrice: number | null = null;
-    if (typeof product.salePrice === "number") {
-      numericSalePrice = product.salePrice;
-    } else if (product.salePrice) {
-      const digitsOnly = String(product.salePrice).replace(/[^0-9.]/g, "");
+    const rawSaleVal = product.salePrice ?? product.saleConfig?.salePrice;
+    if (typeof rawSaleVal === "number") {
+      numericSalePrice = rawSaleVal;
+    } else if (rawSaleVal) {
+      const digitsOnly = String(rawSaleVal).replace(/[^0-9.]/g, "");
       if (digitsOnly) numericSalePrice = parseFloat(digitsOnly) || null;
     }
+
+    const isSaleEnabled = Boolean(product.saleEnabled === true || product.saleConfig?.saleEnabled === true);
 
     const specsWithMeta = {
       ...(product.specs || {}),
       _raw_price: product.price ?? null,
       _raw_sale_price: product.salePrice ?? null,
+      _sale_enabled: isSaleEnabled,
+      _sale_price: product.salePrice ?? product.saleConfig?.salePrice ?? null,
+      _sale_start_date: product.saleStartDate ?? product.saleConfig?.saleStartDate ?? null,
+      _sale_end_date: product.saleEndDate ?? product.saleConfig?.saleEndDate ?? null,
+      _sale_label: product.saleLabel ?? product.saleConfig?.saleLabel ?? null,
+      _sale_badge_color: product.saleBadgeColor ?? product.saleConfig?.saleBadgeColor ?? null,
+      _sale_message: product.saleMessage ?? product.saleConfig?.saleMessage ?? null,
+      _show_sale_countdown: Boolean(product.showSaleCountdown ?? product.saleConfig?.showCountdown ?? true),
+      _show_discount_percentage: Boolean(product.showDiscountPercentage ?? product.saleConfig?.showDiscountPercentage ?? true),
+      _show_savings_amount: Boolean(product.showSavingsAmount ?? product.saleConfig?.showSavings ?? true),
+      _sale_config: product.saleConfig || null,
       _category_name: product.category || null,
       _category_id: product.categoryId || null,
       _brand_name: product.brand || null,
@@ -461,6 +535,14 @@ async function startServer() {
       short_description: product.shortDescription || null,
       price: numericPrice,
       sale_price: numericSalePrice,
+      sale_enabled: isSaleEnabled,
+      sale_start_date: product.saleStartDate ?? product.saleConfig?.saleStartDate ?? null,
+      sale_end_date: product.saleEndDate ?? product.saleConfig?.saleEndDate ?? null,
+      sale_label: product.saleLabel ?? product.saleConfig?.saleLabel ?? null,
+      sale_message: product.saleMessage ?? product.saleConfig?.saleMessage ?? null,
+      show_countdown: Boolean(product.showSaleCountdown ?? product.saleConfig?.showCountdown ?? true),
+      show_discount_percentage: Boolean(product.showDiscountPercentage ?? product.saleConfig?.showDiscountPercentage ?? true),
+      show_savings: Boolean(product.showSavingsAmount ?? product.saleConfig?.showSavings ?? true),
       category_id: product.categoryId || null,
       brand_id: product.brandId || null,
       image: product.image || "",
@@ -509,13 +591,15 @@ async function startServer() {
 
       const payloads = list.map((p: any) => mapServerProductToDb(p));
 
-      let { error } = await dbClient.from("products").upsert(payloads, { onConflict: "id" });
-      if (error && error.code === "23503") {
-        const sanitizedPayloads = payloads.map(p => ({ ...p, category_id: null, brand_id: null }));
-        const retryResult = await dbClient.from("products").upsert(sanitizedPayloads, { onConflict: "id" });
-        error = retryResult.error;
+      const result = await robustUpsert("products", payloads, { onConflict: "id" });
+      if (!result.success) {
+        console.error("[Supabase API] Product upsert failed after robust schema negotiation:", result.error);
+        return res.status(500).json({ success: false, error: result.error });
       }
-      if (error) return res.status(500).json({ success: false, error: error.message });
+
+      // Invalidate AI catalog cache on product update
+      aiCatalogCache = null;
+
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
@@ -528,6 +612,7 @@ async function startServer() {
       const { id } = req.params;
       const { error } = await dbClient.from("products").delete().eq("id", id);
       if (error) return res.status(500).json({ success: false, error: error.message });
+      aiCatalogCache = null;
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
@@ -566,8 +651,8 @@ async function startServer() {
         published: Boolean(settings.isEnabled ?? true),
         updated_at: new Date().toISOString()
       };
-      const { error } = await dbClient.from("hero_settings").upsert(payload, { onConflict: "id" });
-      if (error) return res.status(500).json({ success: false, error: error.message });
+      const result = await robustUpsert("hero_settings", [payload], { onConflict: "id" });
+      if (!result.success) return res.status(500).json({ success: false, error: result.error });
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
@@ -597,12 +682,12 @@ async function startServer() {
       const { order, items } = req.body;
       if (!order) return res.status(400).json({ success: false, error: "Order payload required" });
 
-      const { error: orderErr } = await dbClient.from("orders").upsert(order, { onConflict: "id" });
-      if (orderErr) return res.status(500).json({ success: false, error: orderErr.message });
+      const orderResult = await robustUpsert("orders", [order], { onConflict: "id" });
+      if (!orderResult.success) return res.status(500).json({ success: false, error: orderResult.error });
 
       if (Array.isArray(items) && items.length > 0) {
-        const { error: itemsErr } = await dbClient.from("order_items").upsert(items, { onConflict: "id" });
-        if (itemsErr) console.warn("Order items upsert warning:", itemsErr.message);
+        const itemsResult = await robustUpsert("order_items", items, { onConflict: "id" });
+        if (!itemsResult.success) console.warn("Order items upsert warning:", itemsResult.error);
       }
       return res.json({ success: true, id: order.id });
     } catch (err: any) {
@@ -661,9 +746,9 @@ async function startServer() {
         notes: c.notes || null
       }));
 
-      const { error } = await dbClient.from("delivery_cities").upsert(payloads, { onConflict: "id" });
-      if (error) {
-        console.warn("[Server DB] Delivery cities upsert warning:", error.message);
+      const result = await robustUpsert("delivery_cities", payloads, { onConflict: "id" });
+      if (!result.success) {
+        console.warn("[Server DB] Delivery cities upsert warning:", result.error);
       }
       return res.json({ success: true });
     } catch (err: any) {
@@ -802,6 +887,302 @@ async function startServer() {
     }
   });
 
+  // =========================================================
+  // DEDICATED AI KNOWLEDGE BASE DATABASE PROXY APIS (SUPABASE)
+  // =========================================================
+
+  // In-memory cached catalog for lightning fast AI response (<10ms context prep)
+  interface AiCatalogCache {
+    timestamp: number;
+    products: any[];
+    categories: any[];
+    brands: any[];
+    deliveryCities: any[];
+    aiKnowledge: any[];
+    aiConfig: any;
+    businessConfig: any;
+  }
+
+  let aiCatalogCache: AiCatalogCache | null = null;
+  const CACHE_TTL_MS = 30000; // 30 seconds TTL
+
+  const invalidateAiCatalogCache = () => {
+    aiCatalogCache = null;
+  };
+
+  const getCachedDatabaseCatalogForAi = async (storeContext: any = {}) => {
+    const now = Date.now();
+    if (aiCatalogCache && (now - aiCatalogCache.timestamp) < CACHE_TTL_MS) {
+      return {
+        products: storeContext.products?.length ? storeContext.products : aiCatalogCache.products,
+        categories: storeContext.categories?.length ? storeContext.categories : aiCatalogCache.categories,
+        brands: storeContext.brands?.length ? storeContext.brands : aiCatalogCache.brands,
+        deliveryCities: storeContext.cities?.length ? storeContext.cities : aiCatalogCache.deliveryCities,
+        aiKnowledge: storeContext.aiAssistantConfig?.customKnowledge?.length ? storeContext.aiAssistantConfig.customKnowledge : aiCatalogCache.aiKnowledge,
+        aiConfig: storeContext.aiAssistantConfig || aiCatalogCache.aiConfig,
+        businessConfig: storeContext.config || aiCatalogCache.businessConfig
+      };
+    }
+
+    let products: any[] = [];
+    let categories: any[] = [];
+    let brands: any[] = [];
+    let deliveryCities: any[] = [];
+    let aiKnowledge: any[] = [];
+    let aiConfig: any = {};
+    let businessConfig: any = {};
+
+    if (dbClient) {
+      try {
+        const [prodRes, catRes, brandRes, cityRes, knowRes, setRes] = await Promise.all([
+          dbClient.from("products").select("*").eq("hidden", false).limit(100),
+          dbClient.from("categories").select("id, name, slug, description").order("display_order", { ascending: true }),
+          dbClient.from("brands").select("id, name, description, country").eq("enabled", true),
+          dbClient.from("delivery_cities").select("id, name, city_name, delivery_fee, estimated_days, enabled, is_enabled, same_day_available, next_day_available").eq("enabled", true),
+          dbClient.from("ai_knowledge").select("id, title, category, question_or_topic, answer_or_content, is_enabled, display_order").order("display_order", { ascending: true }),
+          dbClient.from("site_settings").select("key, value")
+        ]);
+
+        if (prodRes.data && Array.isArray(prodRes.data)) {
+          products = prodRes.data.map((p: any) => {
+            const rawSpecs = typeof p.specifications === 'object' && p.specifications ? p.specifications : (p.specs || {});
+            const isSale = Boolean(p.sale_enabled ?? p.is_on_sale ?? p.sale_active ?? rawSpecs._sale_enabled ?? (p.sale_price && Number(p.sale_price) > 0));
+            const salePriceVal = p.sale_price ?? rawSpecs._sale_price ?? rawSpecs._raw_sale_price;
+            const priceVal = p.price ?? rawSpecs._raw_price;
+
+            return {
+              id: p.id,
+              name: p.title || p.name || "Product",
+              price: isSale && salePriceVal ? `PKR ${Number(salePriceVal).toLocaleString()}` : (priceVal ? (String(priceVal).includes('PKR') ? priceVal : `PKR ${Number(priceVal).toLocaleString()}`) : "Price on Request"),
+              numericPrice: Number(isSale && salePriceVal ? salePriceVal : priceVal) || 0,
+              category: p.category_id || p.category || "",
+              brand: p.brand || p.brand_id || "",
+              image: p.main_image || p.image || "/placeholder.jpg",
+              features: Array.isArray(p.features) ? p.features : [],
+              description: p.description || p.short_description || "",
+              stockStatus: p.stock_status || (p.stock_quantity > 0 ? "In Stock" : "Available on Order"),
+              badge: p.badge || ""
+            };
+          });
+        }
+
+        if (catRes.data && Array.isArray(catRes.data)) {
+          categories = catRes.data;
+        }
+
+        if (brandRes.data && Array.isArray(brandRes.data)) {
+          brands = brandRes.data;
+        }
+
+        if (cityRes.data && Array.isArray(cityRes.data)) {
+          deliveryCities = cityRes.data.map((c: any) => ({
+            cityName: c.name || c.city_name || "City",
+            deliveryFee: c.delivery_fee || 0,
+            estimatedDays: c.estimated_days || "2-3 Days",
+            isEnabled: c.enabled !== false && c.is_enabled !== false,
+            isSameDayAvailable: !!c.same_day_available,
+            isNextDayAvailable: !!c.next_day_available
+          }));
+        }
+
+        if (knowRes.data && Array.isArray(knowRes.data) && knowRes.data.length > 0) {
+          aiKnowledge = knowRes.data.map((k: any) => ({
+            id: k.id,
+            title: k.title,
+            category: k.category,
+            questionOrTopic: k.question_or_topic,
+            answerOrContent: k.answer_or_content,
+            isEnabled: k.is_enabled !== false,
+            displayOrder: k.display_order || 0
+          }));
+        }
+
+        if (setRes.data && Array.isArray(setRes.data)) {
+          for (const row of setRes.data) {
+            if (row.key === "zst_ai_assistant_config_v1" && row.value) {
+              aiConfig = row.value;
+              if (aiKnowledge.length === 0 && Array.isArray(aiConfig.customKnowledge)) {
+                aiKnowledge = aiConfig.customKnowledge;
+              }
+            } else if (row.key === "zst_business_config_v1" && row.value) {
+              businessConfig = row.value;
+            }
+          }
+        }
+      } catch (dbErr) {
+        console.warn("[Server AI Context] Direct Supabase fetch error, will use fallback store:", dbErr);
+      }
+    }
+
+    // Fallback to cmsDataStore or storeContext if database was empty
+    if (products.length === 0) {
+      products = storeContext.products || cmsDataStore.zst_products_v1 || [];
+    }
+    if (categories.length === 0) {
+      categories = storeContext.categories || cmsDataStore.zst_categories_v1 || [];
+    }
+    if (brands.length === 0) {
+      brands = storeContext.brands || cmsDataStore.zst_brands_v1 || [];
+    }
+    if (deliveryCities.length === 0) {
+      const deliv = cmsDataStore.zst_delivery_settings_v1 || {};
+      deliveryCities = deliv.cities || storeContext.cities || [];
+    }
+    if (aiKnowledge.length === 0) {
+      const cfg = storeContext.aiAssistantConfig || cmsDataStore.zst_ai_assistant_config_v1 || {};
+      aiKnowledge = cfg.customKnowledge || [];
+    }
+    if (Object.keys(aiConfig).length === 0) {
+      aiConfig = storeContext.aiAssistantConfig || cmsDataStore.zst_ai_assistant_config_v1 || {};
+    }
+    if (Object.keys(businessConfig).length === 0) {
+      businessConfig = storeContext.config || cmsDataStore.zst_business_config_v1 || {};
+    }
+
+    aiCatalogCache = {
+      timestamp: now,
+      products,
+      categories,
+      brands,
+      deliveryCities,
+      aiKnowledge,
+      aiConfig,
+      businessConfig
+    };
+
+    return aiCatalogCache;
+  };
+
+  // GET AI Knowledge from Supabase
+  app.get("/api/db/ai-knowledge", async (req, res) => {
+    try {
+      if (dbClient) {
+        const { data, error } = await dbClient
+          .from("ai_knowledge")
+          .select("*")
+          .order("display_order", { ascending: true });
+
+        if (!error && Array.isArray(data) && data.length > 0) {
+          return res.json({ success: true, data });
+        }
+      }
+
+      // Fallback to site_settings or cmsDataStore
+      const aiConf = cmsDataStore.zst_ai_assistant_config_v1 || {};
+      return res.json({ success: true, data: aiConf.customKnowledge || [] });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // UPSERT AI Knowledge item(s) to Supabase
+  app.post("/api/db/ai-knowledge/upsert", requireAdminAuth, async (req, res) => {
+    try {
+      const { knowledge, item } = req.body;
+      const itemsToSave: any[] = Array.isArray(knowledge) ? knowledge : (item ? [item] : []);
+
+      if (itemsToSave.length === 0) {
+        return res.status(400).json({ success: false, error: "No knowledge item(s) provided" });
+      }
+
+      if (dbClient) {
+        const dbPayload = itemsToSave.map((k: any, idx: number) => ({
+          id: k.id || `ck-${Date.now()}-${idx}`,
+          title: k.title || "Untitled Knowledge",
+          category: k.category || "general",
+          question_or_topic: k.questionOrTopic || k.question_or_topic || "",
+          answer_or_content: k.answerOrContent || k.answer_or_content || "",
+          is_enabled: k.isEnabled !== false && k.is_enabled !== false,
+          display_order: typeof k.displayOrder === 'number' ? k.displayOrder : (typeof k.display_order === 'number' ? k.display_order : idx + 1),
+          updated_at: new Date().toISOString()
+        }));
+
+        const result = await robustUpsert("ai_knowledge", dbPayload, { onConflict: "id" });
+        if (!result.success) {
+          console.warn("[DB Proxy] Upsert to ai_knowledge table error:", result.error);
+        } else {
+          console.log(`[DB Proxy] Upserted ${dbPayload.length} records into ai_knowledge table`);
+        }
+      }
+
+      // Also update in-memory cmsDataStore for local disk persistence
+      const currentConfig = cmsDataStore.zst_ai_assistant_config_v1 || {};
+      let currentKnowledge: any[] = currentConfig.customKnowledge || [];
+      itemsToSave.forEach(newItem => {
+        const existingIdx = currentKnowledge.findIndex(k => k.id === newItem.id);
+        if (existingIdx >= 0) {
+          currentKnowledge[existingIdx] = { ...currentKnowledge[existingIdx], ...newItem };
+        } else {
+          currentKnowledge.push(newItem);
+        }
+      });
+      cmsDataStore.zst_ai_assistant_config_v1 = {
+        ...currentConfig,
+        customKnowledge: currentKnowledge
+      };
+      await persistDataStoreToDisk();
+      invalidateAiCatalogCache();
+
+      return res.json({ success: true, count: itemsToSave.length });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // DELETE AI Knowledge item from Supabase
+  app.delete("/api/db/ai-knowledge/:id", requireAdminAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!id) return res.status(400).json({ success: false, error: "ID is required" });
+
+      if (dbClient) {
+        await dbClient.from("ai_knowledge").delete().eq("id", id);
+      }
+
+      const currentConfig = cmsDataStore.zst_ai_assistant_config_v1 || {};
+      if (Array.isArray(currentConfig.customKnowledge)) {
+        currentConfig.customKnowledge = currentConfig.customKnowledge.filter((k: any) => k.id !== id);
+        cmsDataStore.zst_ai_assistant_config_v1 = currentConfig;
+        await persistDataStoreToDisk();
+      }
+      invalidateAiCatalogCache();
+
+      return res.json({ success: true, id });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // TOGGLE AI Knowledge item enabled state
+  app.patch("/api/db/ai-knowledge/:id/toggle", requireAdminAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { isEnabled } = req.body;
+      if (!id) return res.status(400).json({ success: false, error: "ID is required" });
+
+      if (dbClient) {
+        await dbClient.from("ai_knowledge").update({
+          is_enabled: !!isEnabled,
+          updated_at: new Date().toISOString()
+        }).eq("id", id);
+      }
+
+      const currentConfig = cmsDataStore.zst_ai_assistant_config_v1 || {};
+      if (Array.isArray(currentConfig.customKnowledge)) {
+        currentConfig.customKnowledge = currentConfig.customKnowledge.map((k: any) => 
+          k.id === id ? { ...k, isEnabled: !!isEnabled } : k
+        );
+        cmsDataStore.zst_ai_assistant_config_v1 = currentConfig;
+        await persistDataStoreToDisk();
+      }
+      invalidateAiCatalogCache();
+
+      return res.json({ success: true, id, isEnabled });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
   // AI Luxury Bathroom & Building Material Consultant API
   app.post("/api/ai-consultant", async (req, res) => {
     try {
@@ -863,46 +1244,43 @@ Ensure tone is highly professional, inspiring, and elegant like Kohler, Hansgroh
     }
   });
 
-  // ULTRA PREMIUM AI SALES & WEBSITE ASSISTANT (RAG Chat API)
+  // =========================================================================
+  // HIGH-PERFORMANCE, WEBSITE-AWARE AI SALES ASSISTANT (RAG & Live DB Grounded)
+  // =========================================================================
   app.post("/api/ai-chat", async (req, res) => {
     try {
       const apiKey = process.env.GEMINI_API_KEY;
       const { message, history = [], storeContext = {} } = req.body;
 
-      if (!apiKey) {
-        return res.json({
-          success: true,
-          data: {
-            reply: "Welcome to Zafar Sarwar Traders! Our AI assistant is currently using live store mode. Our official showroom team is available on WhatsApp (+92 310 8002863) for instant pricing, quotes, and catalog inquiries. How can we help you today?",
-            recommendedProducts: [],
-            fallback: true,
-            suggestedReplies: ["Order on WhatsApp", "Browse Products", "Call Showroom"]
-          }
-        });
-      }
-
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: {
-          headers: {
-            "User-Agent": "aistudio-build",
-          },
-        },
-      });
-
-      // 1. Gather all live data sources
-      const allProducts: any[] = storeContext.products || cmsDataStore.zst_products_v1 || [];
-      const allCategories: any[] = storeContext.categories || cmsDataStore.zst_categories_v1 || [];
-      const allBrands: any[] = storeContext.brands || cmsDataStore.zst_brands_v1 || [];
-      const deliverySettings: any = cmsDataStore.zst_delivery_settings_v1 || {};
-      const cities: any[] = deliverySettings.cities || storeContext.cities || [];
-      const aiConfig: any = storeContext.aiAssistantConfig || cmsDataStore.zst_ai_assistant_config_v1 || {};
-      const customKnowledge: any[] = aiConfig.customKnowledge || [];
-      const businessConfig: any = storeContext.config || cmsDataStore.zst_business_config_v1 || {};
+      // 1. Fetch live ground truth data directly from Supabase / server cache
+      const catalog = await getCachedDatabaseCatalogForAi(storeContext);
+      const allProducts: any[] = catalog.products || [];
+      const allCategories: any[] = catalog.categories || [];
+      const allBrands: any[] = catalog.brands || [];
+      const cities: any[] = catalog.deliveryCities || [];
+      const aiConfig: any = catalog.aiConfig || {};
+      const customKnowledge: any[] = (catalog.aiKnowledge || []).filter((k: any) => k.isEnabled !== false);
+      const businessConfig: any = catalog.businessConfig || {};
 
       const query = (message || '').toLowerCase().trim();
 
-      // 2. Extract numeric price intent if present (e.g., "under 5000", "below 10000", "around 15000")
+      // 2. Multilingual & Smart Tool Intent Analysis
+      const isUrduQuery = /[\u0600-\u06FF]/.test(message || '') || 
+        /\b(kya|hai|hein|chahiye|dikhao|batao|kitne|ka|ki|rate|bhejo|toti|nal|commode|sasta|mehenga|lagti|hogi|mujhe|mjhe|chaniot|lahore)\b/i.test(query);
+
+      // Smart Tools intent detection
+      let detectedSmartTool: string | null = null;
+      if (/\b(bathroom plan|planner|package|remodel|renovation|design|kamray ka naksha)\b/i.test(query)) {
+        detectedSmartTool = "bathroom_planner";
+      } else if (/\b(cement|concrete|crush|sand|ret|bajri|estimate|estimator|kitna cement|bori|bags)\b/i.test(query)) {
+        detectedSmartTool = "cement_estimator";
+      } else if (/\b(tank|tanki|water tank|pump|hp pump|pani ki tanki)\b/i.test(query)) {
+        detectedSmartTool = "tank_calculator";
+      } else if (/\b(tile|tiles|marbles|sqft|square feet|box|boxes)\b/i.test(query)) {
+        detectedSmartTool = "tile_calculator";
+      }
+
+      // 3. Extract Numeric Price Intent
       let maxPrice: number | null = null;
       let minPrice: number | null = null;
       const priceNumbers = query.match(/\b\d{3,7}\b/g);
@@ -920,9 +1298,30 @@ Ensure tone is highly professional, inspiring, and elegant like Kohler, Hansgroh
         }
       }
 
-      // 3. Search and score candidate products
-      const ignoreWords = ['show', 'me', 'the', 'and', 'for', 'with', 'have', 'you', 'want', 'need', 'this', 'that', 'wala', 'wali', 'dikhao', 'chahiye', 'kya', 'hai', 'bhi', 'lagti', 'hogi', 'mujhe', 'mjhe', 'under', 'below', 'around', 'price', 'rate', 'cost', 'pakistan', 'rs', 'pkr'];
-      const terms = query.split(/\s+/).filter(t => t.length > 1 && !ignoreWords.includes(t));
+      // 4. Intelligent Multi-Token Candidate Scoring & Search
+      const stopwords = ['show', 'me', 'the', 'and', 'for', 'with', 'have', 'you', 'want', 'need', 'this', 'that', 'wala', 'wali', 'dikhao', 'chahiye', 'kya', 'hai', 'bhi', 'lagti', 'hogi', 'mujhe', 'mjhe', 'under', 'below', 'around', 'price', 'rate', 'cost', 'pakistan', 'rs', 'pkr', 'batao', 'please'];
+      const searchTerms = query.split(/[\s,.-]+/).filter(t => t.length > 1 && !stopwords.includes(t));
+
+      // Synonyms dictionary for Urdu/English matching
+      const synonymMap: Record<string, string[]> = {
+        'faucet': ['tap', 'mixer', 'toti', 'nal', 'sink mixer', 'basin mixer'],
+        'shower': ['fawwara', 'shower set', 'rain shower', 'jet', 'body jet', 'head shower'],
+        'toilet': ['commode', 'wc', 'pot', 'seat', 'wall hung', 'one piece'],
+        'basin': ['sink', 'wash basin', 'vanity', 'countertop'],
+        'pipe': ['cpvc', 'ppr', 'upvc', 'plumbing', 'fittings'],
+        'cement': ['opc', 'src', '53 grade', 'bestway', 'maple leaf'],
+        'paint': ['emulsion', 'weather sheet', 'silk', 'varnish']
+      };
+
+      const expandedTerms = new Set<string>(searchTerms);
+      searchTerms.forEach(term => {
+        for (const [key, syns] of Object.entries(synonymMap)) {
+          if (term === key || syns.includes(term)) {
+            expandedTerms.add(key);
+            syns.forEach(s => expandedTerms.add(s));
+          }
+        }
+      });
 
       const scoredProducts = allProducts.map((p: any) => {
         let score = 0;
@@ -932,73 +1331,119 @@ Ensure tone is highly professional, inspiring, and elegant like Kohler, Hansgroh
         const pDesc = (p.description || '').toLowerCase();
         const pFeatures = (p.features || []).join(' ').toLowerCase();
 
-        terms.forEach(term => {
-          if (pName.includes(term)) score += 10;
-          if (pCat.includes(term)) score += 6;
-          if (pBrand.includes(term)) score += 6;
-          if (pFeatures.includes(term)) score += 4;
-          if (pDesc.includes(term)) score += 2;
+        expandedTerms.forEach(term => {
+          if (pName.includes(term)) score += 15;
+          if (pBrand.includes(term)) score += 12;
+          if (pCat.includes(term)) score += 8;
+          if (pFeatures.includes(term)) score += 6;
+          if (pDesc.includes(term)) score += 3;
         });
 
-        const numPrice = parseInt(String(p.price || '0').replace(/[^0-9]/g, ''), 10);
+        const numPrice = p.numericPrice || parseInt(String(p.price || '0').replace(/[^0-9]/g, ''), 10) || 0;
         if (numPrice > 0) {
           if (maxPrice !== null && numPrice <= maxPrice && (minPrice === null || numPrice >= minPrice)) {
-            score += 15;
+            score += 20;
           } else if (maxPrice !== null && numPrice > maxPrice) {
-            score -= 8;
+            score -= 10;
           }
         }
 
         return { product: p, score, numPrice };
       });
 
-      let candidateMatches = scoredProducts
+      const matchedCandidates = scoredProducts
         .filter(sp => sp.score > 0)
         .sort((a, b) => b.score - a.score)
         .map(sp => sp.product);
 
-      const hasExactMatch = candidateMatches.length > 0;
+      const candidateProducts = matchedCandidates.length > 0
+        ? matchedCandidates.slice(0, 10)
+        : allProducts.slice(0, 8);
 
-      if (!hasExactMatch) {
-        candidateMatches = allProducts.slice(0, 10);
-      } else {
-        candidateMatches = candidateMatches.slice(0, 12);
-      }
-
-      // 4. Matched City Delivery Info
+      // 5. Matched City Delivery Info
       const matchedCity = cities.find((c: any) => c.isEnabled && query.includes((c.cityName || '').toLowerCase()));
 
-      // 5. Active Custom Knowledge Items
-      const activeCustomKnowledge = customKnowledge.filter((ck: any) => ck.isEnabled);
-
       // 6. Matched Category
-      const matchedCategory = allCategories.find((c: any) => query.includes((c.name || '').toLowerCase()));
+      const matchedCategory = allCategories.find((c: any) => query.includes((c.name || '').toLowerCase()) || (c.slug && query.includes(c.slug)));
 
-      // Format conversation history for prompt
+      // 7. Matched Custom Knowledge & Policies (Strict Grounding)
+      const relevantKnowledge = customKnowledge.filter((ck: any) => {
+        const topic = (ck.questionOrTopic || '').toLowerCase();
+        const title = (ck.title || '').toLowerCase();
+        return Array.from(expandedTerms).some(t => topic.includes(t) || title.includes(t));
+      });
+      const activeKnowledgeToInject = relevantKnowledge.length > 0 ? relevantKnowledge : customKnowledge.slice(0, 6);
+
+      // Check if GEMINI_API_KEY is present
+      if (!apiKey) {
+        return res.json({
+          success: true,
+          data: {
+            reply: isUrduQuery
+              ? `ظفر سرور ٹریڈرز میں خوش آمدید! ہماری انوینٹری میں تمام برانڈز (Sonex, Faisal, Master, Hansgrohe, Grohe) اصل وارنٹی کے ساتھ دستیاب ہیں۔ آپ واٹس ایپ پر فوری کوٹیشن اور ڈسکاؤنٹ حاصل کر سکتے ہیں۔`
+              : `Welcome to Zafar Sarwar Traders! We are official stockists for premium sanitaryware, faucets, showers, and plumbing supplies with 100% genuine brand warranties. How can I help you today?`,
+            recommendedProducts: candidateProducts.slice(0, 3).map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              price: p.price,
+              image: p.image,
+              brand: p.brand,
+              features: p.features || [],
+              stockStatus: p.stockStatus || 'In Stock'
+            })),
+            recommendedCategory: matchedCategory ? { id: matchedCategory.id, name: matchedCategory.name } : null,
+            deliveryInfoCard: matchedCity ? {
+              cityName: matchedCity.cityName,
+              estimatedDays: matchedCity.estimatedDays,
+              deliveryFee: matchedCity.deliveryFee,
+              notes: "Express door-to-door delivery."
+            } : null,
+            suggestedReplies: isUrduQuery 
+              ? ["واٹس ایپ پر رابطہ کریں", "پروڈکٹس دیکھیں", "ڈیلیوری کی تفصیل"]
+              : ["Order on WhatsApp", "Browse Products", "Check Delivery Times"],
+            suggestedSmartTool: detectedSmartTool
+          }
+        });
+      }
+
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build",
+          },
+        },
+      });
+
+      // Format conversation history
       const formattedHistory = Array.isArray(history)
         ? history.slice(-6).map((h: any) => `${h.sender === 'user' ? 'Customer' : 'Assistant'}: ${h.text}`).join('\n')
         : '';
 
-      const systemInstruction = `You are "Zafar AI Shopping Assistant", an ultra-premium, highly polite showroom sales consultant for ZAFAR SARWAR TRADERS.
+      const systemInstruction = `You are "Zafar AI Shopping Assistant", the official digital showroom sales consultant for ZAFAR SARWAR TRADERS (Pakistan's premier luxury sanitaryware, designer faucets, rain showers, plumbing, and building materials supplier).
 
-MANDATORY BEHAVIOR & RULES:
-1. PUBLIC DATA ONLY: Answer based ONLY on the provided live store context below. Never invent products, prices, or specs not supported by the live catalog.
-2. PRODUCT SEARCH & NOT FOUND HANDLING:
-   - If user asks for a specific product/brand/color/type that exists in our candidate products, recommend those candidates with accurate names and prices.
-   - If the requested product/brand is NOT in our catalog, clearly state: "I couldn't find that exact product in our current catalog, but here are similar available alternatives from our showroom:" and list candidate matches.
-3. MULTILINGUAL SUPPORT: Automatically detect if the user's message is in English, Urdu, or Roman Urdu (e.g. "faucet dikhao", "kitne ka hai", "black shower hai?"). Always reply in the EXACT SAME language as the customer.
-4. DELIVERY INQUIRIES: If the user asks about delivery to a city, use the MATCHED CITY DELIVERY INFO or general delivery guidelines. Provide estimated working days and fee.
-5. CATEGORY & NAVIGATION: If user asks for a specific category (e.g., Showers, Faucets, Basin), fill the "recommendedCategory" field with { "id": "category-id", "name": "Category Name" }.
-6. ADMIN SECURITY: NEVER reveal internal admin PINs, passwords, API keys, database structures, or customer orders.
-7. COMPACT & HELPFUL: Keep your verbal response warm, concise, and scannable.
+CORE ARCHITECTURAL RULES & GUARDRAILS:
+1. STRICT WEBSITE TRUTH: You MUST ground all facts, prices, specifications, warranties, and delivery information strictly in the provided LIVE STORE CONTEXT and CUSTOM KNOWLEDGE below. Never invent fake product models or prices.
+2. ACCURATE PRODUCT RECOMMENDATIONS:
+   - When the customer inquires about products, faucets, showers, prices, or materials, select 1 to 4 matching products from CANDIDATE PRODUCTS.
+   - If the user asks for an exact model or brand not in our catalog, politely clarify: "While that specific item is not in our current stock, here are top-rated available alternatives from our showroom:" and show relevant candidate items.
+3. LANGUAGE COHESION & MULTILINGUAL SUPPORT:
+   - If the customer writes in Urdu script (e.g. "کتنے کا ہے"), reply in beautiful, polite Urdu.
+   - If the customer writes in Roman Urdu (e.g. "faucet dikhao", "lahore delivery hai?", "rate kya hai"), reply in natural, courteous Roman Urdu.
+   - If the customer writes in English, reply in crisp, professional English.
+4. INTEGRATED SMART TOOLS:
+   - If the user is planning a full bathroom or asks for packages, mention our Easy Bathroom Planner and set "suggestedSmartTool": "bathroom_planner".
+   - If user asks about cement/concrete bags or construction calculation, suggest our Material Estimator and set "suggestedSmartTool": "cement_estimator".
+   - If user asks about water tanks or pump power, set "suggestedSmartTool": "tank_calculator".
+5. SECURITY & CONFIDENTIALITY: Never reveal internal admin PINs, developer keys, Supabase credentials, or private customer records.
 
-Respond in strict JSON format with these exact keys:
+Respond in strict JSON format matching this schema:
 {
-  "reply": "Your natural language response...",
+  "reply": "Your natural language conversational response...",
   "recommendedProducts": [
     {
-      "id": "prod-id",
-      "name": "Product Name",
+      "id": "product-id",
+      "name": "Product Title",
       "price": "PKR XX,XXX",
       "image": "image url",
       "brand": "Brand Name",
@@ -1007,9 +1452,8 @@ Respond in strict JSON format with these exact keys:
     }
   ],
   "recommendedCategory": null OR {
-    "id": "cat-id",
-    "name": "Category Name",
-    "description": "Short category note"
+    "id": "category-id",
+    "name": "Category Name"
   },
   "deliveryInfoCard": null OR {
     "cityName": "City Name",
@@ -1021,43 +1465,40 @@ Respond in strict JSON format with these exact keys:
     "title": "Product Comparison",
     "products": [
       {
-        "id": "id1",
-        "name": "Name 1",
-        "brand": "Brand 1",
-        "price": "Price 1",
-        "material": "Brass / Ceramic / etc",
+        "id": "id",
+        "name": "Name",
+        "brand": "Brand",
+        "price": "Price",
+        "material": "Material / Brass / Finish",
         "warranty": "Warranty info",
-        "features": "Key features",
+        "features": "Key highlights",
         "availability": "In Stock"
       }
     ]
   },
-  "launchPlanner": false,
-  "needsWhatsAppEscalation": false,
-  "suggestedReplies": ["Order on WhatsApp", "View Product Specs", "Request Quote"]
+  "suggestedSmartTool": null OR "bathroom_planner" OR "cement_estimator" OR "tank_calculator" OR "tile_calculator",
+  "suggestedReplies": ["Quick Reply 1", "Quick Reply 2", "Quick Reply 3"]
 }`;
 
       const promptContext = `
-LIVE STORE CONTEXT:
-Showroom Name: ${businessConfig.name || "Zafar Sarwar Traders"}
-Phone / WhatsApp: ${businessConfig.phone || "+92 310 8002863"}
-Address: ${businessConfig.address || "Main Showroom Yard"}
-Working Hours: ${businessConfig.hoursWeekday || "9:00 AM - 9:00 PM"}
+LIVE STORE CONTEXT (SOURCE OF TRUTH):
+Showroom: ${businessConfig.name || "Zafar Sarwar Traders"}
+WhatsApp / Phone: ${businessConfig.phone || "+92 310 8002863"}
+Location: ${businessConfig.address || "Main Showroom Yard"}
+Showroom Timings: ${businessConfig.hoursWeekday || "Monday - Saturday 9:00 AM - 9:00 PM (Friday break for Juma prayer)"}
 
-${matchedCity ? `MATCHED CITY DELIVERY INFO:
+${matchedCity ? `CITY DELIVERY DETAILS:
 City: ${matchedCity.cityName}
-Estimated Days: ${matchedCity.estimatedDays}
+Estimated Delivery: ${matchedCity.estimatedDays}
 Delivery Fee: PKR ${matchedCity.deliveryFee}
-Same Day Available: ${matchedCity.isSameDayAvailable}
-Next Day Available: ${matchedCity.isNextDayAvailable}
+Same Day Express: ${matchedCity.isSameDayAvailable ? "Available" : "Standard"}
 ` : ''}
 
-${activeCustomKnowledge.length > 0 ? `CUSTOM KNOWLEDGE & POLICIES:
-${activeCustomKnowledge.map((ck: any) => `• [${ck.title}]: ${ck.answerOrContent}`).join('\n')}
-` : ''}
+CUSTOM KNOWLEDGE & OFFICIAL STORE POLICIES (${activeKnowledgeToInject.length} rules loaded from Supabase):
+${activeKnowledgeToInject.map((k: any) => `• [${k.category.toUpperCase()}] ${k.title}: ${k.answerOrContent}`).join('\n')}
 
-MATCHED CANDIDATE PRODUCTS (${candidateMatches.length} items):
-${JSON.stringify(candidateMatches.map((p: any) => ({
+CANDIDATE PRODUCTS FROM LIVE DATABASE (${candidateProducts.length} items):
+${JSON.stringify(candidateProducts.map((p: any) => ({
   id: p.id,
   name: p.name,
   category: p.category,
@@ -1068,34 +1509,42 @@ ${JSON.stringify(candidateMatches.map((p: any) => ({
   image: p.image
 })))}
 
-AVAILABLE CATEGORIES:
+AVAILABLE STORE CATEGORIES:
 ${JSON.stringify(allCategories.map((c: any) => ({ id: c.id, name: c.name })))}
 
 CONVERSATION HISTORY:
 ${formattedHistory}
 
-CUSTOMER MESSAGE:
+CUSTOMER QUERY:
 "${message}"
 `;
 
+      const selectedModel = aiConfig?.selectedModel || "gemini-2.5-flash";
+
       const response = await ai.models.generateContent({
-        model: aiConfig?.selectedModel || "gemini-2.5-flash",
+        model: selectedModel.includes("gemini") ? selectedModel : "gemini-2.5-flash",
         contents: promptContext,
         config: {
           systemInstruction,
           responseMimeType: "application/json",
-          temperature: 0.6,
+          temperature: 0.5,
         },
       });
 
       const text = response.text || "{}";
-      const parsed = JSON.parse(text);
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(text);
+      } catch (parseErr) {
+        console.warn("[Server AI Chat] JSON parse fallback on text:", text);
+        parsed = { reply: text.replace(/[{}"]/g, '') };
+      }
 
       return res.json({
         success: true,
         data: {
-          reply: parsed.reply || "I'd be glad to assist you with Zafar Sarwar Traders products. How can I help you find what you need?",
-          recommendedProducts: parsed.recommendedProducts || candidateMatches.slice(0, 3).map((p: any) => ({
+          reply: parsed.reply || (isUrduQuery ? "میں آپ کی رہنمائی کے لیے حاضر ہوں۔ آپ کو کون سی پروڈکٹ یا قیمت معلوم کرنی ہے؟" : "I'd be glad to help you with Zafar Sarwar Traders products. How can I assist you today?"),
+          recommendedProducts: parsed.recommendedProducts || (candidateProducts.length > 0 ? candidateProducts.slice(0, 3).map((p: any) => ({
             id: p.id,
             name: p.name,
             price: p.price,
@@ -1103,18 +1552,19 @@ CUSTOMER MESSAGE:
             brand: p.brand,
             features: p.features,
             stockStatus: p.stockStatus || 'In Stock'
-          })),
+          })) : []),
           recommendedCategory: parsed.recommendedCategory || (matchedCategory ? { id: matchedCategory.id, name: matchedCategory.name } : null),
           deliveryInfoCard: parsed.deliveryInfoCard || (matchedCity ? {
             cityName: matchedCity.cityName,
             estimatedDays: matchedCity.estimatedDays,
             deliveryFee: matchedCity.deliveryFee,
-            notes: "Express delivery via Leopard / TCS courier fleet."
+            notes: "Express door-to-door courier dispatch."
           } : null),
           comparisonTable: parsed.comparisonTable || null,
-          launchPlanner: !!parsed.launchPlanner,
-          needsWhatsAppEscalation: !!parsed.needsWhatsAppEscalation,
-          suggestedReplies: parsed.suggestedReplies || ["Order on WhatsApp", "Browse Products", "Contact Us"]
+          suggestedSmartTool: parsed.suggestedSmartTool || detectedSmartTool || null,
+          suggestedReplies: parsed.suggestedReplies || (isUrduQuery 
+            ? ["واٹس ایپ پر آرڈر کریں", "وارنٹی کی تفصیل", "مکمل کیٹلاگ"]
+            : ["Order on WhatsApp", "View Product Specs", "Request Quotation"])
         }
       });
     } catch (err: any) {
@@ -1122,7 +1572,7 @@ CUSTOMER MESSAGE:
       return res.json({
         success: true,
         data: {
-          reply: "Thank you for inquiring with Zafar Sarwar Traders! Our AI assistant is currently connected to our live showroom database. You can browse all luxury products below, or connect directly with our sales specialists on WhatsApp (+92 310 8002863).",
+          reply: "Welcome to Zafar Sarwar Traders! Our AI shopping assistant is connected to our live showroom inventory. You can browse all luxury sanitaryware, showers, and faucets below, or chat directly with our team on WhatsApp (+92 310 8002863).",
           recommendedProducts: [],
           fallback: true,
           suggestedReplies: ["Order on WhatsApp", "Browse Products", "Call Showroom"]

@@ -3,6 +3,7 @@ import { X, ShoppingBag, CheckCircle2, Truck, ShieldCheck, Phone, MapPin, User, 
 import { CartItem, BusinessConfig, CheckoutSettings, CustomerOrder, OrderItem, DeliverySettings } from '../types';
 import { loadDeliverySettings, generateNextOrderId } from '../utils/storage';
 import { getOrGenerateCustomerId } from '../utils/customerStorage';
+import { getProductPricingDetails } from '../utils/pricingUtils';
 
 interface OrderCheckoutModalProps {
   isOpen: boolean;
@@ -62,9 +63,8 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
   const calculateSubtotal = () => {
     return items.reduce((acc, item) => {
       if (!item?.product) return acc;
-      const priceStr = item.product.salePrice || item.product.price || '0';
-      const numericPrice = parseFloat(priceStr.replace(/[^0-9.]/g, '')) || 0;
-      return acc + numericPrice * (item.quantity || 1);
+      const pricing = getProductPricingDetails(item.product);
+      return acc + pricing.effectivePriceNumeric * (item.quantity || 1);
     }, 0);
   };
 
@@ -121,15 +121,19 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
     const orderItems: OrderItem[] = items.map(item => {
       const p = item.product;
-      const priceStr = p.salePrice || p.price || 'Contact for price';
-      const numericPrice = parseFloat(priceStr.replace(/[^0-9.]/g, '')) || 0;
+      const pricing = getProductPricingDetails(p);
+      const numericPrice = pricing.effectivePriceNumeric;
+      let unitPriceText = pricing.effectivePriceString;
+      if (pricing.isSaleActive && pricing.discountPercentage > 0) {
+        unitPriceText = `${pricing.formattedSalePrice} (Sale ${pricing.discountPercentage}% OFF)`;
+      }
       return {
         productId: p.id,
         productName: p.name,
         brand: p.brand || p.category,
         image: p.images?.[0] || p.image,
         sku: p.sku,
-        unitPrice: priceStr,
+        unitPrice: unitPriceText,
         numericPrice: numericPrice,
         quantity: item.quantity,
         selectedColor: item.selectedColor,

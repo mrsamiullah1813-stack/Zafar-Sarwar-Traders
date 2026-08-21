@@ -76,6 +76,20 @@ export interface ProductVideo {
   url: string;
 }
 
+export interface ProductSaleConfig {
+  saleEnabled?: boolean;
+  salePrice?: string | number;
+  saleStartDate?: string;
+  saleEndDate?: string;
+  saleLabel?: string;
+  saleBadgeColor?: 'red' | 'emerald' | 'amber' | 'blue' | 'purple' | 'cyan' | string;
+  saleMessage?: string;
+  showCountdown?: boolean;
+  showDiscountPercentage?: boolean;
+  showSavings?: boolean;
+  showRegularPriceStrike?: boolean;
+}
+
 export interface Product {
   id: string;
   sku?: string;
@@ -88,6 +102,16 @@ export interface Product {
   shortDescription?: string;
   price?: string;
   salePrice?: string;
+  saleEnabled?: boolean;
+  saleStartDate?: string;
+  saleEndDate?: string;
+  saleLabel?: string;
+  saleBadgeColor?: string;
+  saleMessage?: string;
+  showSaleCountdown?: boolean;
+  showDiscountPercentage?: boolean;
+  showSavingsAmount?: boolean;
+  saleConfig?: ProductSaleConfig;
   features: string[];
   specs?: Record<string, string>;
   isNew?: boolean;
@@ -501,6 +525,7 @@ export interface ChatMessage {
   comparisonTable?: ComparisonData;
   launchPlanner?: boolean;
   needsWhatsAppEscalation?: boolean;
+  suggestedSmartTool?: 'bathroom_planner' | 'cement_estimator' | 'tank_calculator' | 'tile_calculator' | string;
   suggestedReplies?: string[];
   actionType?: 'whatsapp' | 'call' | 'quote' | 'planner' | 'browse' | string;
 }

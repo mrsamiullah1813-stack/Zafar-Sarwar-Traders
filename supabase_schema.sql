@@ -70,6 +70,14 @@ CREATE TABLE IF NOT EXISTS products (
   short_description TEXT,
   price NUMERIC NOT NULL DEFAULT 0,
   sale_price NUMERIC,
+  sale_enabled BOOLEAN DEFAULT false,
+  sale_start_date TIMESTAMPTZ,
+  sale_end_date TIMESTAMPTZ,
+  sale_label TEXT,
+  sale_message TEXT,
+  show_countdown BOOLEAN DEFAULT true,
+  show_discount_percentage BOOLEAN DEFAULT true,
+  show_savings BOOLEAN DEFAULT true,
   category_id TEXT,
   brand_id TEXT,
   main_image TEXT,
@@ -198,6 +206,19 @@ CREATE TABLE IF NOT EXISTS site_settings (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 12. AI KNOWLEDGE BASE TABLE (Persistent Store Policies, Warranty, Delivery, Technical FAQs)
+CREATE TABLE IF NOT EXISTS ai_knowledge (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'general',
+  question_or_topic TEXT NOT NULL,
+  answer_or_content TEXT NOT NULL,
+  is_enabled BOOLEAN DEFAULT true,
+  display_order INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- =========================================================
 -- CREATE AUTOMATIC UPDATED_AT TRIGGERS
 -- =========================================================
@@ -228,6 +249,69 @@ CREATE TRIGGER trigger_delivery_cities_updated_at BEFORE UPDATE ON delivery_citi
 DROP TRIGGER IF EXISTS trigger_site_settings_updated_at ON site_settings;
 CREATE TRIGGER trigger_site_settings_updated_at BEFORE UPDATE ON site_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS trigger_ai_knowledge_updated_at ON ai_knowledge;
+CREATE TRIGGER trigger_ai_knowledge_updated_at BEFORE UPDATE ON ai_knowledge FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- =========================================================
+-- SEAMLESS SCHEMA UPGRADES FOR EXISTING TABLES
+-- =========================================================
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS sku TEXT;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS slug TEXT;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS short_description TEXT;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS price NUMERIC DEFAULT 0;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS sale_price NUMERIC;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS sale_enabled BOOLEAN DEFAULT false;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS sale_start_date TIMESTAMPTZ;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS sale_end_date TIMESTAMPTZ;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS sale_label TEXT;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS sale_message TEXT;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS show_countdown BOOLEAN DEFAULT true;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS show_discount_percentage BOOLEAN DEFAULT true;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS show_savings BOOLEAN DEFAULT true;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS category_id TEXT;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS brand_id TEXT;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS main_image TEXT;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS gallery_images JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS video TEXT;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS features JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS specifications JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS stock_status TEXT DEFAULT 'In Stock';
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS stock_quantity INTEGER DEFAULT 10;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS badge TEXT;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS rating NUMERIC DEFAULT 5.0;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS reviews_count INTEGER DEFAULT 0;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS colors JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS sizes JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS materials JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS variants JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS warranty TEXT;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS seo_title TEXT;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS seo_description TEXT;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS featured BOOLEAN DEFAULT false;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS hero_featured BOOLEAN DEFAULT false;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS best_seller BOOLEAN DEFAULT false;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS trending BOOLEAN DEFAULT false;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS hidden BOOLEAN DEFAULT false;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS price_on_request BOOLEAN DEFAULT false;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS hide_price BOOLEAN DEFAULT false;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS display_order INTEGER DEFAULT 0;
+
+ALTER TABLE IF EXISTS categories ADD COLUMN IF NOT EXISTS slug TEXT;
+ALTER TABLE IF EXISTS categories ADD COLUMN IF NOT EXISTS full_description TEXT;
+ALTER TABLE IF EXISTS categories ADD COLUMN IF NOT EXISTS icon TEXT;
+ALTER TABLE IF EXISTS categories ADD COLUMN IF NOT EXISTS badge TEXT;
+ALTER TABLE IF EXISTS categories ADD COLUMN IF NOT EXISTS show_on_homepage BOOLEAN DEFAULT true;
+ALTER TABLE IF EXISTS categories ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+ALTER TABLE IF EXISTS categories ADD COLUMN IF NOT EXISTS seo_title TEXT;
+ALTER TABLE IF EXISTS categories ADD COLUMN IF NOT EXISTS seo_description TEXT;
+ALTER TABLE IF EXISTS categories ADD COLUMN IF NOT EXISTS display_order INTEGER DEFAULT 0;
+
+ALTER TABLE IF EXISTS brands ADD COLUMN IF NOT EXISTS slug TEXT;
+ALTER TABLE IF EXISTS brands ADD COLUMN IF NOT EXISTS official_badge TEXT;
+ALTER TABLE IF EXISTS brands ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+ALTER TABLE IF EXISTS brands ADD COLUMN IF NOT EXISTS display_order INTEGER DEFAULT 0;
+
 -- =========================================================
 -- INDEXES FOR MAXIMUM QUERY PERFORMANCE
 -- =========================================================
@@ -238,6 +322,8 @@ CREATE INDEX IF NOT EXISTS idx_products_hero ON products(hero_featured);
 CREATE INDEX IF NOT EXISTS idx_hero_slides_enabled ON hero_slides(enabled, display_order);
 CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_ai_knowledge_enabled ON ai_knowledge(is_enabled, display_order);
+CREATE INDEX IF NOT EXISTS idx_ai_knowledge_category ON ai_knowledge(category);
 
 -- =========================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
@@ -252,6 +338,7 @@ ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE delivery_cities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE site_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_knowledge ENABLE ROW LEVEL SECURITY;
 
 -- PUBLIC READ POLICIES (Allow customers to view store catalog and settings)
 CREATE POLICY "Allow public read categories" ON categories FOR SELECT USING (true);
@@ -261,6 +348,7 @@ CREATE POLICY "Allow public read hero_slides" ON hero_slides FOR SELECT USING (e
 CREATE POLICY "Allow public read hero_settings" ON hero_settings FOR SELECT USING (true);
 CREATE POLICY "Allow public read delivery_cities" ON delivery_cities FOR SELECT USING (enabled = true);
 CREATE POLICY "Allow public read site_settings" ON site_settings FOR SELECT USING (true);
+CREATE POLICY "Allow public read ai_knowledge" ON ai_knowledge FOR SELECT USING (is_enabled = true);
 
 -- CUSTOMER ORDER POLICIES
 CREATE POLICY "Allow customers to create orders" ON orders FOR INSERT WITH CHECK (true);
@@ -285,6 +373,7 @@ CREATE POLICY "Allow all operations for admins on hero_settings" ON hero_setting
 CREATE POLICY "Allow all operations for admins on orders" ON orders FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all operations for admins on delivery_cities" ON delivery_cities FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all operations for admins on site_settings" ON site_settings FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all operations for admins on ai_knowledge" ON ai_knowledge FOR ALL USING (true) WITH CHECK (true);
 
 -- =========================================================
 -- STORAGE BUCKETS SETUP

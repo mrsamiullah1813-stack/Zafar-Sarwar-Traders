@@ -24,7 +24,12 @@ import {
   fetchSiteSettingFromSupabase,
   saveSiteSettingToSupabase,
   fetchBuildMaterialEstimatorFromSupabase,
-  saveBuildMaterialEstimatorToSupabase
+  saveBuildMaterialEstimatorToSupabase,
+  fetchAiAssistantConfigFromSupabase,
+  saveAiAssistantConfigToSupabase,
+  fetchAiKnowledgeFromSupabase,
+  upsertAiKnowledgeInSupabase,
+  deleteAiKnowledgeFromSupabase
 } from '../services/supabaseService';
 
 const STORAGE_KEYS = {
@@ -527,10 +532,10 @@ export const loadAiAssistantConfig = (): AiAssistantConfig => {
 export const saveAiAssistantConfig = async (config: AiAssistantConfig): Promise<{ success: boolean; error?: string }> => {
   try {
     if (isSupabaseConfigured) {
-      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.AI_ASSISTANT, config);
+      const res = await saveAiAssistantConfigToSupabase(config);
       if (!res.success) return { success: false, error: res.error };
     }
-    localStorage.setItem(STORAGE_KEYS.AI_ASSISTANT, JSON.stringify(config));
+    safeSetLocalStorage(STORAGE_KEYS.AI_ASSISTANT, config);
     saveToServerCMS(STORAGE_KEYS.AI_ASSISTANT, config);
     return { success: true };
   } catch (e: any) {
@@ -578,6 +583,16 @@ const sanitizeProductForLocalStorage = (p: Product): Partial<Product> => {
     brandId: p.brandId,
     price: p.price,
     salePrice: p.salePrice,
+    saleEnabled: p.saleEnabled,
+    saleStartDate: p.saleStartDate,
+    saleEndDate: p.saleEndDate,
+    saleLabel: p.saleLabel,
+    saleBadgeColor: p.saleBadgeColor,
+    saleMessage: p.saleMessage,
+    showSaleCountdown: p.showSaleCountdown,
+    showDiscountPercentage: p.showDiscountPercentage,
+    showSavingsAmount: p.showSavingsAmount,
+    saleConfig: p.saleConfig,
     image: isDataUrl(p.image) ? '' : p.image,
     images: Array.isArray(p.images) ? p.images.filter(img => !isDataUrl(img)).slice(0, 3) : undefined,
     badge: p.badge,
@@ -1281,10 +1296,11 @@ export const syncWithServerCMS = async (callbacks: {
         if (callbacks.setEstimatorConfig) callbacks.setEstimatorConfig(fallbackEstimator);
       }
 
-      const aiAssistantDb = await fetchSiteSettingFromSupabase<AiAssistantConfig>(STORAGE_KEYS.AI_ASSISTANT);
-      if (aiAssistantDb && typeof aiAssistantDb === 'object' && Object.keys(aiAssistantDb).length > 0 && ('systemInstruction' in aiAssistantDb || 'enableAiAssistant' in aiAssistantDb)) {
+      const aiAssistantDb = await fetchAiAssistantConfigFromSupabase();
+      if (aiAssistantDb && typeof aiAssistantDb === 'object' && ('isEnabled' in aiAssistantDb || 'aiName' in aiAssistantDb || 'customKnowledge' in aiAssistantDb || 'welcomeMessage' in aiAssistantDb)) {
         if (callbacks.setAiAssistantConfig) callbacks.setAiAssistantConfig(aiAssistantDb);
         safeSetLocalStorage(STORAGE_KEYS.AI_ASSISTANT, aiAssistantDb);
+        console.log(`[Supabase Direct SDK] AI Assistant config and ${aiAssistantDb.customKnowledge?.length || 0} knowledge entries loaded into React state`);
       } else {
         const fallbackAi = loadAiAssistantConfig();
         if (callbacks.setAiAssistantConfig) callbacks.setAiAssistantConfig(fallbackAi);

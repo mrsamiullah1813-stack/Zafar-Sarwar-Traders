@@ -1,6 +1,7 @@
 import React from 'react';
-import { X, Trash2, ShoppingBag, Plus, Minus, ArrowRight, ShieldCheck, Tag, CheckCircle2 } from 'lucide-react';
+import { X, Trash2, ShoppingBag, Plus, Minus, ArrowRight, ShieldCheck, Tag, CheckCircle2, Flame } from 'lucide-react';
 import { BusinessConfig, CartItem, CheckoutSettings } from '../types';
+import { getProductPricingDetails } from '../utils/pricingUtils';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -33,9 +34,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const calculateSubtotal = () => {
     return items.reduce((acc, item) => {
       if (!item?.product) return acc;
-      const priceStr = item.product.salePrice || item.product.price || '0';
-      const numericPrice = parseFloat(priceStr.replace(/[^0-9.]/g, '')) || 0;
-      return acc + numericPrice * (item.quantity || 1);
+      const pricing = getProductPricingDetails(item.product);
+      return acc + pricing.effectivePriceNumeric * (item.quantity || 1);
     }, 0);
   };
 
@@ -92,8 +92,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               const p = item.product;
               if (!p) return null;
 
-              const priceStr = p.salePrice || p.price || '0';
-              const numericPrice = parseFloat(priceStr.replace(/[^0-9.]/g, '')) || 0;
+              const pricing = getProductPricingDetails(p);
+              const numericPrice = pricing.effectivePriceNumeric;
               const lineTotal = numericPrice * (item.quantity || 1);
 
               return (
@@ -107,7 +107,14 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   <div className="flex-1 min-w-0 space-y-1">
                     <div className="flex justify-between items-start gap-1">
                       <div>
-                        {p.brand && <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider block">{p.brand}</span>}
+                        <div className="flex items-center gap-1.5">
+                          {p.brand && <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider block">{p.brand}</span>}
+                          {pricing.isSaleActive && (
+                            <span className="px-1.5 py-0.2 rounded bg-rose-100 text-rose-700 font-bold text-[9px] font-mono">
+                              SALE {pricing.discountPercentage > 0 ? `${pricing.discountPercentage}% OFF` : ''}
+                            </span>
+                          )}
+                        </div>
                         <h4 className="font-bold text-slate-900 text-xs line-clamp-1 leading-snug">{p.name}</h4>
                       </div>
 
@@ -166,8 +173,13 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       </div>
 
                       <div className="text-right">
-                        <span className="text-xs font-bold text-slate-900 font-mono">
-                          {lineTotal > 0 ? `Rs. ${lineTotal.toLocaleString('en-PK')}` : priceStr}
+                        {pricing.isSaleActive && pricing.regularPriceNumeric > 0 && (
+                          <div className="text-[10px] text-slate-400 line-through font-mono">
+                            Rs. {(pricing.regularPriceNumeric * (item.quantity || 1)).toLocaleString('en-PK')}
+                          </div>
+                        )}
+                        <span className={`text-xs font-bold font-mono ${pricing.isSaleActive ? 'text-rose-600' : 'text-slate-900'}`}>
+                          {lineTotal > 0 ? `Rs. ${lineTotal.toLocaleString('en-PK')}` : pricing.effectivePriceString}
                         </span>
                       </div>
                     </div>

@@ -6,25 +6,31 @@ import {
   ShieldCheck, 
   Video, 
   Edit, 
-  Trash2,
+  Trash2, 
   Sparkles, 
   ChevronRight, 
-  ChevronLeft,
-  ZoomIn,
-  Package,
-  Layers,
-  Palette,
-  Ruler,
-  Maximize2,
-  Tag,
-  ArrowRight,
-  ShoppingBag,
-  Plus,
-  Minus
+  ChevronLeft, 
+  ZoomIn, 
+  Package, 
+  Layers, 
+  Palette, 
+  Ruler, 
+  Maximize2, 
+  Tag, 
+  ArrowRight, 
+  ShoppingBag, 
+  Plus, 
+  Minus,
+  Flame,
+  Percent,
+  Timer
 } from 'lucide-react';
 import { Product, BusinessConfig } from '../types';
 import { VideoPlayer } from './VideoPlayer';
 import { ProductDeliveryEstimator } from './ProductDeliveryEstimator';
+import { ProductSaleBadge } from './ProductSaleBadge';
+import { SaleCountdownTimer } from './SaleCountdownTimer';
+import { getProductPricingDetails } from '../utils/pricingUtils';
 
 interface QuickViewModalProps {
   product: Product | null;
@@ -84,9 +90,15 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
   // Exact WhatsApp number as required: +92 310 8002863
   const targetWhatsAppNumber = "923108002863";
 
+  const pricing = getProductPricingDetails(product);
+
   // Exact pre-filled WhatsApp message format as requested:
   const handleWhatsAppOrder = () => {
-    const message = `Hello,\n\nI would like to order this product.\n\nProduct Name:\n${product.name}\n\nCategory:\n${product.category || 'Sanitaryware'}\n\nPlease provide availability and quotation.`;
+    let priceText = pricing.effectivePriceString;
+    if (pricing.isSaleActive && pricing.discountPercentage > 0) {
+      priceText = `${pricing.formattedSalePrice} (Special Sale: ${pricing.discountPercentage}% OFF — Regular: ${pricing.formattedRegularPrice}${pricing.savingsAmount > 0 ? `, Save: Rs. ${pricing.savingsAmount.toLocaleString('en-PK')}` : ''})`;
+    }
+    const message = `Hello,\n\nI would like to order this product.\n\nProduct Name:\n${product.name}\n\nCategory:\n${product.category || 'Sanitaryware'}\n\nPrice:\n${priceText}\n\nPlease provide availability and delivery confirmation.`;
     const encoded = encodeURIComponent(message);
     window.open(`https://wa.me/${targetWhatsAppNumber}?text=${encoded}`, '_blank');
   };
@@ -129,6 +141,9 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
         {/* Top Sticky Bar */}
         <div className="flex items-center justify-between p-4 px-6 bg-slate-950/90 border-b border-slate-800/80 z-20 backdrop-blur-md">
           <div className="flex items-center gap-2.5 flex-wrap">
+            {/* SALE BADGE */}
+            <ProductSaleBadge product={product} />
+
             <span className="px-2.5 py-1 rounded-lg bg-blue-950/80 border border-blue-500/40 text-blue-300 text-[11px] font-bold uppercase tracking-wider">
               {product.brand || product.category}
             </span>
@@ -421,23 +436,79 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
               )}
 
               {/* PRICE & STOCK AVAILABILITY BLOCK */}
-              <div className="p-4 rounded-2xl bg-slate-950/90 border border-slate-800/80 flex items-center justify-between gap-4">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Estimated Price / Wholesale Rate</span>
-                  <span className="text-xl sm:text-2xl font-extrabold text-emerald-400 font-serif">
-                    {product.hidePrice ? 'Call for Price' : (product.isPriceOnRequest ? 'Price on Request' : (product.price || 'Call for Price'))}
-                  </span>
-                </div>
+              {pricing.isSaleActive ? (
+                <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-rose-950/40 via-slate-950/90 to-slate-950/90 border border-rose-500/40 space-y-3 shadow-lg shadow-rose-950/20">
+                  {pricing.saleMessage && (
+                    <div className="text-xs font-bold text-rose-300 flex items-center gap-1.5 pb-2 border-b border-rose-900/40">
+                      <Flame className="w-4 h-4 text-rose-400 fill-rose-400" />
+                      <span>{pricing.saleMessage}</span>
+                    </div>
+                  )}
 
-                {!product.hideStockBadge && (
-                  <div className="text-right">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Availability</span>
-                    <span className="px-3 py-1 rounded-lg bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-bold text-xs inline-block mt-0.5">
-                      {product.stockStatus || 'In Stock'}
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block">Special Sale Offer</span>
+                        {pricing.showDiscountPercentage && pricing.discountPercentage > 0 && (
+                          <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white font-black text-xs font-mono shadow-sm">
+                            {pricing.discountPercentage}% OFF
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-baseline gap-3 flex-wrap">
+                        <span className="text-2xl sm:text-3xl font-black text-rose-400 font-mono tracking-tight">
+                          {pricing.formattedSalePrice}
+                        </span>
+                        {pricing.showRegularPriceStrike && (
+                          <span className="text-sm text-slate-400 line-through font-mono">
+                            {pricing.formattedRegularPrice}
+                          </span>
+                        )}
+                      </div>
+
+                      {pricing.showSavings && pricing.savingsAmount > 0 && (
+                        <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-bold mt-1">
+                          <span>🎉 You save {pricing.formattedSavings} on this item!</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {!product.hideStockBadge && (
+                      <div className="text-right">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Availability</span>
+                        <span className="px-3 py-1 rounded-lg bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-bold text-xs inline-block mt-0.5">
+                          {product.stockStatus || 'In Stock'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {pricing.showCountdown && pricing.saleEndDate && (
+                    <div className="pt-2 border-t border-slate-800/80">
+                      <SaleCountdownTimer endDate={pricing.saleEndDate} />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-slate-950/90 border border-slate-800/80 flex items-center justify-between gap-4">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Estimated Price / Wholesale Rate</span>
+                    <span className="text-xl sm:text-2xl font-extrabold text-emerald-400 font-serif">
+                      {product.hidePrice ? 'Call for Price' : (product.isPriceOnRequest ? 'Price on Request' : (product.price || 'Call for Price'))}
                     </span>
                   </div>
-                )}
-              </div>
+
+                  {!product.hideStockBadge && (
+                    <div className="text-right">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Availability</span>
+                      <span className="px-3 py-1 rounded-lg bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-bold text-xs inline-block mt-0.5">
+                        {product.stockStatus || 'In Stock'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* DYNAMIC SMART DELIVERY ESTIMATION SYSTEM */}
               <ProductDeliveryEstimator product={product} />

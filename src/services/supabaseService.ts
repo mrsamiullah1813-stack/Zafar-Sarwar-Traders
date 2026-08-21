@@ -11,7 +11,8 @@ import {
   BusinessConfig, 
   AnnouncementBarSettings, 
   ThemeSettings, 
-  AiAssistantConfig 
+  AiAssistantConfig,
+  AiCustomKnowledge 
 } from '../types';
 
 // =========================================================
@@ -85,10 +86,19 @@ export function mapDbProductToProduct(row: any): Product {
     }
   }
 
-  let resolvedSalePrice = rawSpecs._raw_sale_price || row.sale_price_text;
-  if (!resolvedSalePrice && row.sale_price !== null && row.sale_price !== undefined) {
-    resolvedSalePrice = String(row.sale_price);
-  }
+  let resolvedSalePrice = rawSpecs._raw_sale_price || rawSpecs._sale_price || rawSpecs._sale_config?.salePrice || row.sale_price_text || (row.sale_price !== null && row.sale_price !== undefined ? String(row.sale_price) : (row.discount_price !== null && row.discount_price !== undefined ? String(row.discount_price) : (row.discounted_price !== null && row.discounted_price !== undefined ? String(row.discounted_price) : undefined)));
+
+  const isSaleEnabled = Boolean(
+    row.sale_enabled ??
+    row.is_on_sale ??
+    row.sale_active ??
+    row.on_sale ??
+    row.is_sale ??
+    row.discount_enabled ??
+    rawSpecs._sale_enabled ??
+    rawSpecs._sale_config?.saleEnabled ??
+    (resolvedSalePrice && Number(String(resolvedSalePrice).replace(/[^0-9.]/g, '')) > 0 && rawSpecs._sale_enabled !== false)
+  );
 
   return {
     id: String(row.id),
@@ -104,6 +114,16 @@ export function mapDbProductToProduct(row: any): Product {
     shortDescription: row.short_description || row.shortDescription || '',
     price: resolvedPrice,
     salePrice: resolvedSalePrice || undefined,
+    saleEnabled: isSaleEnabled,
+    saleStartDate: row.sale_start_date || rawSpecs._sale_start_date || undefined,
+    saleEndDate: row.sale_end_date || rawSpecs._sale_end_date || undefined,
+    saleLabel: row.sale_label || rawSpecs._sale_label || undefined,
+    saleBadgeColor: row.sale_badge_color || rawSpecs._sale_badge_color || undefined,
+    saleMessage: row.sale_message || rawSpecs._sale_message || undefined,
+    showSaleCountdown: Boolean(row.show_sale_countdown ?? rawSpecs._show_sale_countdown ?? (row.show_countdown ?? rawSpecs._show_countdown ?? true)),
+    showDiscountPercentage: Boolean(row.show_discount_percentage ?? rawSpecs._show_discount_percentage ?? true),
+    showSavingsAmount: Boolean(row.show_savings_amount ?? rawSpecs._show_savings_amount ?? (row.show_savings ?? rawSpecs._show_savings ?? true)),
+    saleConfig: rawSpecs._sale_config || undefined,
     features: Array.isArray(row.features) ? row.features : [],
     specs: cleanSpecs,
     isNew: Boolean(row.is_new ?? row.isNew ?? rawSpecs._is_new),
@@ -151,17 +171,31 @@ export function mapProductToDb(product: Product): any {
   }
 
   let numericSalePrice: number | null = null;
-  if (product.salePrice) {
-    const digitsOnly = String(product.salePrice).replace(/[^0-9.]/g, '');
+  const rawSaleVal = product.salePrice ?? product.saleConfig?.salePrice;
+  if (rawSaleVal) {
+    const digitsOnly = String(rawSaleVal).replace(/[^0-9.]/g, '');
     if (digitsOnly) {
       numericSalePrice = parseFloat(digitsOnly) || null;
     }
   }
 
+  const isSaleEnabled = Boolean(product.saleEnabled === true || product.saleConfig?.saleEnabled === true);
+
   const specsWithMeta = {
     ...(product.specs || {}),
     _raw_price: product.price ?? null,
     _raw_sale_price: product.salePrice ?? null,
+    _sale_enabled: isSaleEnabled,
+    _sale_price: product.salePrice ?? product.saleConfig?.salePrice ?? null,
+    _sale_start_date: product.saleStartDate ?? product.saleConfig?.saleStartDate ?? null,
+    _sale_end_date: product.saleEndDate ?? product.saleConfig?.saleEndDate ?? null,
+    _sale_label: product.saleLabel ?? product.saleConfig?.saleLabel ?? null,
+    _sale_badge_color: product.saleBadgeColor ?? product.saleConfig?.saleBadgeColor ?? null,
+    _sale_message: product.saleMessage ?? product.saleConfig?.saleMessage ?? null,
+    _show_sale_countdown: Boolean(product.showSaleCountdown ?? product.saleConfig?.showCountdown ?? true),
+    _show_discount_percentage: Boolean(product.showDiscountPercentage ?? product.saleConfig?.showDiscountPercentage ?? true),
+    _show_savings_amount: Boolean(product.showSavingsAmount ?? product.saleConfig?.showSavings ?? true),
+    _sale_config: product.saleConfig || null,
     _category_name: product.category || null,
     _category_id: product.categoryId || null,
     _brand_name: product.brand || null,
@@ -208,6 +242,14 @@ export function mapProductToDb(product: Product): any {
     short_description: product.shortDescription || null,
     price: numericPrice,
     sale_price: numericSalePrice,
+    sale_enabled: isSaleEnabled,
+    sale_start_date: product.saleStartDate ?? product.saleConfig?.saleStartDate ?? null,
+    sale_end_date: product.saleEndDate ?? product.saleConfig?.saleEndDate ?? null,
+    sale_label: product.saleLabel ?? product.saleConfig?.saleLabel ?? null,
+    sale_message: product.saleMessage ?? product.saleConfig?.saleMessage ?? null,
+    show_countdown: Boolean(product.showSaleCountdown ?? product.saleConfig?.showCountdown ?? true),
+    show_discount_percentage: Boolean(product.showDiscountPercentage ?? product.saleConfig?.showDiscountPercentage ?? true),
+    show_savings: Boolean(product.showSavingsAmount ?? product.saleConfig?.showSavings ?? true),
     category_id: product.categoryId || null,
     brand_id: product.brandId || null,
     image: product.image || '',
@@ -1114,6 +1156,198 @@ export async function saveBuildMaterialEstimatorToSupabase(config: any): Promise
 
 export async function fetchBuildMaterialEstimatorFromSupabase(): Promise<any | null> {
   return fetchSiteSettingFromSupabase<any>('zst_planner_config_v1');
+}
+
+// =========================================================
+// 7B. AI KNOWLEDGE BASE & AI ASSISTANT CONFIG PERSISTENCE
+// =========================================================
+
+export function mapDbAiKnowledgeToKnowledge(row: any, fallbackIndex: number = 0): AiCustomKnowledge {
+  return {
+    id: row.id || `ck-${Date.now()}-${fallbackIndex}`,
+    title: row.title || 'Untitled Knowledge Entry',
+    category: (row.category || 'general') as any,
+    questionOrTopic: row.question_or_topic || row.questionOrTopic || '',
+    answerOrContent: row.answer_or_content || row.answerOrContent || '',
+    isEnabled: row.is_enabled !== undefined ? Boolean(row.is_enabled) : (row.isEnabled !== undefined ? Boolean(row.isEnabled) : true),
+    displayOrder: typeof row.display_order === 'number' ? row.display_order : (typeof row.displayOrder === 'number' ? row.displayOrder : fallbackIndex + 1)
+  };
+}
+
+export function mapKnowledgeToDbAiKnowledge(item: AiCustomKnowledge, fallbackIndex: number = 0): Record<string, any> {
+  return {
+    id: item.id || `ck-${Date.now()}-${fallbackIndex}`,
+    title: item.title || 'Untitled Knowledge Entry',
+    category: item.category || 'general',
+    question_or_topic: item.questionOrTopic || '',
+    answer_or_content: item.answerOrContent || '',
+    is_enabled: item.isEnabled !== false,
+    display_order: item.displayOrder || (fallbackIndex + 1),
+    updated_at: new Date().toISOString()
+  };
+}
+
+export async function fetchAiKnowledgeFromSupabase(): Promise<AiCustomKnowledge[] | null> {
+  await initializeSupabaseRuntime();
+
+  // 1. Attempt Direct Supabase SDK Query on dedicated ai_knowledge table
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error, status } = await supabase
+        .from('ai_knowledge')
+        .select('*')
+        .order('display_order', { ascending: true });
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        console.log(`[Supabase Direct SDK] Table: ai_knowledge | Status: SUCCESS | Records: ${data.length} | HTTP: ${status || 200}`);
+        return data.map((r: any, idx: number) => mapDbAiKnowledgeToKnowledge(r, idx));
+      }
+    } catch (err: any) {
+      console.warn('[Supabase Direct SDK] Direct ai_knowledge fetch exception, checking site_settings fallback...');
+    }
+  }
+
+  // 2. Server Proxy Fallback for ai-knowledge
+  try {
+    const res = await fetch('/api/db/ai-knowledge', { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        console.log(`[Supabase Proxy] Loaded ${json.data.length} ai_knowledge records via server proxy`);
+        return json.data.map((r: any, idx: number) => mapDbAiKnowledgeToKnowledge(r, idx));
+      }
+    }
+  } catch (proxyErr) {
+    // try site_settings fallback
+  }
+
+  // 3. Fallback to site_settings table 'zst_ai_assistant_config_v1'
+  try {
+    const aiConfig = await fetchSiteSettingFromSupabase<AiAssistantConfig>('zst_ai_assistant_config_v1');
+    if (aiConfig && Array.isArray(aiConfig.customKnowledge) && aiConfig.customKnowledge.length > 0) {
+      console.log(`[Supabase Direct SDK] Loaded ${aiConfig.customKnowledge.length} knowledge entries from site_settings`);
+      return aiConfig.customKnowledge;
+    }
+  } catch {}
+
+  return null;
+}
+
+export async function upsertAiKnowledgeInSupabase(
+  knowledge: AiCustomKnowledge | AiCustomKnowledge[]
+): Promise<{ success: boolean; error?: string }> {
+  await initializeSupabaseRuntime();
+  const list = Array.isArray(knowledge) ? knowledge : [knowledge];
+  if (list.length === 0) return { success: true };
+
+  // 1. Direct Supabase SDK upsert to ai_knowledge table
+  if (isSupabaseConfigured) {
+    try {
+      const dbPayload = list.map((item, idx) => mapKnowledgeToDbAiKnowledge(item, idx));
+      const { error, status } = await supabase.from('ai_knowledge').upsert(dbPayload, { onConflict: 'id' });
+      if (!error) {
+        console.log(`[Supabase Direct SDK] Upserted ${list.length} ai_knowledge records directly (HTTP ${status || 200})`);
+      }
+    } catch (sdkErr) {
+      console.warn('[Supabase Direct SDK] Direct ai_knowledge upsert skipped, using backend proxy...');
+    }
+  }
+
+  // 2. Backend Proxy upsert
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/db/ai-knowledge/upsert', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ knowledge: list })
+    });
+    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
+    if (!res.ok || !result.success) {
+      console.warn(`[Supabase API] /api/db/ai-knowledge/upsert warning: ${result.error}`);
+    }
+  } catch (proxyErr) {
+    console.warn('[Supabase API] Proxy upsert error for ai_knowledge:', proxyErr);
+  }
+
+  return { success: true };
+}
+
+export async function deleteAiKnowledgeFromSupabase(id: string): Promise<{ success: boolean; error?: string }> {
+  await initializeSupabaseRuntime();
+
+  // 1. Direct Supabase SDK delete
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('ai_knowledge').delete().eq('id', id);
+    } catch (err) {}
+  }
+
+  // 2. Server Proxy Delete
+  try {
+    const headers = await getAuthHeaders();
+    await fetch(`/api/db/ai-knowledge/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers
+    });
+  } catch (err) {}
+
+  return { success: true };
+}
+
+export async function fetchAiAssistantConfigFromSupabase(): Promise<AiAssistantConfig | null> {
+  const config = await fetchSiteSettingFromSupabase<AiAssistantConfig>('zst_ai_assistant_config_v1');
+  const knowledge = await fetchAiKnowledgeFromSupabase();
+
+  if (config) {
+    if (knowledge && knowledge.length > 0) {
+      config.customKnowledge = knowledge;
+    }
+    return config;
+  }
+
+  if (knowledge && knowledge.length > 0) {
+    return {
+      isEnabled: true,
+      aiName: "Zafar AI Shopping Assistant",
+      welcomeMessage: "Welcome to Zafar Sarwar Traders. How can I assist you with your luxury sanitaryware, plumbing, or building material project today?",
+      selectedModel: "gemini-3.6-flash",
+      theme: "dark-cyan",
+      suggestedQuestions: [
+        "Show me faucets under 10000",
+        "Show me black shower sets",
+        "Which Sonex products do you have?",
+        "Do you deliver to Lahore?"
+      ],
+      dataSources: {
+        products: true,
+        categories: true,
+        brands: true,
+        faqs: true,
+        reviews: true,
+        companyInfo: true,
+        deliveryInfo: true,
+        customKnowledge: true
+      },
+      customKnowledge: knowledge,
+      enableProductRecommendations: true,
+      enableQuoteAssistance: true,
+      enableBathroomPlanner: true
+    };
+  }
+
+  return null;
+}
+
+export async function saveAiAssistantConfigToSupabase(config: AiAssistantConfig): Promise<{ success: boolean; error?: string }> {
+  // 1. Save full config object to site_settings (key: zst_ai_assistant_config_v1)
+  const siteSettingRes = await saveSiteSettingToSupabase('zst_ai_assistant_config_v1', config);
+
+  // 2. Also persist individual customKnowledge items to dedicated ai_knowledge table for relational indexing
+  if (Array.isArray(config.customKnowledge) && config.customKnowledge.length > 0) {
+    await upsertAiKnowledgeInSupabase(config.customKnowledge);
+  }
+
+  return siteSettingRes;
 }
 
 // =========================================================

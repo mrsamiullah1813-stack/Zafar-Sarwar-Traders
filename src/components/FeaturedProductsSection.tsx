@@ -12,9 +12,15 @@ import {
   Heart,
   Scale,
   ShoppingBag,
-  Star
+  Star,
+  Flame,
+  Percent,
+  Timer
 } from 'lucide-react';
 import { Product, BusinessConfig, ProductCategory } from '../types';
+import { ProductSaleBadge } from './ProductSaleBadge';
+import { SaleCountdownTimer } from './SaleCountdownTimer';
+import { getProductPricingDetails } from '../utils/pricingUtils';
 
 interface FeaturedProductsProps {
   products: Product[];
@@ -122,8 +128,12 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
 
   const handleWhatsAppProduct = (e: React.MouseEvent, product: Product) => {
     e.stopPropagation();
-    const priceStr = product.salePrice || product.price || 'Price on request';
-    const message = `Hello Zafar Sarwar Traders,\n\nI would like to order this item:\nProduct Name: ${product.name}\nSKU: ${product.sku || 'N/A'}\nPrice: ${priceStr}\n\nPlease confirm availability and delivery timeframe.`;
+    const pricing = getProductPricingDetails(product);
+    let priceText = pricing.effectivePriceString;
+    if (pricing.isSaleActive && pricing.discountPercentage > 0) {
+      priceText = `${pricing.formattedSalePrice} (SALE ${pricing.discountPercentage}% OFF — Regular: ${pricing.formattedRegularPrice}${pricing.savingsAmount > 0 ? `, Save: Rs. ${pricing.savingsAmount.toLocaleString('en-PK')}` : ''})`;
+    }
+    const message = `Hello Zafar Sarwar Traders,\n\nI would like to order this item:\nProduct Name: ${product.name}\nSKU: ${product.sku || 'N/A'}\nPrice: ${priceText}\n\nPlease confirm availability and delivery timeframe.`;
     window.open(`https://wa.me/${targetWhatsAppNumber}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
@@ -246,6 +256,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
             {filteredProducts.map((product, idx) => {
               const isWishlisted = wishlistIds.includes(product.id);
               const isCompared = compareIds.includes(product.id);
+              const pricing = getProductPricingDetails(product);
 
               return (
                 <motion.div
@@ -268,7 +279,10 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                     />
 
                     {/* Top Badges */}
-                    <div className="absolute top-2.5 left-2.5 flex flex-col gap-1 z-10">
+                    <div className="absolute top-2.5 left-2.5 flex flex-col gap-1 z-10 items-start">
+                      {/* Product Sale Badge if Sale is Active */}
+                      <ProductSaleBadge product={product} />
+
                       {product.isNew && (
                         <span className="px-2 py-0.5 rounded bg-blue-600 text-white font-bold text-[10px] shadow">
                           NEW
@@ -380,15 +394,44 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                         {product.description}
                       </p>
 
-                      {/* Prices */}
-                      <div className="mt-2.5 flex items-baseline gap-2">
-                        <span className="text-sm font-bold text-blue-600 font-mono">
-                          {product.salePrice || product.price || 'Price on Request'}
-                        </span>
-                        {product.salePrice && product.price && (
-                          <span className="text-xs text-slate-400 line-through font-mono">
-                            {product.price}
-                          </span>
+                      {/* Dynamic Pricing: Sale or Regular */}
+                      <div className="mt-2.5">
+                        {pricing.isSaleActive ? (
+                          <div className="space-y-1">
+                            <div className="flex items-baseline gap-2 flex-wrap">
+                              <span className="text-base font-extrabold text-rose-600 font-mono">
+                                {pricing.formattedSalePrice}
+                              </span>
+                              {pricing.showRegularPriceStrike && (
+                                <span className="text-xs text-slate-400 line-through font-mono">
+                                  {pricing.formattedRegularPrice}
+                                </span>
+                              )}
+                              {pricing.showDiscountPercentage && pricing.discountPercentage > 0 && (
+                                <span className="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-black text-[10px] font-mono border border-rose-200">
+                                  {pricing.discountPercentage}% OFF
+                                </span>
+                              )}
+                            </div>
+
+                            {pricing.showSavings && pricing.savingsAmount > 0 && (
+                              <div className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                                <span>🎉 Save {pricing.formattedSavings}</span>
+                              </div>
+                            )}
+
+                            {pricing.showCountdown && pricing.saleEndDate && (
+                              <div className="pt-1">
+                                <SaleCountdownTimer endDate={pricing.saleEndDate} compact />
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-sm font-bold text-blue-600 font-mono">
+                              {product.hidePrice ? 'Call for Price' : (product.isPriceOnRequest ? 'Price on Request' : (product.price || 'Price on Request'))}
+                            </span>
+                          </div>
                         )}
                       </div>
                     </div>

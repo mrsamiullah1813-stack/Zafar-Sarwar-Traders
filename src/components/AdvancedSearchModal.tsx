@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Search, X, Filter, ArrowUpDown, Tag, Sparkles, ShoppingBag, Eye, Check, ChevronRight, SlidersHorizontal, RefreshCw } from 'lucide-react';
 import { Product, ProductCategory, ProductBrand } from '../types';
 import { filterProducts, parseNaturalLanguageQuery, getNumericPrice } from '../utils/searchUtils';
+import { ProductSaleBadge } from './ProductSaleBadge';
+import { getProductPricingDetails } from '../utils/pricingUtils';
 
 interface AdvancedSearchModalProps {
   isOpen: boolean;
@@ -454,7 +456,7 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
             {filteredResults.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {filteredResults.map(product => {
-                  const priceNum = getNumericPrice(product);
+                  const pricing = getProductPricingDetails(product);
                   return (
                     <div
                       key={product.id}
@@ -467,13 +469,16 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
                           alt={product.name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         />
-                        {product.badge && (
-                          <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-blue-600 text-white shadow">
-                            {product.badge}
-                          </span>
-                        )}
+                        <div className="absolute top-2.5 left-2.5 flex flex-col gap-1 z-10">
+                          <ProductSaleBadge product={product} />
+                          {product.badge && !pricing.isSaleActive && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-blue-600 text-white shadow">
+                              {product.badge}
+                            </span>
+                          )}
+                        </div>
                         {product.brand && (
-                          <span className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-slate-900/80 text-white backdrop-blur-sm">
+                          <span className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-slate-900/80 text-white backdrop-blur-sm z-10">
                             {product.brand}
                           </span>
                         )}
@@ -501,14 +506,21 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
                         {/* PRICE & BUTTONS */}
                         <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                           <div>
-                            {product.salePrice ? (
-                              <div className="flex items-baseline gap-1.5">
-                                <span className="text-sm font-black text-slate-900 font-mono">
-                                  {product.salePrice}
-                                </span>
-                                {product.price && (
-                                  <span className="text-[10px] line-through text-slate-400 font-mono">
-                                    {product.price}
+                            {pricing.isSaleActive ? (
+                              <div className="flex flex-col">
+                                <div className="flex items-baseline gap-1.5">
+                                  <span className="text-sm font-black text-rose-600 font-mono">
+                                    {pricing.formattedSalePrice}
+                                  </span>
+                                  {pricing.showRegularPriceStrike && (
+                                    <span className="text-[10px] line-through text-slate-400 font-mono">
+                                      {pricing.formattedRegularPrice}
+                                    </span>
+                                  )}
+                                </div>
+                                {pricing.showDiscountPercentage && pricing.discountPercentage > 0 && (
+                                  <span className="text-[9px] font-bold text-rose-500 font-mono">
+                                    {pricing.discountPercentage}% OFF
                                   </span>
                                 )}
                               </div>
