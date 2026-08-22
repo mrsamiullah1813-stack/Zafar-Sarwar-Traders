@@ -23,14 +23,23 @@ import {
   Minus,
   Flame,
   Percent,
-  Timer
+  Timer,
+  Boxes
 } from 'lucide-react';
-import { Product, BusinessConfig } from '../types';
+import { Product, BusinessConfig, ProductVariant, PaintShade } from '../types';
 import { VideoPlayer } from './VideoPlayer';
 import { ProductDeliveryEstimator } from './ProductDeliveryEstimator';
 import { ProductSaleBadge } from './ProductSaleBadge';
 import { SaleCountdownTimer } from './SaleCountdownTimer';
-import { getProductPricingDetails } from '../utils/pricingUtils';
+import { PaintShadeSelector } from './PaintShadeSelector';
+import { 
+  getProductPricingDetails, 
+  getVariantPricingDetails, 
+  getActiveVariants, 
+  hasActiveVariants,
+  formatPakistaniPrice 
+} from '../utils/pricingUtils';
+import { getActivePaintShades, hasActivePaintShades } from '../utils/paintShadeUtils';
 
 interface QuickViewModalProps {
   product: Product | null;
@@ -40,7 +49,15 @@ interface QuickViewModalProps {
   onEditProduct?: (product: Product) => void;
   onDeleteProduct?: (productId: string) => void;
   onSelectProduct?: (product: Product) => void;
-  onAddToCart?: (product: Product, quantity: number, selectedColor?: string, selectedSize?: string, selectedQuality?: string, selectedVariant?: string) => void;
+  onAddToCart?: (
+    product: Product, 
+    quantity: number, 
+    selectedColor?: string, 
+    selectedSize?: string, 
+    selectedQuality?: string, 
+    selectedVariant?: string,
+    selectedShade?: PaintShade
+  ) => void;
   onClose: () => void;
 }
 
@@ -64,6 +81,8 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [selectedQuality, setSelectedQuality] = useState<string>('');
   const [selectedVariant, setSelectedVariant] = useState<string>('');
+  const [selectedVariantObj, setSelectedVariantObj] = useState<ProductVariant | null>(null);
+  const [selectedShade, setSelectedShade] = useState<PaintShade | null>(null);
   const [quantity, setQuantity] = useState<number>(1);
 
   useEffect(() => {
@@ -72,12 +91,43 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
       setSelectedSize(product.availableSizes?.[0] || '');
       setSelectedQuality(product.availableMaterials?.[0] || '');
       setSelectedVariant(product.availableVariants?.[0] || '');
+      
+      const activeVars = getActiveVariants(product);
+      if (activeVars.length > 0) {
+        const def = activeVars.find(v => v.isDefault) || activeVars[0];
+        setSelectedVariantObj(def);
+        setSelectedVariant(def.name);
+      } else {
+        setSelectedVariantObj(null);
+      }
+
+      // Initialize active paint shades if configured
+      const activeShades = getActivePaintShades(product);
+      if (activeShades.length > 0) {
+        setSelectedShade(activeShades[0]);
+      } else {
+        setSelectedShade(null);
+      }
+
       setQuantity(1);
       setSelectedImageIndex(0);
     }
   }, [product]);
 
   if (!product) return null;
+
+  const isVariantsActive = hasActiveVariants(product);
+  const activeVariantsList = getActiveVariants(product);
+  const optionLabel = product.optionName || product.variantsConfig?.optionName || 'Size / Option';
+
+  const isPaintShadesActive = hasActivePaintShades(product);
+  const activePaintShadesList = getActivePaintShades(product);
+  const shadesSectionTitle = product.shadesTitle || product.paintShadesConfig?.shadesTitle || 'Select Paint Shade / Color';
+
+  // Dynamic Pricing: If variant is selected, use variant pricing; else product pricing
+  const pricing = selectedVariantObj 
+    ? getVariantPricingDetails(product, selectedVariantObj) 
+    : getProductPricingDetails(product);
 
   // Compile list of all images available for gallery
   const galleryImages = [
@@ -90,15 +140,24 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
   // Exact WhatsApp number as required: +92 310 8002863
   const targetWhatsAppNumber = "923108002863";
 
-  const pricing = getProductPricingDetails(product);
-
-  // Exact pre-filled WhatsApp message format as requested:
+  // Pre-filled WhatsApp message format:
   const handleWhatsAppOrder = () => {
     let priceText = pricing.effectivePriceString;
     if (pricing.isSaleActive && pricing.discountPercentage > 0) {
       priceText = `${pricing.formattedSalePrice} (Special Sale: ${pricing.discountPercentage}% OFF — Regular: ${pricing.formattedRegularPrice}${pricing.savingsAmount > 0 ? `, Save: Rs. ${pricing.savingsAmount.toLocaleString('en-PK')}` : ''})`;
     }
-    const message = `Hello,\n\nI would like to order this product.\n\nProduct Name:\n${product.name}\n\nCategory:\n${product.category || 'Sanitaryware'}\n\nPrice:\n${priceText}\n\nPlease provide availability and delivery confirmation.`;
+
+    let variantSection = '';
+    if (selectedVariantObj) {
+      variantSection = `\nSelected ${optionLabel}:\n${selectedVariantObj.name}${selectedVariantObj.sku ? ` (SKU: ${selectedVariantObj.sku})` : ''}\n`;
+    }
+
+    let shadeSection = '';
+    if (isPaintShadesActive && selectedShade) {
+      shadeSection = `\nShade: ${selectedShade.name}\nShade Code: ${selectedShade.code}\n`;
+    }
+
+    const message = `Hello,\n\nI would like to order this product.\n\nProduct Name:\n${product.name}\n\nCategory:\n${product.category || 'Sanitaryware'}${variantSection}${shadeSection}\nPrice:\n${priceText}\n\nQuantity: ${quantity}\n\nPlease provide availability and delivery confirmation.`;
     const encoded = encodeURIComponent(message);
     window.open(`https://wa.me/${targetWhatsAppNumber}?text=${encoded}`, '_blank');
   };
@@ -292,8 +351,95 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                 </p>
               </div>
 
-              {/* AVAILABLE COLORS */}
-              {displayColors && displayColors.length > 0 && (
+              {/* PRODUCT VARIANT, SIZE & CAPACITY SELECTOR (WHEN ENABLED BY ADMIN) */}
+              {isVariantsActive && activeVariantsList.length > 0 && (
+                <div className="p-4 rounded-2xl bg-gradient-to-b from-indigo-950/60 via-slate-950/90 to-slate-950/90 border border-indigo-500/40 space-y-3 shadow-lg shadow-indigo-950/20">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-indigo-600/30 text-indigo-400 border border-indigo-500/30">
+                        <Boxes className="w-4 h-4" />
+                      </div>
+                      <span className="text-xs font-bold text-white uppercase tracking-wider">
+                        Select {optionLabel}:
+                      </span>
+                    </div>
+                    {selectedVariantObj && (
+                      <span className="text-xs font-extrabold text-indigo-400 font-mono">
+                        {selectedVariantObj.name} {selectedVariantObj.sku ? `(${selectedVariantObj.sku})` : ''}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Variant Selection Buttons Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {activeVariantsList.map((v) => {
+                      const isSelected = selectedVariantObj?.id === v.id;
+                      const vPricing = getVariantPricingDetails(product, v);
+
+                      return (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedVariantObj(v);
+                            setSelectedVariant(v.name);
+                          }}
+                          className={`p-2.5 rounded-xl border text-left transition-all relative flex flex-col justify-between ${
+                            isSelected
+                              ? 'bg-indigo-600 text-white border-indigo-400 shadow-lg shadow-indigo-600/30 scale-[1.02]'
+                              : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:border-slate-700 hover:bg-slate-850'
+                          }`}
+                        >
+                          {vPricing.isSaleActive && (
+                            <span className={`absolute top-1.5 right-1.5 px-1.5 py-0.2 rounded font-mono text-[8px] font-black tracking-wider ${
+                              isSelected ? 'bg-white text-rose-600' : 'bg-rose-600 text-white'
+                            }`}>
+                              SALE
+                            </span>
+                          )}
+
+                          <div>
+                            <span className="font-bold text-xs block leading-snug">{v.name}</span>
+                            {v.sku && (
+                              <span className={`text-[9px] font-mono block ${isSelected ? 'text-indigo-200' : 'text-slate-500'}`}>
+                                SKU: {v.sku}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-2 pt-1 border-t border-white/10 flex items-baseline justify-between gap-1">
+                            <span className={`text-xs font-extrabold font-mono ${
+                              isSelected ? 'text-white' : (vPricing.isSaleActive ? 'text-rose-400' : 'text-emerald-400')
+                            }`}>
+                              {vPricing.effectivePriceString}
+                            </span>
+                            {vPricing.isSaleActive && (
+                              <span className={`text-[9px] line-through font-mono ${
+                                isSelected ? 'text-indigo-200' : 'text-slate-500'
+                              }`}>
+                                {vPricing.formattedRegularPrice}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* PAINT-SPECIFIC SHADE / COLOR PALETTE SELECTOR (ONLY SHOWN WHEN SHADES ARE ENABLED FOR PAINT PRODUCT) */}
+              {isPaintShadesActive && activePaintShadesList.length > 0 && (
+                <PaintShadeSelector
+                  shades={activePaintShadesList}
+                  selectedShade={selectedShade}
+                  onSelectShade={(shade) => setSelectedShade(shade)}
+                  title={shadesSectionTitle}
+                />
+              )}
+
+              {/* AVAILABLE COLORS (FOR NON-PAINT OR WHEN PAINT SHADES ARE NOT EXPLICITLY USED) */}
+              {!isPaintShadesActive && displayColors && displayColors.length > 0 && (
                 <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold text-slate-300">
                     <div className="flex items-center gap-1.5">
@@ -599,7 +745,16 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
               {onAddToCart && (
                 <button
                   onClick={() => {
-                    onAddToCart(product, quantity, selectedColor, selectedSize, selectedQuality, selectedVariant);
+                    const finalVariantName = selectedVariantObj ? selectedVariantObj.name : selectedVariant;
+                    onAddToCart(
+                      product,
+                      quantity,
+                      selectedColor,
+                      selectedSize,
+                      selectedQuality,
+                      finalVariantName,
+                      isPaintShadesActive && selectedShade ? selectedShade : undefined
+                    );
                   }}
                   className="flex-1 py-3.5 px-5 rounded-2xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-all duration-200 shadow-xl shadow-blue-950/50 flex items-center justify-center gap-2.5 active:scale-98 border border-blue-400/30"
                 >

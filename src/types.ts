@@ -90,6 +90,50 @@ export interface ProductSaleConfig {
   showRegularPriceStrike?: boolean;
 }
 
+export interface ProductVariant {
+  id: string;
+  name: string; // e.g. "100 Liters", "200 Liters", "1/2 inch", "3/4 inch", "Chrome", "Matte Black"
+  sku?: string; // e.g. "WT-100L"
+  price?: string | number; // Regular variant price, e.g. "8000" or "Rs. 8,000"
+  saleEnabled?: boolean;
+  salePrice?: string | number; // Variant sale price, e.g. "7200" or "Rs. 7,200"
+  discountPercentage?: number;
+  saleLabel?: string;
+  stockQuantity?: number;
+  stockStatus?: 'In Stock' | 'Limited Stock' | 'Out of Stock' | 'Coming Soon' | 'Available on Order' | string;
+  image?: string; // Variant specific photo
+  isActive?: boolean; // Enable / disable without deleting (defaults to true)
+  isDefault?: boolean; // Whether this is the default selected variant
+  displayOrder?: number;
+}
+
+export interface ProductVariantsConfig {
+  variantsEnabled?: boolean; // Admin master switch per product
+  optionName?: string; // e.g. "Capacity", "Size", "Color", "Length", "Model", "Thickness", "Weight", "Finish"
+  variants?: ProductVariant[];
+}
+
+export interface PaintShade {
+  id: string; // Unique shade id (e.g. "shade-101")
+  name: string; // Shade Name (e.g. "Grey Mist", "Snow White", "Off-White")
+  code: string; // Exact Manufacturer Shade Code (e.g. "3044", "SW-01", "3001") - Primary Reference
+  referenceImage?: string; // Real Shade Reference Image (uploaded sample/card/crop from catalogue)
+  image?: string; // Backward compatibility alias for referenceImage
+  colorHex?: string; // Optional soft fallback tint if image is loading
+  isActive?: boolean; // Available toggle: true = Available (ON), false = Unavailable (OFF)
+  displayOrder?: number; // Ordering index
+  priceAdjustment?: number; // Optional price delta in PKR
+  notes?: string; // Optional manufacturer notes
+}
+
+export interface PaintShadesConfig {
+  shadesEnabled?: boolean; // Admin master switch per paint product [ON / OFF]
+  shadesTitle?: string; // Section title (e.g. "Choose Shade")
+  shadeSheetUrl?: string; // Complete manufacturer shade sheet / catalogue reference uploaded by Admin
+  shadeSheetName?: string; // e.g. "Berger Super Emulsion Shade Card 2026"
+  shades?: PaintShade[];
+}
+
 export interface Product {
   id: string;
   sku?: string;
@@ -112,6 +156,18 @@ export interface Product {
   showDiscountPercentage?: boolean;
   showSavingsAmount?: boolean;
   saleConfig?: ProductSaleConfig;
+  // Product Variant System (Admin controlled per product)
+  variantsEnabled?: boolean;
+  optionName?: string; // Custom label for variant selector (e.g. "Capacity", "Size", "Color", "Length")
+  variantsList?: ProductVariant[];
+  variantsConfig?: ProductVariantsConfig;
+  // Paint-Specific Shade & Color System (Admin controlled per paint product)
+  shadesEnabled?: boolean;
+  shadesTitle?: string;
+  shadeSheetUrl?: string; // Admin reference shade sheet / catalogue image
+  shadesList?: PaintShade[];
+  paintShadesConfig?: PaintShadesConfig;
+  isPaintProduct?: boolean;
   features: string[];
   specs?: Record<string, string>;
   isNew?: boolean;
@@ -538,6 +594,18 @@ export interface CartItem {
   selectedSize?: string;
   selectedQuality?: string;
   selectedVariant?: string;
+  selectedVariantId?: string;
+  selectedVariantName?: string;
+  selectedOptionName?: string;
+  selectedVariantPrice?: number | string;
+  selectedVariantSku?: string;
+  // Paint Shade Selection
+  selectedShade?: string; // e.g. "Snow White"
+  selectedShadeId?: string;
+  selectedShadeCode?: string; // e.g. "SW-01"
+  selectedShadeColor?: string; // e.g. "#FFFFFF"
+  selectedShadeImage?: string; // Texture URL
+  selectedShadePriceAdjustment?: number;
 }
 
 export interface OrderItem {
@@ -553,6 +621,17 @@ export interface OrderItem {
   selectedSize?: string;
   selectedQuality?: string;
   selectedVariant?: string;
+  selectedVariantId?: string;
+  selectedVariantName?: string;
+  selectedOptionName?: string;
+  selectedVariantSku?: string;
+  // Paint Shade Selection
+  selectedShade?: string;
+  selectedShadeId?: string;
+  selectedShadeCode?: string;
+  selectedShadeColor?: string;
+  selectedShadeImage?: string;
+  selectedShadePriceAdjustment?: number;
   lineTotal: number;
 }
 

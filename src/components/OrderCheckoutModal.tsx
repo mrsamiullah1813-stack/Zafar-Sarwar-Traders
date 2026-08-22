@@ -3,7 +3,7 @@ import { X, ShoppingBag, CheckCircle2, Truck, ShieldCheck, Phone, MapPin, User, 
 import { CartItem, BusinessConfig, CheckoutSettings, CustomerOrder, OrderItem, DeliverySettings } from '../types';
 import { loadDeliverySettings, generateNextOrderId } from '../utils/storage';
 import { getOrGenerateCustomerId } from '../utils/customerStorage';
-import { getProductPricingDetails } from '../utils/pricingUtils';
+import { getProductPricingDetails, getVariantPricingDetails } from '../utils/pricingUtils';
 
 interface OrderCheckoutModalProps {
   isOpen: boolean;
@@ -59,11 +59,24 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     ? (customCityName.trim() || 'Custom Location')
     : (matchedCity ? matchedCity.cityName : selectedCityId);
 
+  const getItemPricing = (item: CartItem) => {
+    if (!item?.product) return { effectivePriceNumeric: 0, isSaleActive: false, discountPercentage: 0, regularPriceNumeric: 0, effectivePriceString: 'Price on Request', formattedSalePrice: '', formattedRegularPrice: '', variantSku: undefined };
+    const p = item.product;
+    const variants = p.variantsList || p.variantsConfig?.variants;
+    if (item.selectedVariant && Array.isArray(variants) && variants.length > 0) {
+      const matched = variants.find(v => v.name === item.selectedVariant || v.id === item.selectedVariant);
+      if (matched) {
+        return { ...getVariantPricingDetails(p, matched), variantSku: matched.sku };
+      }
+    }
+    return { ...getProductPricingDetails(p), variantSku: p.sku };
+  };
+
   // Calculations
   const calculateSubtotal = () => {
     return items.reduce((acc, item) => {
       if (!item?.product) return acc;
-      const pricing = getProductPricingDetails(item.product);
+      const pricing = getItemPricing(item);
       return acc + pricing.effectivePriceNumeric * (item.quantity || 1);
     }, 0);
   };
@@ -121,7 +134,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
     const orderItems: OrderItem[] = items.map(item => {
       const p = item.product;
-      const pricing = getProductPricingDetails(p);
+      const pricing = getItemPricing(item);
       const numericPrice = pricing.effectivePriceNumeric;
       let unitPriceText = pricing.effectivePriceString;
       if (pricing.isSaleActive && pricing.discountPercentage > 0) {
@@ -132,7 +145,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
         productName: p.name,
         brand: p.brand || p.category,
         image: p.images?.[0] || p.image,
-        sku: p.sku,
+        sku: pricing.variantSku || p.sku,
         unitPrice: unitPriceText,
         numericPrice: numericPrice,
         quantity: item.quantity,
@@ -140,6 +153,16 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
         selectedSize: item.selectedSize,
         selectedQuality: item.selectedQuality,
         selectedVariant: item.selectedVariant,
+        selectedVariantId: item.selectedVariantId,
+        selectedVariantName: item.selectedVariantName,
+        selectedOptionName: item.selectedOptionName,
+        selectedVariantSku: item.selectedVariantSku,
+        selectedShade: item.selectedShade,
+        selectedShadeId: item.selectedShadeId,
+        selectedShadeCode: item.selectedShadeCode,
+        selectedShadeColor: item.selectedShadeColor,
+        selectedShadeImage: item.selectedShadeImage,
+        selectedShadePriceAdjustment: item.selectedShadePriceAdjustment,
         lineTotal: numericPrice * item.quantity,
       };
     });
@@ -201,10 +224,12 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     orderItems.forEach((item, index) => {
       msg += `${index + 1}. ${item.productName}\n`;
       msg += `Quantity: ${item.quantity}\n`;
-      if (item.selectedColor) msg += `Color: ${item.selectedColor}\n`;
-      if (item.selectedSize) msg += `Size: ${item.selectedSize}\n`;
+      if (item.selectedVariant) msg += `Size / Option: ${item.selectedVariant}\n`;
+      if (item.selectedShade) msg += `Selected Shade: ${item.selectedShade}\n`;
+      if (item.selectedShadeCode) msg += `Shade Code: ${item.selectedShadeCode}\n`;
+      if (item.selectedColor && !item.selectedShade) msg += `Color: ${item.selectedColor}\n`;
+      if (item.selectedSize && !item.selectedVariant) msg += `Size: ${item.selectedSize}\n`;
       if (item.selectedQuality) msg += `Quality: ${item.selectedQuality}\n`;
-      if (item.selectedVariant) msg += `Variant: ${item.selectedVariant}\n`;
       msg += `Price: ${item.unitPrice}\n`;
       msg += `Subtotal: ${item.lineTotal > 0 ? `PKR ${item.lineTotal.toLocaleString('en-PK')}` : item.unitPrice}\n\n`;
     });
@@ -520,8 +545,10 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                         <h5 className="font-bold text-slate-900 truncate leading-snug">{p.name}</h5>
                         <p className="text-[10px] text-slate-500 truncate">
                           {p.brand && `${p.brand} • `}Qty: {item.quantity}
-                          {item.selectedColor && ` • ${item.selectedColor}`}
-                          {item.selectedSize && ` • ${item.selectedSize}`}
+                          {item.selectedVariant && ` • ${p.optionName || 'Opt'}: ${item.selectedVariant}`}
+                          {item.selectedShade && ` • Shade: ${item.selectedShade}`}
+                          {item.selectedColor && !item.selectedShade && ` • ${item.selectedColor}`}
+                          {item.selectedSize && !item.selectedVariant && ` • ${item.selectedSize}`}
                         </p>
                       </div>
                       <div className="text-right text-xs shrink-0 font-bold text-slate-900 font-mono">

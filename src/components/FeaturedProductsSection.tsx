@@ -15,12 +15,13 @@ import {
   Star,
   Flame,
   Percent,
-  Timer
+  Timer,
+  Boxes
 } from 'lucide-react';
 import { Product, BusinessConfig, ProductCategory } from '../types';
 import { ProductSaleBadge } from './ProductSaleBadge';
 import { SaleCountdownTimer } from './SaleCountdownTimer';
-import { getProductPricingDetails } from '../utils/pricingUtils';
+import { getProductPricingDetails, getProductVariantDisplaySummary, hasActiveVariants } from '../utils/pricingUtils';
 
 interface FeaturedProductsProps {
   products: Product[];
@@ -257,6 +258,8 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
               const isWishlisted = wishlistIds.includes(product.id);
               const isCompared = compareIds.includes(product.id);
               const pricing = getProductPricingDetails(product);
+              const isVariantEnabled = hasActiveVariants(product);
+              const variantSummary = isVariantEnabled ? getProductVariantDisplaySummary(product) : null;
 
               return (
                 <motion.div
@@ -282,6 +285,14 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                     <div className="absolute top-2.5 left-2.5 flex flex-col gap-1 z-10 items-start">
                       {/* Product Sale Badge if Sale is Active */}
                       <ProductSaleBadge product={product} />
+
+                      {/* Variant Badge if active */}
+                      {isVariantEnabled && variantSummary && variantSummary.variantCount > 1 && (
+                        <span className="px-2 py-0.5 rounded-lg bg-indigo-600/90 backdrop-blur-sm text-white font-bold text-[10px] shadow flex items-center gap-1">
+                          <Boxes className="w-3 h-3" />
+                          <span>{variantSummary.variantCount} {product.optionName || 'Sizes'}</span>
+                        </span>
+                      )}
 
                       {product.isNew && (
                         <span className="px-2 py-0.5 rounded bg-blue-600 text-white font-bold text-[10px] shadow">
@@ -429,7 +440,9 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                         ) : (
                           <div className="flex items-baseline gap-2">
                             <span className="text-sm font-bold text-blue-600 font-mono">
-                              {product.hidePrice ? 'Call for Price' : (product.isPriceOnRequest ? 'Price on Request' : (product.price || 'Price on Request'))}
+                              {isVariantEnabled && variantSummary && variantSummary.variantCount > 0
+                                ? (variantSummary.minPrice > 0 ? (variantSummary.minPrice === variantSummary.maxPrice ? `Rs. ${variantSummary.minPrice.toLocaleString('en-PK')}` : `Rs. ${variantSummary.minPrice.toLocaleString('en-PK')} – ${variantSummary.maxPrice.toLocaleString('en-PK')}`) : (product.price || 'Price on Request'))
+                                : (product.hidePrice ? 'Call for Price' : (product.isPriceOnRequest ? 'Price on Request' : (product.price || 'Price on Request')))}
                             </span>
                           </div>
                         )}

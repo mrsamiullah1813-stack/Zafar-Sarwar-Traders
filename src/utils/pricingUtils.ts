@@ -1,4 +1,4 @@
-import { Product, ProductSaleConfig } from '../types';
+import { Product, ProductSaleConfig, ProductVariant } from '../types';
 
 /**
  * Parses numeric price from any string format (e.g. "Rs. 10,000", "10,000 PKR", "10000", 10000)
@@ -283,3 +283,279 @@ export function getProductPricingDetails(product?: Partial<Product> | null): Pro
     isPriceOnRequest
   };
 }
+
+/**
+ * Extracts and sorts active product variants (handling both product.variantsList and product.variantsConfig.variants)
+ */
+export function getActiveVariants(product?: Partial<Product> | null): ProductVariant[] {
+  if (!product) return [];
+  const rawList = product.variantsList || product.variantsConfig?.variants || [];
+  if (!Array.isArray(rawList)) return [];
+
+  return rawList
+    .filter(v => v && typeof v === 'object' && v.isActive !== false)
+    .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+}
+
+/**
+ * Checks if a product has active Admin-controlled variants enabled
+ */
+export function hasActiveVariants(product?: Partial<Product> | null): boolean {
+  if (!product) return false;
+  const isEnabled = Boolean(product.variantsEnabled || product.variantsConfig?.variantsEnabled);
+  if (!isEnabled) return false;
+  const active = getActiveVariants(product);
+  return active.length > 0;
+}
+
+export interface VariantPricingDetails {
+  variantId: string;
+  variantName: string;
+  sku?: string;
+  isSaleActive: boolean;
+  saleStatus: 'none' | 'active' | 'upcoming' | 'expired';
+  regularPriceNumeric: number;
+  salePriceNumeric: number;
+  currentPriceNumeric: number;
+  effectivePriceNumeric: number;
+  formattedRegularPrice: string;
+  formattedSalePrice: string;
+  formattedCurrentPrice: string;
+  effectivePriceString: string;
+  discountPercentage: number;
+  discountPercent: number;
+  savingsAmount: number;
+  formattedSavings: string;
+  saleLabel: string;
+  saleBadgeColor: string;
+  saleMessage?: string;
+  showCountdown: boolean;
+  showDiscountPercentage: boolean;
+  showSavings: boolean;
+  showRegularPriceStrike: boolean;
+  startDate?: string;
+  endDate?: string;
+  saleStartDate?: string;
+  saleEndDate?: string;
+  stockStatus: string;
+  stockQuantity: number;
+  inStock: boolean;
+  image?: string;
+  isPriceOnRequest: boolean;
+}
+
+/**
+ * Calculates real-time dynamic pricing for a specific Product Variant.
+ * Accepts arguments in either order: (parentProduct, variant) or (variant, parentProduct).
+ */
+export function getVariantPricingDetails(
+  arg1: Partial<Product> | ProductVariant | null | undefined,
+  arg2?: Partial<Product> | ProductVariant | null
+): VariantPricingDetails {
+  // Disambiguate arguments:
+  let variant: ProductVariant | null = null;
+  let parentProduct: Partial<Product> | null = null;
+
+  if (arg1 && typeof arg1 === 'object') {
+    if ('name' in arg1 && 'id' in arg1 && !('categoryId' in arg1 || 'variantsList' in arg1 || 'variantsConfig' in arg1)) {
+      variant = arg1 as ProductVariant;
+      parentProduct = (arg2 as Partial<Product>) || null;
+    } else if (arg2 && typeof arg2 === 'object' && 'name' in arg2 && 'id' in arg2) {
+      variant = arg2 as ProductVariant;
+      parentProduct = (arg1 as Partial<Product>) || null;
+    } else {
+      variant = arg1 as ProductVariant;
+      parentProduct = (arg2 as Partial<Product>) || null;
+    }
+  }
+
+  if (!variant) {
+    return {
+      variantId: '',
+      variantName: '',
+      isSaleActive: false,
+      saleStatus: 'none',
+      regularPriceNumeric: 0,
+      salePriceNumeric: 0,
+      currentPriceNumeric: 0,
+      effectivePriceNumeric: 0,
+      formattedRegularPrice: 'Price on Request',
+      formattedSalePrice: '',
+      formattedCurrentPrice: 'Price on Request',
+      effectivePriceString: 'Price on Request',
+      discountPercentage: 0,
+      discountPercent: 0,
+      savingsAmount: 0,
+      formattedSavings: '',
+      saleLabel: '',
+      saleBadgeColor: '',
+      showCountdown: false,
+      showDiscountPercentage: false,
+      showSavings: false,
+      showRegularPriceStrike: true,
+      stockStatus: 'In Stock',
+      stockQuantity: 10,
+      inStock: true,
+      isPriceOnRequest: true
+    };
+  }
+
+  const regNum = parseNumericPrice(variant.price) || (parentProduct ? parseNumericPrice(parentProduct.price) : 0);
+  
+  // Check if variant has its own sale, or inherits parent product's sale
+  const variantSaleEnabled = variant.saleEnabled === true;
+  const parentSaleDetails = parentProduct ? getProductPricingDetails(parentProduct) : null;
+  
+  let isSale = false;
+  let saleNum = 0;
+  let saleMsg = parentSaleDetails?.saleMessage || '';
+  let saleEnd = parentSaleDetails?.saleEndDate;
+
+  if (variantSaleEnabled && variant.salePrice) {
+    const rawVariantSale = parseNumericPrice(variant.salePrice);
+    if (regNum > 0 && rawVariantSale > 0 && rawVariantSale < regNum) {
+      isSale = true;
+      saleNum = rawVariantSale;
+      saleMsg = parentSaleDetails?.saleMessage || 'Special Variant Discount';
+    }
+  } else if (parentSaleDetails?.isSaleActive && (variant.price === undefined || variant.price === parentProduct?.price)) {
+    // If variant price matches or is default, inherit parent sale
+    isSale = true;
+    saleNum = parentSaleDetails.salePriceNumeric;
+    saleMsg = parentSaleDetails.saleMessage || '';
+  }
+
+  const effectiveNumeric = isSale ? saleNum : regNum;
+  const discountPercent = calculateDiscountPercentage(regNum, saleNum);
+  const savings = calculateSavingsAmount(regNum, saleNum);
+
+  const formattedRegular = regNum > 0 ? formatPakistaniPrice(regNum) : 'Price on Request';
+  const formattedSale = saleNum > 0 ? formatPakistaniPrice(saleNum) : '';
+  const formattedCurrent = effectiveNumeric > 0 ? formatPakistaniPrice(effectiveNumeric) : 'Price on Request';
+  const formattedSavings = savings > 0 ? formatPakistaniPrice(savings) : '';
+
+  const stockQty = typeof variant.stockQuantity === 'number' ? variant.stockQuantity : (parentProduct?.stockQuantity ?? 10);
+  const stockStatus = variant.stockStatus || (stockQty <= 0 ? 'Out of Stock' : (parentProduct?.stockStatus || 'In Stock'));
+  const inStock = stockStatus.toLowerCase() !== 'out of stock' && stockQty > 0;
+
+  return {
+    variantId: variant.id,
+    variantName: variant.name,
+    sku: variant.sku || parentProduct?.sku,
+    isSaleActive: isSale,
+    saleStatus: isSale ? 'active' : 'none',
+    regularPriceNumeric: regNum,
+    salePriceNumeric: saleNum,
+    currentPriceNumeric: effectiveNumeric,
+    effectivePriceNumeric: effectiveNumeric,
+    formattedRegularPrice: formattedRegular,
+    formattedSalePrice: formattedSale,
+    formattedCurrentPrice: formattedCurrent,
+    effectivePriceString: formattedCurrent,
+    discountPercentage: discountPercent,
+    discountPercent,
+    savingsAmount: savings,
+    formattedSavings,
+    saleLabel: isSale ? `${discountPercent}% OFF` : '',
+    saleBadgeColor: 'bg-rose-600',
+    saleMessage: saleMsg,
+    showCountdown: isSale && Boolean(saleEnd),
+    showDiscountPercentage: isSale && discountPercent > 0,
+    showSavings: isSale && savings > 0,
+    showRegularPriceStrike: true,
+    saleEndDate: saleEnd,
+    stockStatus,
+    stockQuantity: stockQty,
+    inStock,
+    image: variant.image || parentProduct?.image,
+    isPriceOnRequest: effectiveNumeric <= 0
+  };
+}
+
+export interface ProductVariantDisplaySummary {
+  hasVariants: boolean;
+  optionName: string;
+  variantCount: number;
+  lowestPriceNumeric: number;
+  highestPriceNumeric: number;
+  minPrice: number;
+  maxPrice: number;
+  formattedPriceRange: string;
+  hasActiveSale: boolean;
+  defaultVariant?: ProductVariant;
+}
+
+/**
+ * Returns summary price range and variant status for storefront cards
+ */
+export function getProductVariantDisplaySummary(product?: Partial<Product> | null): ProductVariantDisplaySummary {
+  if (!product || !hasActiveVariants(product)) {
+    const parentPricing = getProductPricingDetails(product);
+    return {
+      hasVariants: false,
+      optionName: product?.optionName || 'Size',
+      variantCount: 0,
+      lowestPriceNumeric: parentPricing.effectivePriceNumeric,
+      highestPriceNumeric: parentPricing.effectivePriceNumeric,
+      minPrice: parentPricing.effectivePriceNumeric,
+      maxPrice: parentPricing.effectivePriceNumeric,
+      formattedPriceRange: parentPricing.formattedCurrentPrice,
+      hasActiveSale: parentPricing.isSaleActive
+    };
+  }
+
+  const active = getActiveVariants(product);
+  const optionName = product.optionName || product.variantsConfig?.optionName || 'Size';
+  const defaultVar = active.find(v => v.isDefault) || active[0];
+
+  const variantPrices = active.map(v => {
+    const p = getVariantPricingDetails(product, v);
+    return {
+      effectivePrice: p.effectivePriceNumeric,
+      regularPrice: p.regularPriceNumeric,
+      isSale: p.isSaleActive
+    };
+  }).filter(p => p.effectivePrice > 0);
+
+  if (variantPrices.length === 0) {
+    const parentPricing = getProductPricingDetails(product);
+    return {
+      hasVariants: true,
+      optionName,
+      variantCount: active.length,
+      lowestPriceNumeric: parentPricing.effectivePriceNumeric,
+      highestPriceNumeric: parentPricing.effectivePriceNumeric,
+      minPrice: parentPricing.effectivePriceNumeric,
+      maxPrice: parentPricing.effectivePriceNumeric,
+      formattedPriceRange: parentPricing.formattedCurrentPrice,
+      hasActiveSale: false,
+      defaultVariant: defaultVar
+    };
+  }
+
+  const numericValues = variantPrices.map(v => v.effectivePrice);
+  const minPrice = Math.min(...numericValues);
+  const maxPrice = Math.max(...numericValues);
+  const anySale = variantPrices.some(v => v.isSale);
+
+  let formattedPriceRange = '';
+  if (minPrice === maxPrice) {
+    formattedPriceRange = formatPakistaniPrice(minPrice);
+  } else {
+    formattedPriceRange = `From ${formatPakistaniPrice(minPrice)}`;
+  }
+
+  return {
+    hasVariants: true,
+    optionName,
+    variantCount: active.length,
+    lowestPriceNumeric: minPrice,
+    highestPriceNumeric: maxPrice,
+    minPrice,
+    maxPrice,
+    formattedPriceRange,
+    hasActiveSale: anySale,
+    defaultVariant: defaultVar
+  };
+}
+

@@ -474,6 +474,35 @@ async function startServer() {
     }
 
     const isSaleEnabled = Boolean(product.saleEnabled === true || product.saleConfig?.saleEnabled === true);
+    const isVariantsEnabled = Boolean(product.variantsEnabled === true || product.variantsConfig?.variantsEnabled === true);
+    const optionName = product.optionName || product.variantsConfig?.optionName || "Size";
+    const cleanVariantsList = (product.variantsList || product.variantsConfig?.variants || []).map((v: any, idx: number) => ({
+      id: v.id || `var-${Date.now()}-${idx}`,
+      name: v.name || `Option ${idx + 1}`,
+      sku: v.sku || null,
+      price: v.price !== undefined && v.price !== null ? String(v.price) : null,
+      sale_enabled: Boolean(v.saleEnabled ?? v.sale_enabled),
+      sale_price: v.salePrice !== undefined && v.salePrice !== null ? String(v.salePrice) : (v.sale_price !== undefined ? String(v.sale_price) : null),
+      stock_quantity: typeof v.stockQuantity === "number" ? v.stockQuantity : (typeof v.stock_quantity === "number" ? v.stock_quantity : 10),
+      stock_status: v.stockStatus || v.stock_status || "In Stock",
+      image: v.image || null,
+      is_active: v.isActive !== false && v.is_active !== false,
+      is_default: Boolean(v.isDefault ?? v.is_default),
+      display_order: v.displayOrder ?? idx
+    }));
+
+    const isShadesEnabled = Boolean(product.shadesEnabled === true || product.paintShadesConfig?.shadesEnabled === true);
+    const shadesTitle = product.shadesTitle || product.paintShadesConfig?.shadesTitle || "Select Paint Shade / Color";
+    const cleanShadesList = (product.shadesList || product.paintShadesConfig?.shades || []).map((s: any, idx: number) => ({
+      id: s.id || `shade-${Date.now()}-${idx}`,
+      name: s.name || `Shade ${idx + 1}`,
+      code: s.code || null,
+      colorHex: s.colorHex || s.color_hex || "#FFFFFF",
+      image: s.image || null,
+      isActive: s.isActive !== false && s.is_active !== false,
+      displayOrder: s.displayOrder ?? s.display_order ?? idx,
+      priceAdjustment: Number(s.priceAdjustment ?? s.price_adjustment ?? 0)
+    }));
 
     const specsWithMeta = {
       ...(product.specs || {}),
@@ -490,6 +519,23 @@ async function startServer() {
       _show_discount_percentage: Boolean(product.showDiscountPercentage ?? product.saleConfig?.showDiscountPercentage ?? true),
       _show_savings_amount: Boolean(product.showSavingsAmount ?? product.saleConfig?.showSavings ?? true),
       _sale_config: product.saleConfig || null,
+      _variants_enabled: isVariantsEnabled,
+      _option_name: optionName,
+      _variants_list: cleanVariantsList,
+      _variants_config: {
+        variantsEnabled: isVariantsEnabled,
+        optionName: optionName,
+        variants: cleanVariantsList
+      },
+      _shades_enabled: isShadesEnabled,
+      _shades_title: shadesTitle,
+      _shades_list: cleanShadesList,
+      _paint_shades_config: {
+        shadesEnabled: isShadesEnabled,
+        shadesTitle: shadesTitle,
+        shades: cleanShadesList
+      },
+      _is_paint_product: Boolean(product.isPaintProduct),
       _category_name: product.category || null,
       _category_id: product.categoryId || null,
       _brand_name: product.brand || null,
@@ -543,6 +589,9 @@ async function startServer() {
       show_countdown: Boolean(product.showSaleCountdown ?? product.saleConfig?.showCountdown ?? true),
       show_discount_percentage: Boolean(product.showDiscountPercentage ?? product.saleConfig?.showDiscountPercentage ?? true),
       show_savings: Boolean(product.showSavingsAmount ?? product.saleConfig?.showSavings ?? true),
+      variants_enabled: isVariantsEnabled,
+      option_name: optionName,
+      variants: cleanVariantsList,
       category_id: product.categoryId || null,
       brand_id: product.brandId || null,
       image: product.image || "",
@@ -1498,16 +1547,28 @@ CUSTOM KNOWLEDGE & OFFICIAL STORE POLICIES (${activeKnowledgeToInject.length} ru
 ${activeKnowledgeToInject.map((k: any) => `• [${k.category.toUpperCase()}] ${k.title}: ${k.answerOrContent}`).join('\n')}
 
 CANDIDATE PRODUCTS FROM LIVE DATABASE (${candidateProducts.length} items):
-${JSON.stringify(candidateProducts.map((p: any) => ({
-  id: p.id,
-  name: p.name,
-  category: p.category,
-  price: p.price,
-  brand: p.brand,
-  features: p.features,
-  stockStatus: p.stockStatus || 'In Stock',
-  image: p.image
-})))}
+${JSON.stringify(candidateProducts.map((p: any) => {
+  const hasVars = Boolean(p.variantsEnabled && Array.isArray(p.variantsList) && p.variantsList.length > 0);
+  return {
+    id: p.id,
+    name: p.name,
+    category: p.category,
+    price: p.price,
+    brand: p.brand,
+    variantsEnabled: hasVars,
+    optionName: p.optionName || 'Size',
+    variants: hasVars ? p.variantsList.map((v: any) => ({
+      name: v.name,
+      price: v.price,
+      salePrice: v.salePrice,
+      saleEnabled: v.saleEnabled,
+      stockStatus: v.stockStatus || 'In Stock'
+    })) : undefined,
+    features: p.features,
+    stockStatus: p.stockStatus || 'In Stock',
+    image: p.image
+  };
+}))}
 
 AVAILABLE STORE CATEGORIES:
 ${JSON.stringify(allCategories.map((c: any) => ({ id: c.id, name: c.name })))}

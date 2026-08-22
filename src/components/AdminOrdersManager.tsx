@@ -465,6 +465,31 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                               <div className="min-w-0">
                                 {item.brand && <span className="text-[10px] font-bold text-blue-400 uppercase block">{item.brand}</span>}
                                 <h5 className="font-bold text-white truncate">{item.productName}</h5>
+                                <div className="flex flex-wrap gap-1.5 pt-0.5 text-[10px]">
+                                  {item.selectedVariant && (
+                                    <span className="px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">
+                                      Option: {item.selectedVariant}
+                                    </span>
+                                  )}
+                                  {item.selectedShade && (
+                                    <span className="px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 flex items-center gap-1">
+                                      {item.selectedShadeColor && (
+                                        <span className="w-2 h-2 rounded-full border border-slate-500 inline-block" style={{ backgroundColor: item.selectedShadeColor }} />
+                                      )}
+                                      <span>Shade: {item.selectedShade} {item.selectedShadeCode ? `(${item.selectedShadeCode})` : ''}</span>
+                                    </span>
+                                  )}
+                                  {item.selectedColor && !item.selectedShade && (
+                                    <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">
+                                      Color: {item.selectedColor}
+                                    </span>
+                                  )}
+                                  {item.selectedSize && !item.selectedVariant && (
+                                    <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">
+                                      Size: {item.selectedSize}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
 

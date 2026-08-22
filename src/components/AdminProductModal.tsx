@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { X, Check, Trash2, Video, Image as ImageIcon, Sparkles, Tag, ShieldCheck, Layers, Star, Truck, Clock, MapPin, Info, DollarSign, MessageSquare, AlertCircle, Flame, Percent, Calendar, Timer } from 'lucide-react';
-import { Product, ProductVideo, ProductCategory, ProductBrand, ProductDeliveryConfig, ProductSaleConfig } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Check, Trash2, Video, Image as ImageIcon, Sparkles, Tag, ShieldCheck, Layers, Star, Truck, Clock, MapPin, Info, DollarSign, MessageSquare, AlertCircle, Flame, Percent, Calendar, Timer, Boxes, Plus, Copy, ArrowUp, ArrowDown, Settings2, Sliders, CheckCircle2, Eye, Palette } from 'lucide-react';
+import { Product, ProductVideo, ProductCategory, ProductBrand, ProductDeliveryConfig, ProductSaleConfig, ProductVariant, ProductVariantsConfig, PaintShade, PaintShadesConfig } from '../types';
 import { VideoUploader } from './VideoUploader';
 import { MultiImageUploader } from './MultiImageUploader';
+import { AdminPaintShadesManager } from './AdminPaintShadesManager';
 import { formatSupabaseError } from '../services/supabaseService';
 import { parseNumericPrice, calculateDiscountPercentage, calculateSavingsAmount, formatPakistaniPrice } from '../utils/pricingUtils';
+import { isPaintCategory, isPaintProduct } from '../utils/paintShadeUtils';
 
 interface AdminProductModalProps {
   product: Product | null; // null for creating new product
@@ -87,6 +89,24 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
   const [showDiscountPercentage, setShowDiscountPercentage] = useState<boolean>(true);
   const [showSavingsAmount, setShowSavingsAmount] = useState<boolean>(true);
 
+  // Variant / Size / Capacity Dynamic Pricing states
+  const [variantsEnabled, setVariantsEnabled] = useState<boolean>(false);
+  const [optionName, setOptionName] = useState<string>('Capacity');
+  const [variantsList, setVariantsList] = useState<ProductVariant[]>([]);
+  const [activeVariantTab, setActiveVariantTab] = useState<'editor' | 'preview'>('editor');
+
+  // Paint-Specific Shade / Color System states (Only for Paint products)
+  const [shadesEnabled, setShadesEnabled] = useState<boolean>(false);
+  const [shadesTitle, setShadesTitle] = useState<string>('Choose Shade');
+  const [shadeSheetUrl, setShadeSheetUrl] = useState<string>('');
+  const [shadesList, setShadesList] = useState<PaintShade[]>([]);
+
+  // Dynamically detect if current selected category is a Paint product
+  const isPaintItem = useMemo(() => {
+    const selectedCat = categories.find(c => c.id === formData.categoryId);
+    return isPaintCategory(formData.category || selectedCat?.name, formData.categoryId, selectedCat?.group) || isPaintProduct(product, categories);
+  }, [formData.categoryId, formData.category, categories, product]);
+
   useEffect(() => {
     if (product) {
       setFormData({
@@ -118,6 +138,21 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       setShowSaleCountdown(product.showSaleCountdown ?? product.saleConfig?.showCountdown ?? true);
       setShowDiscountPercentage(product.showDiscountPercentage ?? product.saleConfig?.showDiscountPercentage ?? true);
       setShowSavingsAmount(product.showSavingsAmount ?? product.saleConfig?.showSavings ?? true);
+
+      // Populate variant states
+      const isProductVariantsOn = Boolean(product.variantsEnabled || product.variantsConfig?.variantsEnabled);
+      setVariantsEnabled(isProductVariantsOn);
+      setOptionName(product.optionName || product.variantsConfig?.optionName || 'Capacity');
+      const loadedVariants = product.variantsList || product.variantsConfig?.variants || [];
+      setVariantsList(Array.isArray(loadedVariants) ? loadedVariants : []);
+
+      // Populate paint shades states
+      const isProductShadesOn = Boolean(product.shadesEnabled || product.paintShadesConfig?.shadesEnabled);
+      setShadesEnabled(isProductShadesOn);
+      setShadesTitle(product.shadesTitle || product.paintShadesConfig?.shadesTitle || 'Choose Shade');
+      setShadeSheetUrl(product.shadeSheetUrl || product.paintShadesConfig?.shadeSheetUrl || '');
+      const loadedShades = product.shadesList || product.paintShadesConfig?.shades || [];
+      setShadesList(Array.isArray(loadedShades) ? loadedShades : []);
 
       if (product.deliveryConfig) {
         setHasCustomDelivery(true);
@@ -165,6 +200,12 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       setShowSaleCountdown(true);
       setShowDiscountPercentage(true);
       setShowSavingsAmount(true);
+      setVariantsEnabled(false);
+      setOptionName('Capacity');
+      setVariantsList([]);
+      setShadesEnabled(false);
+      setShadesTitle('Select Paint Shade / Color');
+      setShadesList([]);
       setHasCustomDelivery(false);
       setDeliveryType('standard');
       setMinDeliveryTime(3);
@@ -210,6 +251,145 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       brandId: brandId,
       brand: selected ? selected.name : prev.brand
     }));
+  };
+
+  // Variant Helpers
+  const handleAddVariant = () => {
+    const newIdx = variantsList.length;
+    const newVar: ProductVariant = {
+      id: `var-${Date.now()}-${newIdx}`,
+      name: `Size / Option ${newIdx + 1}`,
+      sku: formData.sku ? `${formData.sku}-V${newIdx + 1}` : undefined,
+      price: formData.price && formData.price !== 'PKR Call for Price' ? String(formData.price) : '5000',
+      saleEnabled: false,
+      salePrice: undefined,
+      stockQuantity: 10,
+      stockStatus: 'In Stock',
+      isActive: true,
+      isDefault: variantsList.length === 0,
+      displayOrder: newIdx
+    };
+    setVariantsList(prev => [...prev, newVar]);
+  };
+
+  const handleUpdateVariant = (index: number, field: keyof ProductVariant, value: any) => {
+    setVariantsList(prev => {
+      const copy = [...prev];
+      if (!copy[index]) return prev;
+      
+      if (field === 'isDefault' && value === true) {
+        // Only one default variant allowed
+        return copy.map((v, i) => ({
+          ...v,
+          isDefault: i === index
+        }));
+      }
+
+      copy[index] = {
+        ...copy[index],
+        [field]: value
+      };
+      return copy;
+    });
+  };
+
+  const handleRemoveVariant = (index: number) => {
+    setVariantsList(prev => {
+      const filtered = prev.filter((_, i) => i !== index);
+      // Ensure at least one is default if any left
+      if (filtered.length > 0 && !filtered.some(v => v.isDefault)) {
+        filtered[0].isDefault = true;
+      }
+      return filtered.map((v, i) => ({ ...v, displayOrder: i }));
+    });
+  };
+
+  const handleDuplicateVariant = (index: number) => {
+    const target = variantsList[index];
+    if (!target) return;
+    const dup: ProductVariant = {
+      ...target,
+      id: `var-${Date.now()}-${variantsList.length}`,
+      name: `${target.name} (Copy)`,
+      sku: target.sku ? `${target.sku}-COPY` : undefined,
+      isDefault: false,
+      displayOrder: variantsList.length
+    };
+    setVariantsList(prev => [...prev, dup]);
+  };
+
+  const handleMoveVariant = (index: number, direction: 'up' | 'down') => {
+    if (direction === 'up' && index === 0) return;
+    if (direction === 'down' && index === variantsList.length - 1) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    setVariantsList(prev => {
+      const copy = [...prev];
+      const temp = copy[index];
+      copy[index] = copy[targetIndex];
+      copy[targetIndex] = temp;
+      return copy.map((v, i) => ({ ...v, displayOrder: i }));
+    });
+  };
+
+  const handleApplyPreset = (presetKey: string) => {
+    let opt = 'Capacity';
+    let list: ProductVariant[] = [];
+
+    if (presetKey === 'water-tank') {
+      opt = 'Capacity';
+      list = [
+        { id: `wt-100-${Date.now()}`, name: '100 Liters', sku: 'WT-100L', price: '8500', saleEnabled: false, stockQuantity: 20, stockStatus: 'In Stock', isActive: true, isDefault: true, displayOrder: 0 },
+        { id: `wt-200-${Date.now()}`, name: '200 Liters', sku: 'WT-200L', price: '15000', saleEnabled: true, salePrice: '13800', stockQuantity: 15, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 1 },
+        { id: `wt-300-${Date.now()}`, name: '300 Liters', sku: 'WT-300L', price: '21500', saleEnabled: false, stockQuantity: 12, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 2 },
+        { id: `wt-500-${Date.now()}`, name: '500 Liters', sku: 'WT-500L', price: '34000', saleEnabled: true, salePrice: '31500', stockQuantity: 8, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 3 },
+        { id: `wt-1000-${Date.now()}`, name: '1000 Liters', sku: 'WT-1000L', price: '62000', saleEnabled: false, stockQuantity: 5, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 4 },
+      ];
+    } else if (presetKey === 'pipe-size') {
+      opt = 'Diameter / Size';
+      list = [
+        { id: `p-half-${Date.now()}`, name: '1/2 Inch (20mm)', sku: 'PP-050', price: '450', saleEnabled: false, stockQuantity: 200, stockStatus: 'In Stock', isActive: true, isDefault: true, displayOrder: 0 },
+        { id: `p-34-${Date.now()}`, name: '3/4 Inch (25mm)', sku: 'PP-075', price: '680', saleEnabled: false, stockQuantity: 150, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 1 },
+        { id: `p-1-${Date.now()}`, name: '1 Inch (32mm)', sku: 'PP-100', price: '980', saleEnabled: false, stockQuantity: 100, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 2 },
+        { id: `p-125-${Date.now()}`, name: '1-1/4 Inch (40mm)', sku: 'PP-125', price: '1450', saleEnabled: false, stockQuantity: 60, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 3 },
+        { id: `p-150-${Date.now()}`, name: '1-1/2 Inch (50mm)', sku: 'PP-150', price: '1850', saleEnabled: false, stockQuantity: 50, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 4 },
+        { id: `p-2-${Date.now()}`, name: '2 Inch (63mm)', sku: 'PP-200', price: '2400', saleEnabled: false, stockQuantity: 40, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 5 },
+      ];
+    } else if (presetKey === 'paint-pack') {
+      opt = 'Packaging Size';
+      list = [
+        { id: `pnt-qtr-${Date.now()}`, name: 'Quarter Can (0.91L)', sku: 'PNT-QTR', price: '950', saleEnabled: false, stockQuantity: 40, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 0 },
+        { id: `pnt-1l-${Date.now()}`, name: '1 Litre Standard', sku: 'PNT-1L', price: '1650', saleEnabled: false, stockQuantity: 50, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 1 },
+        { id: `pnt-gal-${Date.now()}`, name: '4 Litres (Gallon)', sku: 'PNT-4L', price: '5400', saleEnabled: true, salePrice: '4950', stockQuantity: 30, stockStatus: 'In Stock', isActive: true, isDefault: true, displayOrder: 2 },
+        { id: `pnt-drm-${Date.now()}`, name: '16 Litres (Drum)', sku: 'PNT-16L', price: '19500', saleEnabled: true, salePrice: '17800', stockQuantity: 15, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 3 },
+      ];
+    } else if (presetKey === 'tile-size') {
+      opt = 'Tile Dimension';
+      list = [
+        { id: `tl-1224-${Date.now()}`, name: '12 x 24 Inch', sku: 'TL-1224', price: '1800', saleEnabled: false, stockQuantity: 80, stockStatus: 'In Stock', isActive: true, isDefault: true, displayOrder: 0 },
+        { id: `tl-2424-${Date.now()}`, name: '24 x 24 Inch', sku: 'TL-2424', price: '2600', saleEnabled: false, stockQuantity: 100, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 1 },
+        { id: `tl-2448-${Date.now()}`, name: '24 x 48 Inch (Large Slab)', sku: 'TL-2448', price: '4800', saleEnabled: true, salePrice: '4400', stockQuantity: 50, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 2 },
+      ];
+    } else if (presetKey === 'shower-head') {
+      opt = 'Shower Head Size';
+      list = [
+        { id: `sh-8-${Date.now()}`, name: '8 Inch Round', sku: 'SH-08R', price: '4200', saleEnabled: false, stockQuantity: 25, stockStatus: 'In Stock', isActive: true, isDefault: true, displayOrder: 0 },
+        { id: `sh-10-${Date.now()}`, name: '10 Inch Round', sku: 'SH-10R', price: '6500', saleEnabled: false, stockQuantity: 20, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 1 },
+        { id: `sh-12-${Date.now()}`, name: '12 Inch Slim Square', sku: 'SH-12S', price: '8900', saleEnabled: true, salePrice: '7900', stockQuantity: 15, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 2 },
+        { id: `sh-16-${Date.now()}`, name: '16 Inch Ultra Luxury Matrix', sku: 'SH-16X', price: '14000', saleEnabled: true, salePrice: '12500', stockQuantity: 8, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 3 },
+      ];
+    } else if (presetKey === 'vanity-size') {
+      opt = 'Cabinet Width';
+      list = [
+        { id: `van-24-${Date.now()}`, name: '24 Inch Single Sink', sku: 'VAN-24', price: '22000', saleEnabled: false, stockQuantity: 10, stockStatus: 'In Stock', isActive: true, isDefault: true, displayOrder: 0 },
+        { id: `van-30-${Date.now()}`, name: '30 Inch Single Sink', sku: 'VAN-30', price: '29500', saleEnabled: false, stockQuantity: 8, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 1 },
+        { id: `van-36-${Date.now()}`, name: '36 Inch Luxury Finish', sku: 'VAN-36', price: '38000', saleEnabled: true, salePrice: '34500', stockQuantity: 6, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 2 },
+        { id: `van-48-${Date.now()}`, name: '48 Inch Master Suite', sku: 'VAN-48', price: '52000', saleEnabled: true, salePrice: '48000', stockQuantity: 4, stockStatus: 'In Stock', isActive: true, isDefault: false, displayOrder: 3 },
+      ];
+    }
+
+    setOptionName(opt);
+    setVariantsList(list);
+    setVariantsEnabled(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -280,6 +460,39 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       showRegularPriceStrike: true
     } : undefined;
 
+    const activeCleanVariants = variantsList.map((v, i) => ({
+      ...v,
+      id: v.id || `var-${Date.now()}-${i}`,
+      name: v.name?.trim() || `Option ${i + 1}`,
+      displayOrder: typeof v.displayOrder === 'number' ? v.displayOrder : i
+    }));
+
+    const variantsConfigObj: ProductVariantsConfig | undefined = variantsEnabled ? {
+      variantsEnabled: true,
+      optionName: optionName.trim() || 'Size',
+      variants: activeCleanVariants
+    } : undefined;
+
+    const activeCleanShades = shadesList.map((s, i) => ({
+      ...s,
+      id: s.id || `shade-${Date.now()}-${i}`,
+      name: s.name?.trim() || `Shade ${i + 1}`,
+      code: s.code?.trim() || `${3000 + i + 1}`,
+      referenceImage: s.referenceImage || s.image || '',
+      image: s.referenceImage || s.image || '',
+      colorHex: s.colorHex || '#FAF9F6',
+      isActive: s.isActive !== false,
+      displayOrder: typeof s.displayOrder === 'number' ? s.displayOrder : i,
+      priceAdjustment: Number(s.priceAdjustment ?? 0)
+    }));
+
+    const paintShadesConfigObj: PaintShadesConfig | undefined = (isPaintItem && shadesEnabled) ? {
+      shadesEnabled: true,
+      shadesTitle: shadesTitle.trim() || 'Choose Shade',
+      shadeSheetUrl: shadeSheetUrl.trim() || undefined,
+      shades: activeCleanShades
+    } : undefined;
+
     const finalProduct: Product = {
       id: formData.id || `prod-${Date.now()}`,
       name: formData.name,
@@ -300,6 +513,16 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       showDiscountPercentage: showDiscountPercentage,
       showSavingsAmount: showSavingsAmount,
       saleConfig: saleConfigObj,
+      variantsEnabled: Boolean(variantsEnabled),
+      optionName: optionName.trim() || 'Size',
+      variantsList: variantsEnabled ? activeCleanVariants : undefined,
+      variantsConfig: variantsConfigObj,
+      shadesEnabled: isPaintItem ? Boolean(shadesEnabled) : false,
+      shadesTitle: shadesTitle.trim() || 'Choose Shade',
+      shadeSheetUrl: isPaintItem && shadeSheetUrl ? shadeSheetUrl.trim() : undefined,
+      shadesList: (isPaintItem && shadesEnabled) ? activeCleanShades : undefined,
+      paintShadesConfig: paintShadesConfigObj,
+      isPaintProduct: isPaintItem,
       features: parsedFeatures.length > 0 ? parsedFeatures : ['100% Genuine', 'Warranty Covered'],
       specs: specsObj,
       availableColors: parsedColors.length > 0 ? parsedColors : undefined,
@@ -738,6 +961,590 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
               </div>
             );
           })()}
+
+          {/* 📦 PRODUCT VARIANT, SIZE & DYNAMIC PRICING SYSTEM (ADMIN-CONTROLLED PER PRODUCT) */}
+          <div className={`p-4 sm:p-5 rounded-2xl border transition-all duration-300 space-y-4 ${
+            variantsEnabled 
+              ? 'bg-gradient-to-b from-indigo-950/40 via-slate-900 to-slate-950 border-indigo-500/50 shadow-xl shadow-indigo-950/20' 
+              : 'bg-slate-950/70 border-slate-800'
+          }`}>
+            {/* Master Variant Toggle Header */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className={`p-2 rounded-xl border transition-colors ${
+                  variantsEnabled 
+                    ? 'bg-indigo-600 text-white border-indigo-400 shadow-md shadow-indigo-600/30' 
+                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                }`}>
+                  <Boxes className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white uppercase tracking-wider">
+                      Variants, Sizes & Dynamic Pricing
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      variantsEnabled 
+                        ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40' 
+                        : 'bg-slate-800 text-slate-400 border border-slate-700'
+                    }`}>
+                      {variantsEnabled ? `ACTIVE (${variantsList.filter(v => v.isActive !== false).length} OPTIONS)` : 'DISABLED / OFF'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    {variantsEnabled 
+                      ? 'Customers can select capacity, size, or model with real-time dynamic pricing.' 
+                      : 'Normal single-price product. Enable below to add size/capacity choices with individual prices.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Master Switch */}
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={variantsEnabled}
+                  onChange={(e) => {
+                    const nextVal = e.target.checked;
+                    setVariantsEnabled(nextVal);
+                    if (nextVal && variantsList.length === 0) {
+                      handleAddVariant();
+                    }
+                  }}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+              </label>
+            </div>
+
+            {/* Expanded Variant Manager Body */}
+            {variantsEnabled && (
+              <div className="pt-3 border-t border-indigo-500/20 space-y-4 animate-fadeIn">
+                
+                {/* Mode Tabs: Editor vs Live Preview */}
+                <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setActiveVariantTab('editor')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                        activeVariantTab === 'editor'
+                          ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                          : 'bg-slate-900 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Sliders className="w-3.5 h-3.5" />
+                      <span>Variant & Price Editor</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveVariantTab('preview')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                        activeVariantTab === 'preview'
+                          ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                          : 'bg-slate-900 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Customer Storefront Preview</span>
+                    </button>
+                  </div>
+
+                  <span className="text-[11px] text-indigo-300 font-mono hidden sm:inline-block">
+                    {variantsList.length} variant{variantsList.length !== 1 ? 's' : ''} defined
+                  </span>
+                </div>
+
+                {activeVariantTab === 'editor' ? (
+                  <div className="space-y-4">
+                    
+                    {/* Option Label & Presets */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <label className="block text-xs font-semibold text-slate-200">
+                          Option Label / Attribute Name *
+                        </label>
+                        <span className="text-[10px] text-slate-500">
+                          Displayed above the buttons on product page (e.g., "Select Capacity:")
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          required={variantsEnabled}
+                          value={optionName}
+                          onChange={(e) => setOptionName(e.target.value)}
+                          placeholder="e.g. Capacity, Size, Diameter, Pack Size"
+                          className="flex-1 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-medium"
+                        />
+                      </div>
+
+                      {/* Quick Attribute Label Presets */}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase mr-1">Presets:</span>
+                        {['Capacity', 'Size', 'Diameter', 'Length', 'Dimension', 'Packaging Size', 'Cabinet Width', 'Model'].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setOptionName(preset)}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border transition-all ${
+                              optionName === preset
+                                ? 'bg-indigo-600 text-white border-indigo-400'
+                                : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 1-Click Complete Industry Template Generator */}
+                    <div className="p-3 rounded-xl bg-slate-950/90 border border-indigo-500/20 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-indigo-300 flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                          <span>1-Click Popular Hardware & Sanitaryware Templates</span>
+                        </span>
+                        <span className="text-[10px] text-slate-500">Auto-fills sizes, SKUs & sample PKR rates</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleApplyPreset('water-tank')}
+                          className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500 text-[11px] text-left text-slate-200 hover:text-white transition-all group"
+                        >
+                          <strong className="block text-indigo-400 group-hover:text-indigo-300">🚰 Water Tanks</strong>
+                          <span className="text-[10px] text-slate-400">100L, 200L, 300L, 500L, 1000L</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleApplyPreset('pipe-size')}
+                          className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500 text-[11px] text-left text-slate-200 hover:text-white transition-all group"
+                        >
+                          <strong className="block text-indigo-400 group-hover:text-indigo-300">🔧 Pipes & Fittings</strong>
+                          <span className="text-[10px] text-slate-400">1/2", 3/4", 1", 1-1/4", 1-1/2", 2"</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleApplyPreset('paint-pack')}
+                          className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500 text-[11px] text-left text-slate-200 hover:text-white transition-all group"
+                        >
+                          <strong className="block text-indigo-400 group-hover:text-indigo-300">🎨 Paints & Drums</strong>
+                          <span className="text-[10px] text-slate-400">Quarter, 1L, 4L Gallon, 16L Drum</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleApplyPreset('tile-size')}
+                          className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500 text-[11px] text-left text-slate-200 hover:text-white transition-all group"
+                        >
+                          <strong className="block text-indigo-400 group-hover:text-indigo-300">🧱 Porcelain & Tiles</strong>
+                          <span className="text-[10px] text-slate-400">12x24, 24x24, 24x48 Slabs</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleApplyPreset('shower-head')}
+                          className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500 text-[11px] text-left text-slate-200 hover:text-white transition-all group"
+                        >
+                          <strong className="block text-indigo-400 group-hover:text-indigo-300">🚿 Shower Heads</strong>
+                          <span className="text-[10px] text-slate-400">8", 10", 12", 16" Rain Matrix</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleApplyPreset('vanity-size')}
+                          className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500 text-[11px] text-left text-slate-200 hover:text-white transition-all group"
+                        >
+                          <strong className="block text-indigo-400 group-hover:text-indigo-300">🪞 Luxury Vanities</strong>
+                          <span className="text-[10px] text-slate-400">24", 30", 36", 48" Cabinets</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Variant Items List */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                          Configured Variants ({variantsList.length})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleAddVariant}
+                          className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-600/20"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add New {optionName || 'Option'}</span>
+                        </button>
+                      </div>
+
+                      {variantsList.length === 0 ? (
+                        <div className="p-6 rounded-2xl bg-slate-950/80 border border-dashed border-slate-800 text-center space-y-2">
+                          <Boxes className="w-8 h-8 text-slate-600 mx-auto" />
+                          <p className="text-xs text-slate-400">No variants added yet for this product.</p>
+                          <button
+                            type="button"
+                            onClick={handleAddVariant}
+                            className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold inline-flex items-center gap-1.5"
+                          >
+                            <Plus className="w-4 h-4" />
+                            <span>Add First Variant</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {variantsList.map((variant, idx) => {
+                            const vRegNum = parseNumericPrice(variant.price);
+                            const vSaleNum = parseNumericPrice(variant.salePrice);
+                            const vDiscount = calculateDiscountPercentage(vRegNum, vSaleNum);
+                            const vSavings = calculateSavingsAmount(vRegNum, vSaleNum);
+                            const vIsSaleActive = Boolean(variant.saleEnabled && vRegNum > 0 && vSaleNum > 0 && vSaleNum < vRegNum);
+
+                            return (
+                              <div
+                                key={variant.id || idx}
+                                className={`p-3.5 sm:p-4 rounded-2xl border transition-all space-y-3 ${
+                                  variant.isDefault
+                                    ? 'bg-slate-950 border-indigo-500/60 shadow-lg shadow-indigo-950/30 ring-1 ring-indigo-500/30'
+                                    : variant.isActive === false
+                                    ? 'bg-slate-950/40 border-slate-800/60 opacity-60'
+                                    : 'bg-slate-950 border-slate-800'
+                                }`}
+                              >
+                                {/* Variant Row Header */}
+                                <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-slate-800/80">
+                                  <div className="flex items-center gap-2">
+                                    {/* Default Radio */}
+                                    <label
+                                      className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-indigo-300 bg-indigo-950/60 px-2.5 py-1 rounded-lg border border-indigo-500/30"
+                                      title="Mark as default selection when customer opens product"
+                                    >
+                                      <input
+                                        type="radio"
+                                        name="default-variant-radio"
+                                        checked={Boolean(variant.isDefault)}
+                                        onChange={() => handleUpdateVariant(idx, 'isDefault', true)}
+                                        className="text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                                      />
+                                      <span>{variant.isDefault ? '⭐ Default Selection' : 'Set as Default'}</span>
+                                    </label>
+
+                                    {/* Active Toggle */}
+                                    <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-400">
+                                      <input
+                                        type="checkbox"
+                                        checked={variant.isActive !== false}
+                                        onChange={(e) => handleUpdateVariant(idx, 'isActive', e.target.checked)}
+                                        className="rounded text-indigo-600 bg-slate-900 border-slate-700 w-3.5 h-3.5"
+                                      />
+                                      <span>{variant.isActive !== false ? 'Active' : 'Disabled'}</span>
+                                    </label>
+                                  </div>
+
+                                  {/* Actions: Reorder, Duplicate, Remove */}
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      disabled={idx === 0}
+                                      onClick={() => handleMoveVariant(idx, 'up')}
+                                      className="p-1 rounded bg-slate-900 text-slate-400 hover:text-white disabled:opacity-30"
+                                      title="Move Up"
+                                    >
+                                      <ArrowUp className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={idx === variantsList.length - 1}
+                                      onClick={() => handleMoveVariant(idx, 'down')}
+                                      className="p-1 rounded bg-slate-900 text-slate-400 hover:text-white disabled:opacity-30"
+                                      title="Move Down"
+                                    >
+                                      <ArrowDown className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDuplicateVariant(idx)}
+                                      className="p-1 rounded bg-slate-900 text-slate-400 hover:text-indigo-300"
+                                      title="Duplicate Variant"
+                                    >
+                                      <Copy className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveVariant(idx)}
+                                      className="p-1 rounded bg-rose-950/60 text-rose-300 hover:text-rose-100 hover:bg-rose-900"
+                                      title="Delete Variant"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Form Fields Grid */}
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                  {/* Variant Name */}
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                                      {optionName || 'Option'} Name / Label *
+                                    </label>
+                                    <input
+                                      type="text"
+                                      required
+                                      value={variant.name}
+                                      onChange={(e) => handleUpdateVariant(idx, 'name', e.target.value)}
+                                      placeholder="e.g. 200 Liters, 3/4 Inch"
+                                      className="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-bold"
+                                    />
+                                  </div>
+
+                                  {/* SKU */}
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                                      Variant SKU (Optional)
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={variant.sku || ''}
+                                      onChange={(e) => handleUpdateVariant(idx, 'sku', e.target.value)}
+                                      placeholder="e.g. WT-200L"
+                                      className="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono"
+                                    />
+                                  </div>
+
+                                  {/* Regular Price */}
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                                      Regular Price (PKR) *
+                                    </label>
+                                    <input
+                                      type="text"
+                                      required
+                                      value={variant.price || ''}
+                                      onChange={(e) => handleUpdateVariant(idx, 'price', e.target.value)}
+                                      placeholder="e.g. 15000"
+                                      className="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono font-bold"
+                                    />
+                                    {vRegNum > 0 && (
+                                      <span className="text-[10px] text-slate-500 mt-0.5 block font-mono">
+                                        {formatPakistaniPrice(vRegNum)}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Row 2: Sale Discount & Inventory */}
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                                  {/* Sale Toggle & Price */}
+                                  <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between">
+                                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-rose-300">
+                                        <input
+                                          type="checkbox"
+                                          checked={Boolean(variant.saleEnabled)}
+                                          onChange={(e) => handleUpdateVariant(idx, 'saleEnabled', e.target.checked)}
+                                          className="rounded text-rose-600 bg-slate-900 border-slate-700 w-3.5 h-3.5"
+                                        />
+                                        <span>On Sale?</span>
+                                      </label>
+                                      {vDiscount > 0 && (
+                                        <span className="px-1.5 py-0.5 rounded bg-rose-600 text-white font-mono text-[9px] font-bold">
+                                          {vDiscount}% OFF
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {variant.saleEnabled && (
+                                      <input
+                                        type="text"
+                                        value={variant.salePrice || ''}
+                                        onChange={(e) => handleUpdateVariant(idx, 'salePrice', e.target.value)}
+                                        placeholder="Sale Price (PKR)"
+                                        className="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-rose-500/50 text-xs text-rose-200 placeholder-slate-600 focus:outline-none focus:border-rose-400 font-mono font-bold"
+                                      />
+                                    )}
+                                  </div>
+
+                                  {/* Stock Status */}
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                                      Stock Status
+                                    </label>
+                                    <select
+                                      value={variant.stockStatus || 'In Stock'}
+                                      onChange={(e) => handleUpdateVariant(idx, 'stockStatus', e.target.value)}
+                                      className="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                    >
+                                      <option value="In Stock">In Stock</option>
+                                      <option value="Limited Stock">Limited Stock</option>
+                                      <option value="Out of Stock">Out of Stock</option>
+                                      <option value="Available on Order">Available on Order</option>
+                                    </select>
+                                  </div>
+
+                                  {/* Stock Quantity */}
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                                      Stock Qty
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={variant.stockQuantity ?? 10}
+                                      onChange={(e) => handleUpdateVariant(idx, 'stockQuantity', parseInt(e.target.value, 10) || 0)}
+                                      className="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Dynamic Auto-Calculated Savings for this Variant */}
+                                {vIsSaleActive && (
+                                  <div className="p-2 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between text-[11px]">
+                                    <span className="text-emerald-300 font-medium">
+                                      Discount Applied: <strong className="text-white font-mono">{formatPakistaniPrice(vSaleNum)}</strong> (was ~~{formatPakistaniPrice(vRegNum)}~~)
+                                    </span>
+                                    <span className="text-amber-300 font-bold font-mono">
+                                      Save {formatPakistaniPrice(vSavings)} ({vDiscount}% OFF)
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  /* Customer Storefront Live Simulation Preview */
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-950 border border-indigo-500/30 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Interactive Customer Storefront Simulation</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400">Click options below to test dynamic pricing</span>
+                    </div>
+
+                    {/* Simulated Selector */}
+                    <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                          <span>Select {optionName || 'Option'}:</span>
+                        </label>
+                        <span className="text-[11px] text-indigo-300 font-medium">
+                          {variantsList.filter(v => v.isActive !== false).length} options available
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {variantsList.filter(v => v.isActive !== false).map((v) => {
+                          const numP = parseNumericPrice(v.price);
+                          const numSP = parseNumericPrice(v.salePrice);
+                          const isSale = Boolean(v.saleEnabled && numP > 0 && numSP > 0 && numSP < numP);
+                          const effP = isSale ? numSP : numP;
+
+                          return (
+                            <button
+                              key={v.id}
+                              type="button"
+                              onClick={() => handleUpdateVariant(variantsList.findIndex(item => item.id === v.id), 'isDefault', true)}
+                              className={`p-2.5 rounded-xl border text-left transition-all relative ${
+                                v.isDefault
+                                  ? 'bg-indigo-950/80 border-indigo-400 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-400'
+                                  : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                              }`}
+                            >
+                              {isSale && (
+                                <span className="absolute top-1 right-1 px-1.5 py-0.2 rounded bg-rose-600 text-white font-mono text-[8px] font-black">
+                                  SALE
+                                </span>
+                              )}
+                              <div className="font-bold text-xs">{v.name}</div>
+                              <div className="text-[11px] font-mono mt-0.5 flex items-baseline gap-1">
+                                <span className={v.isDefault ? 'text-indigo-300 font-bold' : 'text-slate-400'}>
+                                  {effP > 0 ? formatPakistaniPrice(effP) : 'Contact'}
+                                </span>
+                                {isSale && (
+                                  <span className="text-[9px] text-slate-500 line-through">
+                                    {formatPakistaniPrice(numP)}
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Selected Details Preview Box */}
+                      {(() => {
+                        const def = variantsList.find(v => v.isDefault) || variantsList[0];
+                        if (!def) return null;
+                        const defReg = parseNumericPrice(def.price);
+                        const defSale = parseNumericPrice(def.salePrice);
+                        const isDefSale = Boolean(def.saleEnabled && defReg > 0 && defSale > 0 && defSale < defReg);
+
+                        return (
+                          <div className="pt-3 border-t border-slate-800 flex items-center justify-between flex-wrap gap-2">
+                            <div>
+                              <span className="text-[10px] text-slate-400 uppercase font-bold block">Selected Price</span>
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-base font-extrabold text-white font-mono">
+                                  {isDefSale ? formatPakistaniPrice(defSale) : (defReg > 0 ? formatPakistaniPrice(defReg) : 'Call for Price')}
+                                </span>
+                                {isDefSale && (
+                                  <span className="text-xs text-slate-500 line-through font-mono">
+                                    {formatPakistaniPrice(defReg)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="text-right">
+                              <span className="text-[10px] text-slate-400 uppercase font-bold block">Availability</span>
+                              <span className="text-xs font-bold text-emerald-400">
+                                {def.stockStatus || 'In Stock'} ({def.stockQuantity ?? 10} units)
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            )}
+          </div>
+
+          {/* PAINT-SPECIFIC SHADE / COLOR SYSTEM (STRICTLY RENDERED ONLY FOR PAINT PRODUCTS) */}
+          {isPaintItem && (
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-indigo-950/40 to-slate-950 border border-indigo-500/40 space-y-4">
+              <AdminPaintShadesManager
+                shadesConfig={{
+                  shadesEnabled: shadesEnabled,
+                  shadesTitle: shadesTitle,
+                  shadeSheetUrl: shadeSheetUrl,
+                  shades: shadesList
+                }}
+                shadesEnabled={shadesEnabled}
+                shadesTitle={shadesTitle}
+                shadeSheetUrl={shadeSheetUrl}
+                shadesList={shadesList}
+                categoryName={formData.category}
+                onChange={(updatedConfig) => {
+                  setShadesEnabled(Boolean(updatedConfig.shadesEnabled));
+                  setShadesTitle(updatedConfig.shadesTitle || 'Choose Shade');
+                  setShadeSheetUrl(updatedConfig.shadeSheetUrl || '');
+                  setShadesList(updatedConfig.shades || []);
+                }}
+              />
+            </div>
+          )}
 
           {/* AVAILABILITY SYSTEM CONTROLS */}
           <div className="p-4 rounded-2xl bg-slate-950/90 border border-blue-900/40 space-y-3">

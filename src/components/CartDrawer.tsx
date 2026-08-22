@@ -1,7 +1,7 @@
 import React from 'react';
-import { X, Trash2, ShoppingBag, Plus, Minus, ArrowRight, ShieldCheck, Tag, CheckCircle2, Flame } from 'lucide-react';
+import { X, Trash2, ShoppingBag, Plus, Minus, ArrowRight, ShieldCheck, Tag, CheckCircle2, Flame, Boxes } from 'lucide-react';
 import { BusinessConfig, CartItem, CheckoutSettings } from '../types';
-import { getProductPricingDetails } from '../utils/pricingUtils';
+import { getProductPricingDetails, getVariantPricingDetails } from '../utils/pricingUtils';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -31,10 +31,23 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const items = Array.isArray(cartItems) ? cartItems : [];
   const totalItemCount = items.reduce((acc, item) => acc + (item?.quantity || 0), 0);
 
+  const getItemPricing = (item: CartItem) => {
+    if (!item?.product) return { effectivePriceNumeric: 0, isSaleActive: false, discountPercentage: 0, regularPriceNumeric: 0, effectivePriceString: 'Price on Request' };
+    const p = item.product;
+    const variants = p.variantsList || p.variantsConfig?.variants;
+    if (item.selectedVariant && Array.isArray(variants) && variants.length > 0) {
+      const matched = variants.find(v => v.name === item.selectedVariant || v.id === item.selectedVariant);
+      if (matched) {
+        return getVariantPricingDetails(p, matched);
+      }
+    }
+    return getProductPricingDetails(p);
+  };
+
   const calculateSubtotal = () => {
     return items.reduce((acc, item) => {
       if (!item?.product) return acc;
-      const pricing = getProductPricingDetails(item.product);
+      const pricing = getItemPricing(item);
       return acc + pricing.effectivePriceNumeric * (item.quantity || 1);
     }, 0);
   };
@@ -92,7 +105,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               const p = item.product;
               if (!p) return null;
 
-              const pricing = getProductPricingDetails(p);
+              const pricing = getItemPricing(item);
               const numericPrice = pricing.effectivePriceNumeric;
               const lineTotal = numericPrice * (item.quantity || 1);
 
@@ -130,7 +143,22 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
                     {/* Selected Options Badges */}
                     <div className="flex flex-wrap gap-1 text-[10px] pt-0.5">
-                      {item.selectedColor && (
+                      {item.selectedVariant && (
+                        <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold flex items-center gap-1">
+                          <Boxes className="w-3 h-3" />
+                          <span>{p.optionName || 'Option'}: {item.selectedVariant}</span>
+                        </span>
+                      )}
+                      {item.selectedShade && (
+                        <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-800 border border-indigo-200 font-bold flex items-center gap-1.5">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full border border-slate-400 shrink-0"
+                            style={{ backgroundColor: item.selectedShadeColor || '#FFFFFF' }}
+                          />
+                          <span>Shade: {item.selectedShade} {item.selectedShadeCode ? `(${item.selectedShadeCode})` : ''}</span>
+                        </span>
+                      )}
+                      {item.selectedColor && !item.selectedShade && (
                         <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 font-medium">
                           Color: {item.selectedColor}
                         </span>
@@ -143,11 +171,6 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       {item.selectedQuality && (
                         <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 font-medium">
                           Quality: {item.selectedQuality}
-                        </span>
-                      )}
-                      {item.selectedVariant && (
-                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 font-medium">
-                          Variant: {item.selectedVariant}
                         </span>
                       )}
                     </div>
@@ -178,11 +201,12 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                             Rs. {(pricing.regularPriceNumeric * (item.quantity || 1)).toLocaleString('en-PK')}
                           </div>
                         )}
-                        <span className={`text-xs font-bold font-mono ${pricing.isSaleActive ? 'text-rose-600' : 'text-slate-900'}`}>
-                          {lineTotal > 0 ? `Rs. ${lineTotal.toLocaleString('en-PK')}` : pricing.effectivePriceString}
-                        </span>
+                        <div className="text-xs font-extrabold text-slate-900 font-mono">
+                          Rs. {lineTotal.toLocaleString('en-PK')}
+                        </div>
                       </div>
                     </div>
+
                   </div>
                 </div>
               );

@@ -12,7 +12,11 @@ import {
   AnnouncementBarSettings, 
   ThemeSettings, 
   AiAssistantConfig,
-  AiCustomKnowledge 
+  AiCustomKnowledge,
+  ProductVariant,
+  ProductVariantsConfig,
+  PaintShade,
+  PaintShadesConfig
 } from '../types';
 
 // =========================================================
@@ -100,6 +104,103 @@ export function mapDbProductToProduct(row: any): Product {
     (resolvedSalePrice && Number(String(resolvedSalePrice).replace(/[^0-9.]/g, '')) > 0 && rawSpecs._sale_enabled !== false)
   );
 
+  // Parse Variants & Dynamic Pricing
+  let parsedVariantsList: ProductVariant[] = [];
+  const rawVariantsSource = row.variants || rawSpecs._variants_list || rawSpecs._variants_config?.variants;
+  if (Array.isArray(rawVariantsSource)) {
+    parsedVariantsList = rawVariantsSource.map((v: any, idx: number) => {
+      if (typeof v === 'string') {
+        return {
+          id: `var-${idx + 1}`,
+          name: v,
+          price: resolvedPrice,
+          isActive: true,
+          displayOrder: idx
+        };
+      }
+      if (v && typeof v === 'object') {
+        return {
+          id: String(v.id || `var-${idx + 1}`),
+          name: String(v.name || v.label || v.title || `Option ${idx + 1}`),
+          sku: v.sku || undefined,
+          price: v.price !== undefined && v.price !== null ? String(v.price) : undefined,
+          saleEnabled: Boolean(v.saleEnabled ?? v.sale_enabled),
+          salePrice: v.salePrice !== undefined && v.salePrice !== null ? String(v.salePrice) : (v.sale_price !== undefined ? String(v.sale_price) : undefined),
+          discountPercentage: typeof v.discountPercentage === 'number' ? v.discountPercentage : undefined,
+          saleLabel: v.saleLabel || v.sale_label || undefined,
+          stockQuantity: typeof v.stockQuantity === 'number' ? v.stockQuantity : (typeof v.stock_quantity === 'number' ? v.stock_quantity : 10),
+          stockStatus: v.stockStatus || v.stock_status || 'In Stock',
+          image: v.image || undefined,
+          isActive: v.isActive !== false && v.is_active !== false,
+          isDefault: Boolean(v.isDefault ?? v.is_default),
+          displayOrder: typeof v.displayOrder === 'number' ? v.displayOrder : (typeof v.display_order === 'number' ? v.display_order : idx)
+        };
+      }
+      return null;
+    }).filter(Boolean) as ProductVariant[];
+  }
+
+  const isVariantsEnabled = Boolean(
+    row.variants_enabled ??
+    rawSpecs._variants_enabled ??
+    rawSpecs._variants_config?.variantsEnabled ??
+    (parsedVariantsList.length > 0 && (rawSpecs._variants_enabled === true || row.variants_enabled === true))
+  );
+
+  const optionName = String(
+    row.option_name ||
+    rawSpecs._option_name ||
+    rawSpecs._variants_config?.optionName ||
+    'Size'
+  );
+
+  // Paint Shade System Parsing
+  let parsedShadesList: PaintShade[] = [];
+  const rawShades = row.shades || rawSpecs._shades_list || rawSpecs._paint_shades_config?.shades || [];
+  if (Array.isArray(rawShades)) {
+    parsedShadesList = rawShades.map((s: any, idx: number) => {
+      if (!s) return null;
+      if (typeof s === 'string') {
+        return {
+          id: `shade-${idx + 1}`,
+          name: s,
+          code: '',
+          colorHex: '#FFFFFF',
+          isActive: true,
+          displayOrder: idx,
+          priceAdjustment: 0
+        };
+      }
+      if (typeof s === 'object') {
+        return {
+          id: s.id || `shade-${idx + 1}`,
+          name: s.name || `Shade ${idx + 1}`,
+          code: s.code || '',
+          colorHex: s.colorHex || s.color_hex || '#FFFFFF',
+          image: s.image || undefined,
+          isActive: s.isActive !== false && s.is_active !== false,
+          displayOrder: typeof s.displayOrder === 'number' ? s.displayOrder : (typeof s.display_order === 'number' ? s.display_order : idx),
+          priceAdjustment: Number(s.priceAdjustment ?? s.price_adjustment ?? 0)
+        };
+      }
+      return null;
+    }).filter(Boolean) as PaintShade[];
+  }
+
+  const isShadesEnabled = Boolean(
+    row.shades_enabled ??
+    rawSpecs._shades_enabled ??
+    rawSpecs._paint_shades_config?.shadesEnabled ??
+    (parsedShadesList.length > 0 && (rawSpecs._shades_enabled === true || row.shades_enabled === true))
+  );
+
+  const shadesTitle = String(
+    row.shades_title ||
+    rawSpecs._shades_title ||
+    rawSpecs._paint_shades_config?.shadesTitle ||
+    'Select Paint Shade / Color'
+  );
+
   return {
     id: String(row.id),
     sku: row.sku || '',
@@ -124,6 +225,25 @@ export function mapDbProductToProduct(row: any): Product {
     showDiscountPercentage: Boolean(row.show_discount_percentage ?? rawSpecs._show_discount_percentage ?? true),
     showSavingsAmount: Boolean(row.show_savings_amount ?? rawSpecs._show_savings_amount ?? (row.show_savings ?? rawSpecs._show_savings ?? true)),
     saleConfig: rawSpecs._sale_config || undefined,
+    // Variants
+    variantsEnabled: isVariantsEnabled,
+    optionName: optionName,
+    variantsList: parsedVariantsList,
+    variantsConfig: {
+      variantsEnabled: isVariantsEnabled,
+      optionName: optionName,
+      variants: parsedVariantsList
+    },
+    // Paint Shades
+    shadesEnabled: isShadesEnabled,
+    shadesTitle: shadesTitle,
+    shadesList: parsedShadesList,
+    paintShadesConfig: {
+      shadesEnabled: isShadesEnabled,
+      shadesTitle: shadesTitle,
+      shades: parsedShadesList
+    },
+    isPaintProduct: Boolean(row.is_paint_product ?? rawSpecs._is_paint_product),
     features: Array.isArray(row.features) ? row.features : [],
     specs: cleanSpecs,
     isNew: Boolean(row.is_new ?? row.isNew ?? rawSpecs._is_new),
@@ -180,6 +300,35 @@ export function mapProductToDb(product: Product): any {
   }
 
   const isSaleEnabled = Boolean(product.saleEnabled === true || product.saleConfig?.saleEnabled === true);
+  const isVariantsEnabled = Boolean(product.variantsEnabled === true || product.variantsConfig?.variantsEnabled === true);
+  const optionName = product.optionName || product.variantsConfig?.optionName || 'Size';
+  const cleanVariantsList = (product.variantsList || product.variantsConfig?.variants || []).map((v, idx) => ({
+    id: v.id || `var-${Date.now()}-${idx}`,
+    name: v.name,
+    sku: v.sku || null,
+    price: v.price !== undefined && v.price !== null ? String(v.price) : null,
+    sale_enabled: Boolean(v.saleEnabled),
+    sale_price: v.salePrice !== undefined && v.salePrice !== null ? String(v.salePrice) : null,
+    stock_quantity: typeof v.stockQuantity === 'number' ? v.stockQuantity : 10,
+    stock_status: v.stockStatus || 'In Stock',
+    image: v.image || null,
+    is_active: v.isActive !== false,
+    is_default: Boolean(v.isDefault),
+    display_order: v.displayOrder ?? idx
+  }));
+
+  const isShadesEnabled = Boolean(product.shadesEnabled === true || product.paintShadesConfig?.shadesEnabled === true);
+  const shadesTitle = product.shadesTitle || product.paintShadesConfig?.shadesTitle || 'Select Paint Shade / Color';
+  const cleanShadesList = (product.shadesList || product.paintShadesConfig?.shades || []).map((s, idx) => ({
+    id: s.id || `shade-${Date.now()}-${idx}`,
+    name: s.name,
+    code: s.code || null,
+    colorHex: s.colorHex || '#FFFFFF',
+    image: s.image || null,
+    isActive: s.isActive !== false,
+    displayOrder: s.displayOrder ?? idx,
+    priceAdjustment: Number(s.priceAdjustment ?? 0)
+  }));
 
   const specsWithMeta = {
     ...(product.specs || {}),
@@ -196,6 +345,23 @@ export function mapProductToDb(product: Product): any {
     _show_discount_percentage: Boolean(product.showDiscountPercentage ?? product.saleConfig?.showDiscountPercentage ?? true),
     _show_savings_amount: Boolean(product.showSavingsAmount ?? product.saleConfig?.showSavings ?? true),
     _sale_config: product.saleConfig || null,
+    _variants_enabled: isVariantsEnabled,
+    _option_name: optionName,
+    _variants_list: cleanVariantsList,
+    _variants_config: {
+      variantsEnabled: isVariantsEnabled,
+      optionName: optionName,
+      variants: cleanVariantsList
+    },
+    _shades_enabled: isShadesEnabled,
+    _shades_title: shadesTitle,
+    _shades_list: cleanShadesList,
+    _paint_shades_config: {
+      shadesEnabled: isShadesEnabled,
+      shadesTitle: shadesTitle,
+      shades: cleanShadesList
+    },
+    _is_paint_product: Boolean(product.isPaintProduct),
     _category_name: product.category || null,
     _category_id: product.categoryId || null,
     _brand_name: product.brand || null,
@@ -250,6 +416,9 @@ export function mapProductToDb(product: Product): any {
     show_countdown: Boolean(product.showSaleCountdown ?? product.saleConfig?.showCountdown ?? true),
     show_discount_percentage: Boolean(product.showDiscountPercentage ?? product.saleConfig?.showDiscountPercentage ?? true),
     show_savings: Boolean(product.showSavingsAmount ?? product.saleConfig?.showSavings ?? true),
+    variants_enabled: isVariantsEnabled,
+    option_name: optionName,
+    variants: cleanVariantsList,
     category_id: product.categoryId || null,
     brand_id: product.brandId || null,
     image: product.image || '',

@@ -263,7 +263,8 @@ export default function App() {
     selectedColor?: string,
     selectedSize?: string,
     selectedQuality?: string,
-    selectedVariant?: string
+    selectedVariant?: string,
+    selectedShade?: { name: string; id?: string; code?: string; colorHex?: string; image?: string; priceAdjustment?: number }
   ) => {
     setCartItems(prev => {
       const existingIndex = prev.findIndex(item => 
@@ -271,7 +272,8 @@ export default function App() {
         (item.selectedColor || '') === (selectedColor || '') &&
         (item.selectedSize || '') === (selectedSize || '') &&
         (item.selectedQuality || '') === (selectedQuality || '') &&
-        (item.selectedVariant || '') === (selectedVariant || '')
+        (item.selectedVariant || '') === (selectedVariant || '') &&
+        (item.selectedShade || '') === (selectedShade?.name || '')
       );
 
       if (existingIndex > -1) {
@@ -292,7 +294,13 @@ export default function App() {
           selectedColor,
           selectedSize,
           selectedQuality,
-          selectedVariant
+          selectedVariant,
+          selectedShade: selectedShade?.name,
+          selectedShadeId: selectedShade?.id,
+          selectedShadeCode: selectedShade?.code,
+          selectedShadeColor: selectedShade?.colorHex,
+          selectedShadeImage: selectedShade?.image,
+          selectedShadePriceAdjustment: selectedShade?.priceAdjustment
         }
       ];
     });
@@ -712,8 +720,8 @@ export default function App() {
           onEditProduct={(prod) => handleOpenEditProduct(prod)}
           onDeleteProduct={handleDeleteProduct}
           onSelectProduct={(prod) => setSelectedProduct(prod)}
-          onAddToCart={(prod, qty, color, size, quality, variant) => {
-            handleAddToCart(prod, qty, color, size, quality, variant);
+          onAddToCart={(prod, qty, color, size, quality, variant, shade) => {
+            handleAddToCart(prod, qty, color, size, quality, variant, shade);
           }}
           onClose={() => setSelectedProduct(null)}
         />

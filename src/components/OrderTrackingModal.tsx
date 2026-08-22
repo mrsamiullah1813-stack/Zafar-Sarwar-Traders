@@ -341,7 +341,11 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                           )}
                           <div>
                             <p className="font-bold text-slate-900 line-clamp-1">{item.productName}</p>
-                            <p className="text-[10px] text-slate-400 font-mono">Qty: {item.quantity} × {item.unitPrice}</p>
+                            <p className="text-[10px] text-slate-500 font-mono">
+                              Qty: {item.quantity} × {item.unitPrice}
+                              {item.selectedVariant && ` • ${item.selectedVariant}`}
+                              {item.selectedShade && ` • Shade: ${item.selectedShade}`}
+                            </p>
                           </div>
                         </div>
                         <span className="font-mono font-bold text-slate-900">
