@@ -167,6 +167,20 @@ export const defaultSmartToolsSettings: SmartToolsSettings = {
       showOnHomepage: true,
       displayOrder: 9,
       disclaimer: "Final tank and pump selection depends on building height, water source, pipe length, pressure and site conditions."
+    },
+    {
+      id: "fitting-builder",
+      title: "Smart Construction & Fitting Builder",
+      urduTitle: "اسمارٹ کنسٹرکشن اور پائپ فٹنگ پیکج بلڈر",
+      tagline: "Build custom packages for plumbing, pipes, fittings, valves, water tanks & pumps.",
+      description: "Select project type, browse CPVC/UPVC/PPRC pipes and fittings, choose inch or mm sizes, set quantities, calculate real-time package totals, and generate instant WhatsApp orders or cart items.",
+      badge: "Interactive Builder",
+      iconName: "Wrench",
+      buttonText: "Build Package",
+      isEnabled: true,
+      showOnHomepage: true,
+      displayOrder: 10,
+      disclaimer: "All pipes, fittings, and sanitary hardware are genuine showroom products. Quantity recommendations are estimates based on standard plumbing layouts."
     }
   ]
 };

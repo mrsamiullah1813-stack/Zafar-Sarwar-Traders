@@ -400,7 +400,13 @@ export function getVariantPricingDetails(
     };
   }
 
-  const regNum = parseNumericPrice(variant.price) || (parentProduct ? parseNumericPrice(parentProduct.price) : 0);
+  const rawVariantPrice = variant.price;
+  let regNum = 0;
+  if (rawVariantPrice !== undefined && rawVariantPrice !== null && String(rawVariantPrice).trim() !== '') {
+    regNum = parseNumericPrice(rawVariantPrice);
+  } else if (parentProduct) {
+    regNum = parseNumericPrice(parentProduct.price);
+  }
   
   // Check if variant has its own sale, or inherits parent product's sale
   const variantSaleEnabled = variant.saleEnabled === true;
@@ -429,7 +435,7 @@ export function getVariantPricingDetails(
   const discountPercent = calculateDiscountPercentage(regNum, saleNum);
   const savings = calculateSavingsAmount(regNum, saleNum);
 
-  const formattedRegular = regNum > 0 ? formatPakistaniPrice(regNum) : 'Price on Request';
+  const formattedRegular = regNum > 0 ? formatPakistaniPrice(regNum) : (parentProduct?.price ? String(parentProduct.price) : 'Price on Request');
   const formattedSale = saleNum > 0 ? formatPakistaniPrice(saleNum) : '';
   const formattedCurrent = effectiveNumeric > 0 ? formatPakistaniPrice(effectiveNumeric) : 'Price on Request';
   const formattedSavings = savings > 0 ? formatPakistaniPrice(savings) : '';
@@ -556,6 +562,75 @@ export function getProductVariantDisplaySummary(product?: Partial<Product> | nul
     formattedPriceRange,
     hasActiveSale: anySale,
     defaultVariant: defaultVar
+  };
+}
+
+export type ActivePricingResult = (ProductPricingDetails | VariantPricingDetails) & {
+  activeVariant?: ProductVariant;
+  isVariantPricingActive: boolean;
+};
+
+/**
+ * SINGLE SOURCE OF TRUTH FOR ACTIVE PRODUCT PRICE:
+ * 
+ * Rules:
+ * IF variant pricing is enabled AND a valid variant is selected:
+ *    activePrice = selectedVariant.price
+ * ELSE:
+ *    activePrice = product.base_price
+ * 
+ * Consistent across:
+ * - Product Details / QuickView
+ * - Product Page / Cards
+ * - Cart Drawer
+ * - WhatsApp Order messages
+ * - Order Checkout & Database Creation
+ */
+export function getActiveProductPrice(
+  product?: Partial<Product> | null,
+  selectedVariant?: ProductVariant | string | null
+): ActivePricingResult {
+  if (!product) {
+    const defaultPricing = getProductPricingDetails(null);
+    return {
+      ...defaultPricing,
+      isVariantPricingActive: false
+    };
+  }
+
+  const variantsEnabled = Boolean(product.variantsEnabled || product.variantsConfig?.variantsEnabled);
+  const activeVariants = getActiveVariants(product);
+
+  if (variantsEnabled && activeVariants.length > 0) {
+    let matchedVariant: ProductVariant | undefined;
+
+    if (selectedVariant && typeof selectedVariant === 'object' && 'name' in selectedVariant) {
+      matchedVariant = selectedVariant as ProductVariant;
+    } else if (typeof selectedVariant === 'string' && selectedVariant.trim() !== '') {
+      matchedVariant = activeVariants.find(
+        v => v.name === selectedVariant || v.id === selectedVariant || (v.sku && v.sku === selectedVariant)
+      );
+    }
+
+    // If no specific variant was provided or matched, fallback to the default variant
+    if (!matchedVariant) {
+      matchedVariant = activeVariants.find(v => v.isDefault) || activeVariants[0];
+    }
+
+    if (matchedVariant) {
+      const variantPricing = getVariantPricingDetails(product, matchedVariant);
+      return {
+        ...variantPricing,
+        activeVariant: matchedVariant,
+        isVariantPricingActive: true
+      };
+    }
+  }
+
+  const productPricing = getProductPricingDetails(product);
+  return {
+    ...productPricing,
+    isVariantPricingActive: false
   };
 }
 

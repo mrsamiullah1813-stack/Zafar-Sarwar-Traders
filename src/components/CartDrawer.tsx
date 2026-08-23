@@ -1,7 +1,7 @@
 import React from 'react';
 import { X, Trash2, ShoppingBag, Plus, Minus, ArrowRight, ShieldCheck, Tag, CheckCircle2, Flame, Boxes } from 'lucide-react';
 import { BusinessConfig, CartItem, CheckoutSettings } from '../types';
-import { getProductPricingDetails, getVariantPricingDetails } from '../utils/pricingUtils';
+import { getProductPricingDetails, getVariantPricingDetails, getActiveProductPrice } from '../utils/pricingUtils';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -34,14 +34,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const getItemPricing = (item: CartItem) => {
     if (!item?.product) return { effectivePriceNumeric: 0, isSaleActive: false, discountPercentage: 0, regularPriceNumeric: 0, effectivePriceString: 'Price on Request' };
     const p = item.product;
-    const variants = p.variantsList || p.variantsConfig?.variants;
-    if (item.selectedVariant && Array.isArray(variants) && variants.length > 0) {
-      const matched = variants.find(v => v.name === item.selectedVariant || v.id === item.selectedVariant);
-      if (matched) {
-        return getVariantPricingDetails(p, matched);
-      }
-    }
-    return getProductPricingDetails(p);
+    return getActiveProductPrice(p, item.selectedVariant || item.selectedVariantId);
   };
 
   const calculateSubtotal = () => {

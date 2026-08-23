@@ -3,7 +3,7 @@ import { X, ShoppingBag, CheckCircle2, Truck, ShieldCheck, Phone, MapPin, User, 
 import { CartItem, BusinessConfig, CheckoutSettings, CustomerOrder, OrderItem, DeliverySettings } from '../types';
 import { loadDeliverySettings, generateNextOrderId } from '../utils/storage';
 import { getOrGenerateCustomerId } from '../utils/customerStorage';
-import { getProductPricingDetails, getVariantPricingDetails } from '../utils/pricingUtils';
+import { getProductPricingDetails, getVariantPricingDetails, getActiveProductPrice } from '../utils/pricingUtils';
 
 interface OrderCheckoutModalProps {
   isOpen: boolean;
@@ -62,14 +62,10 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
   const getItemPricing = (item: CartItem) => {
     if (!item?.product) return { effectivePriceNumeric: 0, isSaleActive: false, discountPercentage: 0, regularPriceNumeric: 0, effectivePriceString: 'Price on Request', formattedSalePrice: '', formattedRegularPrice: '', variantSku: undefined };
     const p = item.product;
-    const variants = p.variantsList || p.variantsConfig?.variants;
-    if (item.selectedVariant && Array.isArray(variants) && variants.length > 0) {
-      const matched = variants.find(v => v.name === item.selectedVariant || v.id === item.selectedVariant);
-      if (matched) {
-        return { ...getVariantPricingDetails(p, matched), variantSku: matched.sku };
-      }
-    }
-    return { ...getProductPricingDetails(p), variantSku: p.sku };
+    const pricing = getActiveProductPrice(p, item.selectedVariant || item.selectedVariantId);
+    const variants = p.variantsList || p.variantsConfig?.variants || [];
+    const matched = variants.find(v => v.name === item.selectedVariant || v.id === item.selectedVariantId || v.id === item.selectedVariant);
+    return { ...pricing, variantSku: matched?.sku || p.sku };
   };
 
   // Calculations

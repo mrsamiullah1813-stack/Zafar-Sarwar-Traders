@@ -43,6 +43,7 @@ interface NavbarProps {
   onOpenOrderTracking?: () => void;
   onSelectCategory: (categoryId: string) => void;
   onOpenSmartTool?: (toolId: any) => void;
+  onOpenConstructionBuilder?: () => void;
   onOpenDeliveryChecker?: () => void;
   onOpenDeliveryAreas?: () => void;
 }
@@ -67,6 +68,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenOrderTracking,
   onSelectCategory,
   onOpenSmartTool,
+  onOpenConstructionBuilder,
   onOpenDeliveryChecker,
   onOpenDeliveryAreas
 }) => {
@@ -364,6 +366,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           <div className="ml-auto flex items-center gap-2 shrink-0">
+            {onOpenConstructionBuilder && (
+              <button
+                onClick={onOpenConstructionBuilder}
+                className="text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all shadow-sm active:scale-95"
+              >
+                <span>🔧 Fitting Builder</span>
+              </button>
+            )}
+
             <button
               onClick={() => {
                 if (onOpenSmartTool) onOpenSmartTool('cement-calculator');
@@ -457,6 +468,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <Palette className="w-4 h-4 text-blue-600" />
                 <span>Switch Color Theme (5 Styles)</span>
+              </button>
+            )}
+
+            {onOpenConstructionBuilder && (
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onOpenConstructionBuilder();
+                }}
+                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
+              >
+                <span>🔧 Smart Construction & Fitting Builder</span>
               </button>
             )}
 

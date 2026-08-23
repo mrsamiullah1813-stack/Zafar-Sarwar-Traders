@@ -35,6 +35,7 @@ import { PaintShadeSelector } from './PaintShadeSelector';
 import { 
   getProductPricingDetails, 
   getVariantPricingDetails, 
+  getActiveProductPrice,
   getActiveVariants, 
   hasActiveVariants,
   formatPakistaniPrice 
@@ -56,7 +57,8 @@ interface QuickViewModalProps {
     selectedSize?: string, 
     selectedQuality?: string, 
     selectedVariant?: string,
-    selectedShade?: PaintShade
+    selectedShade?: PaintShade,
+    selectedVariantObj?: ProductVariant
   ) => void;
   onClose: () => void;
 }
@@ -124,10 +126,8 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
   const activePaintShadesList = getActivePaintShades(product);
   const shadesSectionTitle = product.shadesTitle || product.paintShadesConfig?.shadesTitle || 'Select Paint Shade / Color';
 
-  // Dynamic Pricing: If variant is selected, use variant pricing; else product pricing
-  const pricing = selectedVariantObj 
-    ? getVariantPricingDetails(product, selectedVariantObj) 
-    : getProductPricingDetails(product);
+  // Dynamic Pricing: Single source of truth. If variant is active/selected, variant controls price
+  const pricing = getActiveProductPrice(product, selectedVariantObj || selectedVariant);
 
   // Compile list of all images available for gallery
   const galleryImages = [
@@ -140,7 +140,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
   // Exact WhatsApp number as required: +92 310 8002863
   const targetWhatsAppNumber = "923108002863";
 
-  // Pre-filled WhatsApp message format:
+  // Pre-filled WhatsApp message format with selected variant price
   const handleWhatsAppOrder = () => {
     let priceText = pricing.effectivePriceString;
     if (pricing.isSaleActive && pricing.discountPercentage > 0) {
@@ -149,7 +149,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
 
     let variantSection = '';
     if (selectedVariantObj) {
-      variantSection = `\nSelected ${optionLabel}:\n${selectedVariantObj.name}${selectedVariantObj.sku ? ` (SKU: ${selectedVariantObj.sku})` : ''}\n`;
+      variantSection = `\nSelected ${optionLabel}:\n${selectedVariantObj.name}${selectedVariantObj.sku ? ` (SKU: ${selectedVariantObj.sku})` : ''}\nVariant Price: ${pricing.effectivePriceString}\n`;
     }
 
     let shadeSection = '';
@@ -639,9 +639,15 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
               ) : (
                 <div className="p-4 rounded-2xl bg-slate-950/90 border border-slate-800/80 flex items-center justify-between gap-4">
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Estimated Price / Wholesale Rate</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      {selectedVariantObj ? `${selectedVariantObj.name} Price` : 'Estimated Price / Wholesale Rate'}
+                    </span>
                     <span className="text-xl sm:text-2xl font-extrabold text-emerald-400 font-serif">
-                      {product.hidePrice ? 'Call for Price' : (product.isPriceOnRequest ? 'Price on Request' : (product.price || 'Call for Price'))}
+                      {product.hidePrice
+                        ? 'Call for Price'
+                        : (product.isPriceOnRequest
+                          ? 'Price on Request'
+                          : (pricing.effectivePriceString || pricing.formattedRegularPrice || product.price || 'Call for Price'))}
                     </span>
                   </div>
 
@@ -649,7 +655,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                     <div className="text-right">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Availability</span>
                       <span className="px-3 py-1 rounded-lg bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-bold text-xs inline-block mt-0.5">
-                        {product.stockStatus || 'In Stock'}
+                        {selectedVariantObj?.stockStatus || product.stockStatus || 'In Stock'}
                       </span>
                     </div>
                   )}
@@ -753,7 +759,8 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                       selectedSize,
                       selectedQuality,
                       finalVariantName,
-                      isPaintShadesActive && selectedShade ? selectedShade : undefined
+                      isPaintShadesActive && selectedShade ? selectedShade : undefined,
+                      selectedVariantObj || undefined
                     );
                   }}
                   className="flex-1 py-3.5 px-5 rounded-2xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-all duration-200 shadow-xl shadow-blue-950/50 flex items-center justify-center gap-2.5 active:scale-98 border border-blue-400/30"

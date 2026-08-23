@@ -961,6 +961,8 @@ export type SmartToolId =
   | 'bricks' 
   | 'paint' 
   | 'water-tank'
+  | 'construction-builder'
+  | 'fitting-builder'
   | 'bathroom-budget-finder' // backward compatibility alias
   | 'water-tank-pump-guide'; // backward compatibility alias
 
@@ -1349,6 +1351,134 @@ export interface WaterTankPumpResult {
   recommendedProducts: Product[];
   technicalTips: string[];
 }
+
+// ---------------------------------------------------------
+// 6. SMART CONSTRUCTION & FITTING PACKAGE BUILDER TYPES
+// ---------------------------------------------------------
+
+export interface FittingItemVariant {
+  id: string;
+  itemId: string;
+  sizeType: 'INCH' | 'MM' | 'OTHER' | 'CUSTOM';
+  sizeLabel: string; // e.g. '½"', '¾"', '1"', '25mm', '32mm', '50mm', '13 ft'
+  price: number | null; // null => Price on Call
+  isPriceOnCall?: boolean;
+  unit: string; // e.g. 'Piece', '13 ft Length', '10 ft Length', 'Foot', 'Meter', 'Bundle', 'Roll'
+  length?: string; // e.g. '13 ft', '10 ft', '100m'
+  material?: string; // e.g. 'UPVC', 'PPR', 'PVC', 'CPVC', 'HDPE', 'Brass', 'CP Chrome Plated', 'CI Cast Iron', 'GI Galvanized'
+  brand?: string; // e.g. 'Master', 'Popular', 'Beta', 'Sonex', 'Turk Plast', 'IIL', 'Adamjee', 'Faisal'
+  grade?: string; // e.g. 'Class B', 'Class C', 'Class D', 'PN 16', 'PN 20', 'Schedule 40', 'Schedule 80'
+  thickness?: string; // e.g. 'Medium', 'Heavy', '3.2mm'
+  sku?: string;
+  enabled: boolean;
+  sortOrder: number;
+  stockStatus?: 'In Stock' | 'Available on Order' | 'Out of Stock';
+}
+
+export interface FittingItem {
+  id: string;
+  categoryId: string;
+  name: string;
+  urduName?: string;
+  description?: string;
+  image?: string;
+  unit?: string; // default unit (e.g. 'Piece', 'Length')
+  enabled: boolean;
+  sortOrder: number;
+  linkedProductId?: string; // Optional link to existing main product catalog
+  defaultSizeType?: 'INCH' | 'MM' | 'OTHER' | 'CUSTOM';
+  supportedSizeTypes?: ('INCH' | 'MM' | 'OTHER' | 'CUSTOM')[];
+  material?: string;
+  brand?: string;
+  grade?: string;
+  tags?: string[];
+  variants: FittingItemVariant[];
+}
+
+export interface FittingCategory {
+  id: string;
+  slug?: string;
+  packageTypeIds?: string[]; // Empty or ['all'] means universal across all packages
+  name: string;
+  urduName?: string;
+  description?: string;
+  iconName?: string;
+  image?: string;
+  enabled: boolean;
+  sortOrder: number;
+  isPipeCategory?: boolean; // dedicated pipe management support
+}
+
+export interface FittingPackageType {
+  id: string;
+  slug?: string;
+  name: string;
+  urduName?: string;
+  subtitle?: string;
+  description: string;
+  iconName: string;
+  image?: string;
+  badge?: string;
+  enabled: boolean;
+  sortOrder: number;
+  featured?: boolean;
+  isFeatured?: boolean;
+  recommendedCategoryIds?: string[];
+  recommendedItemIds?: string[];
+}
+
+export interface FittingPackageItemInCart {
+  id: string; // unique item-variant entry id
+  packageTypeId?: string;
+  packageTypeName?: string;
+  itemId: string;
+  itemName: string;
+  name?: string; // alias for itemName
+  urduName?: string;
+  categoryId: string;
+  categoryName: string;
+  variantId: string;
+  sizeType: 'INCH' | 'MM' | 'OTHER' | 'CUSTOM';
+  sizeLabel: string;
+  unit: string;
+  length?: string;
+  material?: string;
+  brand?: string;
+  grade?: string;
+  image?: string;
+  unitPrice: number | null; // null => Price on Call
+  isPriceOnCall: boolean;
+  quantity: number;
+  lineTotal: number;
+  subtotal?: number; // alias for lineTotal
+  linkedProductId?: string;
+}
+
+export interface FittingBuilderConfig {
+  isEnabled: boolean;
+  title: string;
+  subtitle: string;
+  urduTitle?: string;
+  urduSubtitle?: string;
+  heroBadge?: string;
+  entryCardBadge?: string;
+  whatsappNumber?: string;
+  whatsappDisclaimerNote?: string;
+  packageTypes: FittingPackageType[];
+  categories: FittingCategory[];
+  items: FittingItem[];
+  pipeTypes?: string[];
+  commonUnits?: string[];
+  heroHeading?: string;
+  heroSubheading?: string;
+  updatedAt?: string;
+}
+
+export type ConstructionBuilderConfig = FittingBuilderConfig;
+export type ConstructionPackageItem = FittingPackageItemInCart;
+export type FittingVariant = FittingItemVariant;
+
+
 
 
 

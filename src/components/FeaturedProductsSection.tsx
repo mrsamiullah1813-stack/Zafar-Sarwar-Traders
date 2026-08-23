@@ -21,7 +21,7 @@ import {
 import { Product, BusinessConfig, ProductCategory } from '../types';
 import { ProductSaleBadge } from './ProductSaleBadge';
 import { SaleCountdownTimer } from './SaleCountdownTimer';
-import { getProductPricingDetails, getProductVariantDisplaySummary, hasActiveVariants } from '../utils/pricingUtils';
+import { getProductPricingDetails, getProductVariantDisplaySummary, hasActiveVariants, getActiveProductPrice } from '../utils/pricingUtils';
 
 interface FeaturedProductsProps {
   products: Product[];
@@ -129,12 +129,16 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
 
   const handleWhatsAppProduct = (e: React.MouseEvent, product: Product) => {
     e.stopPropagation();
-    const pricing = getProductPricingDetails(product);
+    const pricing = getActiveProductPrice(product);
     let priceText = pricing.effectivePriceString;
     if (pricing.isSaleActive && pricing.discountPercentage > 0) {
       priceText = `${pricing.formattedSalePrice} (SALE ${pricing.discountPercentage}% OFF — Regular: ${pricing.formattedRegularPrice}${pricing.savingsAmount > 0 ? `, Save: Rs. ${pricing.savingsAmount.toLocaleString('en-PK')}` : ''})`;
     }
-    const message = `Hello Zafar Sarwar Traders,\n\nI would like to order this item:\nProduct Name: ${product.name}\nSKU: ${product.sku || 'N/A'}\nPrice: ${priceText}\n\nPlease confirm availability and delivery timeframe.`;
+    let variantNote = '';
+    if (pricing.isVariantPricingActive && pricing.activeVariant) {
+      variantNote = `\nDefault Option: ${pricing.activeVariant.name}`;
+    }
+    const message = `Hello Zafar Sarwar Traders,\n\nI would like to order this item:\nProduct Name: ${product.name}${variantNote}\nSKU: ${pricing.activeVariant?.sku || product.sku || 'N/A'}\nPrice: ${priceText}\n\nPlease confirm availability and delivery timeframe.`;
     window.open(`https://wa.me/${targetWhatsAppNumber}?text=${encodeURIComponent(message)}`, '_blank');
   };
 

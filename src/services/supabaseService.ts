@@ -16,8 +16,10 @@ import {
   ProductVariant,
   ProductVariantsConfig,
   PaintShade,
-  PaintShadesConfig
+  PaintShadesConfig,
+  FittingBuilderConfig
 } from '../types';
+import { defaultFittingBuilderConfig } from '../data/defaultFittingBuilderData';
 
 // =========================================================
 // AUTH HEADERS HELPER FOR SECURE ADMIN BACKEND PROXY
@@ -1518,6 +1520,44 @@ export async function saveAiAssistantConfigToSupabase(config: AiAssistantConfig)
 
   return siteSettingRes;
 }
+
+// =========================================================
+// 7B. SMART CONSTRUCTION & FITTING BUILDER CRUD
+// =========================================================
+
+export async function fetchFittingBuilderConfigFromSupabase(): Promise<FittingBuilderConfig | null> {
+  const config = await fetchSiteSettingFromSupabase<FittingBuilderConfig>('zst_fitting_builder_config_v1') || 
+                 await fetchSiteSettingFromSupabase<FittingBuilderConfig>('zst_construction_builder_config_v1');
+  if (config && Array.isArray(config.packageTypes) && Array.isArray(config.items) && config.items.length > 0) {
+    return config;
+  }
+  return null;
+}
+
+export async function saveFittingBuilderConfigToSupabase(config: FittingBuilderConfig): Promise<{ success: boolean; error?: string }> {
+  const cleanConfig = {
+    ...config,
+    updatedAt: new Date().toISOString()
+  };
+  // 1. Save full config to site_settings (both keys for full backwards compatibility)
+  const siteSettingRes = await saveSiteSettingToSupabase('zst_fitting_builder_config_v1', cleanConfig);
+  await saveSiteSettingToSupabase('zst_construction_builder_config_v1', cleanConfig);
+  
+  // 2. Also attempt backend proxy sync
+  try {
+    const headers = await getAuthHeaders();
+    await fetch('/api/db/fitting-builder', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ config: cleanConfig })
+    });
+  } catch (err) {
+    // Non-blocking
+  }
+
+  return siteSettingRes;
+}
+
 
 // =========================================================
 // 8. STORAGE MEDIA UPLOAD (Direct Supabase SDK)

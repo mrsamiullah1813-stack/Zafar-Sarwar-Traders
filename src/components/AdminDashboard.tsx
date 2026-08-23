@@ -56,18 +56,20 @@ import {
   UserCheck,
   Shield,
   PhoneCall,
-  Clock
+  Clock,
+  Wrench
 } from 'lucide-react';
 import { AdminPlannerManager } from './AdminPlannerManager';
 import { AdminEstimatorManager } from './AdminEstimatorManager';
 import { AdminAiAssistantManager } from './AdminAiAssistantManager';
 import { AdminAnnouncementManager } from './AdminAnnouncementManager';
 import { AdminHeroManager } from './AdminHeroManager';
+import { AdminConstructionBuilderManager } from './AdminConstructionBuilderManager';
 import { Megaphone, Palette, HardHat } from 'lucide-react';
 import { AdminThemeManager } from './AdminThemeManager';
 import { AdminSmartToolsManager } from './AdminSmartToolsManager';
-import { Product, ProductCategory, ProductVideo, BusinessConfig, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, ThemeSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings } from '../types';
-import { getAdminPin, setAdminPin, loadPlannerConfig, savePlannerConfig, loadBuildMaterialEstimatorConfig, saveBuildMaterialEstimatorConfig, loadAiAssistantConfig, saveAiAssistantConfig, loadThemeSettings, saveThemeSettings, loadHeroSettings, saveHeroSettings, loadSmartToolsSettings, saveSmartToolsSettings, deleteProductFromStorage, saveStoredProducts, deleteCategoryFromStorage, deleteBrandFromStorage } from '../utils/storage';
+import { Product, ProductCategory, ProductVideo, BusinessConfig, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, ThemeSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig } from '../types';
+import { getAdminPin, setAdminPin, loadPlannerConfig, savePlannerConfig, loadBuildMaterialEstimatorConfig, saveBuildMaterialEstimatorConfig, loadAiAssistantConfig, saveAiAssistantConfig, loadThemeSettings, saveThemeSettings, loadHeroSettings, saveHeroSettings, loadSmartToolsSettings, saveSmartToolsSettings, loadFittingBuilderConfig, saveFittingBuilderConfig, deleteProductFromStorage, saveStoredProducts, deleteCategoryFromStorage, deleteBrandFromStorage } from '../utils/storage';
 
 interface AdminDashboardProps {
   products: Product[];
@@ -79,6 +81,7 @@ interface AdminDashboardProps {
   gallery: GalleryItem[];
   heroSettings?: HeroSettings;
   smartToolsSettings?: SmartToolsSettings;
+  fittingBuilderConfig?: FittingBuilderConfig;
   onSaveProducts: (products: Product[]) => Promise<{ success: boolean; error?: string }> | void;
   onSaveCategories: (categories: ProductCategory[]) => Promise<{ success: boolean; error?: string }> | void;
   onSaveBrands: (brands: ProductBrand[]) => Promise<{ success: boolean; error?: string }> | void;
@@ -88,6 +91,7 @@ interface AdminDashboardProps {
   onSaveGallery: (gallery: GalleryItem[]) => void;
   onSaveHeroSettings?: (hs: HeroSettings) => void;
   onSaveSmartToolsSettings?: (st: SmartToolsSettings) => void;
+  onSaveFittingBuilderConfig?: (fc: FittingBuilderConfig) => void;
   onLogout: () => void;
   onClose: () => void;
 }
@@ -102,6 +106,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   gallery,
   heroSettings,
   smartToolsSettings,
+  fittingBuilderConfig,
   onSaveProducts,
   onSaveCategories,
   onSaveBrands,
@@ -111,16 +116,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onSaveGallery,
   onSaveHeroSettings,
   onSaveSmartToolsSettings,
+  onSaveFittingBuilderConfig,
   onLogout,
   onClose
 }) => {
-  const [activeTab, setActiveTab] = useState<'analytics' | 'hero' | 'announcements' | 'orders' | 'customers' | 'delivery' | 'products' | 'categories' | 'brands' | 'contacts' | 'statistics' | 'banners_seo' | 'gallery' | 'smart_tools' | 'planner' | 'estimator' | 'ai_assistant' | 'themes'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'hero' | 'announcements' | 'orders' | 'customers' | 'delivery' | 'products' | 'categories' | 'brands' | 'contacts' | 'statistics' | 'banners_seo' | 'gallery' | 'smart_tools' | 'construction_builder' | 'planner' | 'estimator' | 'ai_assistant' | 'themes'>('analytics');
   const [plannerConfig, setPlannerConfig] = useState<AiDesignerConfig>(loadPlannerConfig());
   const [estimatorConfig, setEstimatorConfig] = useState<BuildMaterialEstimatorConfig>(loadBuildMaterialEstimatorConfig());
+  const [fittingConfigState, setFittingConfigState] = useState<FittingBuilderConfig>(fittingBuilderConfig || loadFittingBuilderConfig());
   const [aiAssistantConfig, setAiAssistantConfig] = useState<AiAssistantConfig>(loadAiAssistantConfig());
   const [themeSettings, setThemeSettings] = useState<ThemeSettings>(loadThemeSettings());
   const [heroSettingsState, setHeroSettingsState] = useState<HeroSettings>(heroSettings || loadHeroSettings());
   const [smartToolsSettingsState, setSmartToolsSettingsState] = useState<SmartToolsSettings>(smartToolsSettings || loadSmartToolsSettings());
+
   const [searchQuery, setSearchQuery] = useState('');
   const [brandSearch, setBrandSearch] = useState('');
   const [editingBrand, setEditingBrand] = useState<ProductBrand | null>(null);
@@ -898,6 +906,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('construction_builder')}
+              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all ${
+                activeTab === 'construction_builder'
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-950'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Wrench className="w-4 h-4 text-blue-400" />
+                <span>Smart Fitting Builder</span>
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                fittingConfigState.isEnabled ? 'bg-emerald-950 text-emerald-300' : 'bg-rose-950 text-rose-300'
+              }`}>
+                {fittingConfigState.isEnabled ? 'Active' : 'OFF'}
+              </span>
+            </button>
+
+
+            <button
               onClick={() => setActiveTab('planner')}
               className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all ${
                 activeTab === 'planner'
@@ -1014,6 +1042,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               onSaveConfig={(updated) => {
                 setPlannerConfig(updated);
                 savePlannerConfig(updated);
+              }}
+            />
+          )}
+
+          {/* TAB: SMART CONSTRUCTION & FITTING BUILDER ADMIN */}
+          {activeTab === 'construction_builder' && (
+            <AdminConstructionBuilderManager
+              config={fittingConfigState}
+              products={products}
+              onSaveConfig={async (updated) => {
+                setFittingConfigState(updated);
+                if (onSaveFittingBuilderConfig) onSaveFittingBuilderConfig(updated);
+                const res = await saveFittingBuilderConfig(updated);
+                return res;
               }}
             />
           )}
@@ -2500,6 +2542,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 await saveSmartToolsSettings(updated);
                 if (onSaveSmartToolsSettings) onSaveSmartToolsSettings(updated);
                 showToast('Smart Tools configuration updated permanently in Supabase!');
+              }}
+            />
+          )}
+
+          {/* TAB: SMART CONSTRUCTION & FITTING BUILDER */}
+          {activeTab === 'construction_builder' && (
+            <AdminConstructionBuilderManager
+              products={products}
+              config={fittingConfigState}
+              onSaveConfig={async (updated) => {
+                setFittingConfigState(updated);
+                const res = await saveFittingBuilderConfig(updated);
+                if (onSaveFittingBuilderConfig) await onSaveFittingBuilderConfig(updated);
+                showToast('Smart Construction & Fitting Builder configuration saved permanently in Supabase!');
+                return res;
               }}
             />
           )}

@@ -28,13 +28,16 @@ import {
   SmartToolId, 
   SmartToolsSettings, 
   BuildMaterialEstimatorConfig, 
-  EasyBathroomPlannerConfig 
+  EasyBathroomPlannerConfig,
+  FittingBuilderConfig 
 } from '../types';
 import { defaultSmartToolsSettings } from '../data/defaultSmartToolsConfig';
+import { defaultFittingBuilderConfig } from '../data/defaultFittingBuilderData';
 import { BuildMaterialEstimator } from './BuildMaterialEstimator';
 import { BathroomPlanner } from './BathroomPlanner';
 import { BathroomBudgetFinder } from './BathroomBudgetFinder';
 import { WaterTankPumpGuide } from './WaterTankPumpGuide';
+import { SmartConstructionBuilder } from './SmartConstructionBuilder';
 import { SmartProductFinder } from './tools/SmartProductFinder';
 import { HouseConstructionCostEstimator } from './tools/HouseConstructionCostEstimator';
 import { BudgetToProductsAi } from './tools/BudgetToProductsAi';
@@ -82,6 +85,13 @@ export function normalizeSmartToolId(id: string | null | undefined): SmartToolId
     case 'water-tank':
     case 'water-tank-pump-guide':
       return 'water-tank';
+
+    case 'construction-builder':
+    case 'fitting-builder':
+    case 'fitting':
+    case 'package-builder':
+    case 'smart-fitting-builder':
+      return 'fitting-builder';
 
     case 'bathroom-budget-finder':
       return 'budget-products';
@@ -182,10 +192,12 @@ interface SmartToolsModalProps {
   estimatorConfig?: BuildMaterialEstimatorConfig;
   plannerConfig?: EasyBathroomPlannerConfig | any;
   smartToolsSettings?: SmartToolsSettings;
+  fittingBuilderConfig?: FittingBuilderConfig;
   onClose: () => void;
   onSelectTool?: (id: SmartToolId) => void;
   onOpenQuickView?: (product: Product) => void;
   onAddToCart?: (product: Product, quantity?: number, color?: string) => void;
+  onAddPackageToCart?: (items: { product: Product; quantity: number; selectedVariantName?: string; price: number }[]) => void;
 }
 
 export const SmartToolsModal: React.FC<SmartToolsModalProps> = ({
@@ -195,10 +207,12 @@ export const SmartToolsModal: React.FC<SmartToolsModalProps> = ({
   estimatorConfig,
   plannerConfig,
   smartToolsSettings = defaultSmartToolsSettings,
+  fittingBuilderConfig = defaultFittingBuilderConfig,
   onClose,
   onSelectTool,
   onOpenQuickView,
-  onAddToCart
+  onAddToCart,
+  onAddPackageToCart
 }) => {
   const [activeToolId, setActiveToolId] = useState<SmartToolId | 'hub' | null>(() => normalizeSmartToolId(toolId));
   const [hubCategory, setHubCategory] = useState<'all' | 'construction' | 'sanitary' | 'budget'>('all');
@@ -245,6 +259,7 @@ export const SmartToolsModal: React.FC<SmartToolsModalProps> = ({
       case 'bricks': return <Boxes className={`${className} text-orange-400`} />;
       case 'paint': return <Palette className={`${className} text-rose-400`} />;
       case 'water-tank': return <Droplet className={`${className} text-cyan-400`} />;
+      case 'fitting-builder': return <Wrench className={`${className} text-blue-400`} />;
       default: return <Sparkles className={`${className} text-blue-400`} />;
     }
   };
@@ -263,9 +278,9 @@ export const SmartToolsModal: React.FC<SmartToolsModalProps> = ({
     const norm = normalizeSmartToolId(t.id);
     if (!t.isEnabled) return false;
     if (hubCategory !== 'all') {
-      if (hubCategory === 'construction' && !['cement-calculator', 'material-estimator', 'construction-cost', 'bricks'].includes(norm as string)) return false;
-      if (hubCategory === 'sanitary' && !['bathroom-planner', 'water-tank', 'product-finder', 'paint'].includes(norm as string)) return false;
-      if (hubCategory === 'budget' && !['budget-products', 'construction-cost', 'product-finder'].includes(norm as string)) return false;
+      if (hubCategory === 'construction' && !['cement-calculator', 'material-estimator', 'construction-cost', 'bricks', 'fitting-builder'].includes(norm as string)) return false;
+      if (hubCategory === 'sanitary' && !['bathroom-planner', 'water-tank', 'product-finder', 'paint', 'fitting-builder'].includes(norm as string)) return false;
+      if (hubCategory === 'budget' && !['budget-products', 'construction-cost', 'product-finder', 'fitting-builder'].includes(norm as string)) return false;
     }
     if (hubSearch.trim()) {
       const q = hubSearch.toLowerCase();
@@ -282,6 +297,18 @@ export const SmartToolsModal: React.FC<SmartToolsModalProps> = ({
     const norm = normalizeSmartToolId(activeToolId);
 
     switch (norm) {
+      case 'fitting-builder':
+        return (
+          <SmartConstructionBuilder
+            config={fittingBuilderConfig}
+            products={products}
+            businessConfig={config}
+            onAddToCart={(p, qty, variant) => onAddToCart && onAddToCart(p, qty || 1, variant)}
+            onAddPackageToCart={onAddPackageToCart}
+            onViewProduct={onOpenQuickView}
+            onClose={onClose}
+          />
+        );
       case 'cement-calculator':
       case 'material-estimator':
         return (

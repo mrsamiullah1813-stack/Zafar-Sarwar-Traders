@@ -3,7 +3,8 @@ import {
   customerReviews, 
   faqItems 
 } from './data/storeData';
-import { BusinessConfig, Product, ProductCategory, GalleryItem, Review, ProductBrand, StatCounter, AiDesignerConfig, CartItem, CheckoutSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, SmartToolId } from './types';
+import { BusinessConfig, Product, ProductCategory, GalleryItem, Review, ProductBrand, StatCounter, AiDesignerConfig, CartItem, CheckoutSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, SmartToolId, ProductVariant, PaintShade, FittingBuilderConfig } from './types';
+import { getActiveProductPrice } from './utils/pricingUtils';
 import { 
   loadStoredConfig, 
   saveStoredConfig, 
@@ -27,6 +28,8 @@ import {
   saveAiAssistantConfig,
   loadSmartToolsSettings,
   saveSmartToolsSettings,
+  loadFittingBuilderConfig,
+  saveFittingBuilderConfig,
   syncWithServerCMS,
   loadStoredContacts,
   saveStoredContacts,
@@ -58,6 +61,8 @@ import { HeroSection } from './components/HeroSection';
 import { FeatureBar } from './components/FeatureBar';
 import { SmartToolsSection } from './components/SmartToolsSection';
 import { SmartToolsModal } from './components/SmartToolsModal';
+import { SmartConstructionBuilderModal } from './components/SmartConstructionBuilderModal';
+import { SmartConstructionBuilderEntryCard } from './components/SmartConstructionBuilderEntryCard';
 import { AboutSection } from './components/AboutSection';
 import { CategoriesSection } from './components/CategoriesSection';
 import { BrandsSection } from './components/BrandsSection';
@@ -117,6 +122,8 @@ export default function App() {
   const [gallery, setGallery] = useState<GalleryItem[]>(() => loadStoredGallery());
   const [plannerConfig, setPlannerConfig] = useState<AiDesignerConfig>(() => loadPlannerConfig());
   const [estimatorConfig, setEstimatorConfig] = useState<BuildMaterialEstimatorConfig>(() => loadBuildMaterialEstimatorConfig());
+  const [fittingBuilderConfig, setFittingBuilderConfig] = useState<FittingBuilderConfig>(() => loadFittingBuilderConfig());
+  const [isConstructionBuilderOpen, setIsConstructionBuilderOpen] = useState(false);
   const [aiAssistantConfig, setAiAssistantConfig] = useState<AiAssistantConfig>(() => loadAiAssistantConfig());
   const [smartToolsSettings, setSmartToolsSettings] = useState<SmartToolsSettings>(() => loadSmartToolsSettings());
   const [activeToolId, setActiveToolId] = useState<SmartToolId | 'hub' | null>(null);
@@ -256,7 +263,7 @@ export default function App() {
     };
   }, []);
 
-  // Cart Operations
+  // Cart Operations with Variant Pricing Single Source of Truth
   const handleAddToCart = (
     product: Product,
     quantity: number = 1,
@@ -264,15 +271,21 @@ export default function App() {
     selectedSize?: string,
     selectedQuality?: string,
     selectedVariant?: string,
-    selectedShade?: { name: string; id?: string; code?: string; colorHex?: string; image?: string; priceAdjustment?: number }
+    selectedShade?: { name: string; id?: string; code?: string; colorHex?: string; image?: string; priceAdjustment?: number },
+    selectedVariantObj?: ProductVariant
   ) => {
+    // Determine active variant and pricing details
+    const activePricing = getActiveProductPrice(product, selectedVariantObj || selectedVariant);
+    const finalVariant = activePricing.activeVariant || selectedVariantObj;
+    const finalVariantName = finalVariant ? finalVariant.name : selectedVariant;
+
     setCartItems(prev => {
       const existingIndex = prev.findIndex(item => 
         item.product.id === product.id &&
         (item.selectedColor || '') === (selectedColor || '') &&
         (item.selectedSize || '') === (selectedSize || '') &&
         (item.selectedQuality || '') === (selectedQuality || '') &&
-        (item.selectedVariant || '') === (selectedVariant || '') &&
+        (item.selectedVariant || '') === (finalVariantName || '') &&
         (item.selectedShade || '') === (selectedShade?.name || '')
       );
 
@@ -281,7 +294,13 @@ export default function App() {
         const newQty = updated[existingIndex].quantity + (quantity || 1);
         updated[existingIndex] = {
           ...updated[existingIndex],
-          quantity: newQty
+          quantity: newQty,
+          selectedVariant: finalVariantName,
+          selectedVariantId: finalVariant?.id || updated[existingIndex].selectedVariantId,
+          selectedVariantName: finalVariant?.name || finalVariantName,
+          selectedOptionName: product.optionName || product.variantsConfig?.optionName || 'Option',
+          selectedVariantPrice: activePricing.effectivePriceNumeric,
+          selectedVariantSku: finalVariant?.sku || updated[existingIndex].selectedVariantSku
         };
         return updated;
       }
@@ -294,7 +313,12 @@ export default function App() {
           selectedColor,
           selectedSize,
           selectedQuality,
-          selectedVariant,
+          selectedVariant: finalVariantName,
+          selectedVariantId: finalVariant?.id,
+          selectedVariantName: finalVariant?.name || finalVariantName,
+          selectedOptionName: product.optionName || product.variantsConfig?.optionName || 'Option',
+          selectedVariantPrice: activePricing.effectivePriceNumeric,
+          selectedVariantSku: finalVariant?.sku,
           selectedShade: selectedShade?.name,
           selectedShadeId: selectedShade?.id,
           selectedShadeCode: selectedShade?.code,
@@ -543,6 +567,7 @@ export default function App() {
         onOpenOrderTracking={() => setOrderTrackingOpen(true)}
         onSelectCategory={handleSelectCategory}
         onOpenSmartTool={(toolId) => setActiveToolId(toolId)}
+        onOpenConstructionBuilder={() => setIsConstructionBuilderOpen(true)}
         onOpenDeliveryChecker={() => setDeliveryCheckerOpen(true)}
         onOpenDeliveryAreas={() => setViewDeliveryAreasPage(true)}
       />
@@ -602,6 +627,12 @@ export default function App() {
             onEditProduct={handleOpenEditProduct}
             onDeleteProduct={handleDeleteProduct}
             selectedCategoryFilter={selectedCategoryFilter}
+          />
+
+          {/* 🔧 SMART CONSTRUCTION & FITTING PACKAGE BUILDER (HOMEPAGE ENTRY CARD) */}
+          <SmartConstructionBuilderEntryCard
+            onOpenBuilder={() => setIsConstructionBuilderOpen(true)}
+            config={fittingBuilderConfig}
           />
 
           {/* COMPACT SMART TOOLS HUB (Cement Calculator, Bathroom Planner, Material Estimator, Budget Finder, Water Tank & Pump Guide) */}
@@ -803,6 +834,7 @@ export default function App() {
           contacts={contacts}
           heroSettings={heroSettings}
           smartToolsSettings={smartToolsSettings}
+          fittingBuilderConfig={fittingBuilderConfig}
           onSaveProducts={handleSaveProductsState}
           onSaveCategories={handleSaveCategoriesState}
           onSaveBrands={handleSaveBrandsState}
@@ -822,6 +854,11 @@ export default function App() {
             if (res && res.success) {
               setSmartToolsSettings(st);
             }
+            return res;
+          }}
+          onSaveFittingBuilderConfig={async (fc) => {
+            setFittingBuilderConfig(fc);
+            const res = await saveFittingBuilderConfig(fc);
             return res;
           }}
           onLogout={handleAdminLogout}
@@ -852,7 +889,16 @@ export default function App() {
         onSelectTheme={handleSelectTheme}
       />
 
-      {/* Smart Construction & Sanitary Tools Modal */}
+      {/* 🔧 SMART CONSTRUCTION & FITTING BUILDER MODAL */}
+      <SmartConstructionBuilderModal
+        isOpen={isConstructionBuilderOpen}
+        onClose={() => setIsConstructionBuilderOpen(false)}
+        config={fittingBuilderConfig}
+        businessConfig={config}
+        products={products}
+      />
+
+      {/* Smart Tools Modal */}
       <SmartToolsModal
         toolId={activeToolId}
         products={products}
@@ -860,6 +906,7 @@ export default function App() {
         estimatorConfig={estimatorConfig}
         plannerConfig={plannerConfig}
         smartToolsSettings={smartToolsSettings}
+        fittingBuilderConfig={fittingBuilderConfig}
         onClose={() => setActiveToolId(null)}
         onOpenQuickView={(prod) => setSelectedProduct(prod)}
         onAddToCart={handleAddToCart}

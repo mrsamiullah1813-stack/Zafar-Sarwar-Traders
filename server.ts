@@ -854,7 +854,44 @@ async function startServer() {
     }
   });
 
+  // FITTING BUILDER DB PROXY
+  app.get("/api/db/fitting-builder", async (req, res) => {
+    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
+    try {
+      const { data: kvData, error: kvErr } = await dbClient.from("site_settings").select("value").in("key", ["zst_fitting_builder_config_v1", "zst_construction_builder_config_v1"]).limit(1).maybeSingle();
+      if (!kvErr && kvData && kvData.value !== undefined) {
+        return res.json({ success: true, data: kvData.value });
+      }
+      return res.json({ success: true, data: null });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  app.post("/api/db/fitting-builder", requireAdminAuth, async (req, res) => {
+    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
+    try {
+      const { config } = req.body;
+      if (!config) return res.status(400).json({ success: false, error: "Config payload is required" });
+
+      const { error: kvError } = await dbClient.from("site_settings").upsert({
+        key: "zst_fitting_builder_config_v1",
+        value: config,
+        updated_at: new Date().toISOString()
+      }, { onConflict: "key" });
+
+      if (!kvError) {
+        return res.json({ success: true });
+      }
+
+      return res.status(500).json({ success: false, error: kvError.message });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
   // SITE SETTINGS DB Proxy (Supports both key/value rows AND column-based rows)
+
   app.get("/api/db/site-settings/:key", async (req, res) => {
     if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {

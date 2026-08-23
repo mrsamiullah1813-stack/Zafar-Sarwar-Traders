@@ -1,8 +1,9 @@
-import { BusinessConfig, Product, ProductCategory, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, CartItem, CustomerOrder, CheckoutSettings, DeliverySettings, CityDeliveryInfo, ThemeOption, ThemeSettings, AnnouncementBarSettings, AnnouncementItem, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings } from '../types';
+import { BusinessConfig, Product, ProductCategory, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, CartItem, CustomerOrder, CheckoutSettings, DeliverySettings, CityDeliveryInfo, ThemeOption, ThemeSettings, AnnouncementBarSettings, AnnouncementItem, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig } from '../types';
 import { initialBusinessConfig, productCategories, featuredProducts, galleryItems, productBrands, defaultStatCounters } from '../data/storeData';
 import { defaultBathroomPlannerConfig } from '../data/defaultPlannerConfig';
 import { defaultBuildMaterialEstimatorConfig } from '../data/defaultEstimatorConfig';
 import { defaultSmartToolsSettings } from '../data/defaultSmartToolsConfig';
+import { defaultFittingBuilderConfig } from '../data/defaultFittingBuilderData';
 import { isSupabaseConfigured, initializeSupabaseRuntime } from '../lib/supabase';
 import { 
   fetchProductsFromSupabase, 
@@ -25,6 +26,8 @@ import {
   saveSiteSettingToSupabase,
   fetchBuildMaterialEstimatorFromSupabase,
   saveBuildMaterialEstimatorToSupabase,
+  fetchFittingBuilderConfigFromSupabase,
+  saveFittingBuilderConfigToSupabase,
   fetchAiAssistantConfigFromSupabase,
   saveAiAssistantConfigToSupabase,
   fetchAiKnowledgeFromSupabase,
@@ -53,6 +56,7 @@ const STORAGE_KEYS = {
   ANNOUNCEMENT_SETTINGS: 'zst_announcement_settings_v1',
   HERO_SETTINGS: 'zst_hero_settings_v1',
   SMART_TOOLS: 'zst_smart_tools_settings_v1',
+  FITTING_BUILDER: 'zst_fitting_builder_config_v1',
 };
 
 export const defaultHeroSettings: HeroSettings = {
@@ -1118,6 +1122,36 @@ export const saveSmartToolsSettings = async (settings: SmartToolsSettings): Prom
   }
 };
 
+export const loadFittingBuilderConfig = (): FittingBuilderConfig => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.FITTING_BUILDER);
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (parsed && Array.isArray(parsed.packageTypes) && Array.isArray(parsed.items) && parsed.items.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Error loading fitting builder config', e);
+  }
+  return defaultFittingBuilderConfig;
+};
+
+export const saveFittingBuilderConfig = async (config: FittingBuilderConfig): Promise<{ success: boolean; error?: string }> => {
+  try {
+    if (isSupabaseConfigured) {
+      const res = await saveFittingBuilderConfigToSupabase(config);
+      if (!res.success) return { success: false, error: res.error };
+    }
+    safeSetLocalStorage(STORAGE_KEYS.FITTING_BUILDER, config);
+    saveToServerCMS(STORAGE_KEYS.FITTING_BUILDER, config);
+    return { success: true };
+  } catch (e: any) {
+    console.error('Error saving fitting builder config', e);
+    return { success: false, error: e?.message || String(e) };
+  }
+};
+
 export const syncWithServerCMS = async (callbacks: {
   setConfig?: (c: BusinessConfig) => void;
   setProducts?: (p: Product[]) => void;
@@ -1128,6 +1162,7 @@ export const syncWithServerCMS = async (callbacks: {
   setGallery?: (g: GalleryItem[]) => void;
   setPlannerConfig?: (pc: AiDesignerConfig) => void;
   setEstimatorConfig?: (ec: BuildMaterialEstimatorConfig) => void;
+  setFittingBuilderConfig?: (fc: FittingBuilderConfig) => void;
   setAiAssistantConfig?: (ac: AiAssistantConfig) => void;
   setOrders?: (o: CustomerOrder[]) => void;
   setCheckoutSettings?: (cs: CheckoutSettings) => void;
@@ -1296,6 +1331,16 @@ export const syncWithServerCMS = async (callbacks: {
         if (callbacks.setEstimatorConfig) callbacks.setEstimatorConfig(fallbackEstimator);
       }
 
+      const fittingBuilderDb = await fetchFittingBuilderConfigFromSupabase();
+      if (fittingBuilderDb && typeof fittingBuilderDb === 'object' && Array.isArray(fittingBuilderDb.items) && fittingBuilderDb.items.length > 0) {
+        if (callbacks.setFittingBuilderConfig) callbacks.setFittingBuilderConfig(fittingBuilderDb);
+        safeSetLocalStorage(STORAGE_KEYS.FITTING_BUILDER, fittingBuilderDb);
+        console.log(`[Supabase Direct SDK] Fitting Builder loaded with ${fittingBuilderDb.items.length} items`);
+      } else {
+        const fallbackFitting = loadFittingBuilderConfig();
+        if (callbacks.setFittingBuilderConfig) callbacks.setFittingBuilderConfig(fallbackFitting);
+      }
+
       const aiAssistantDb = await fetchAiAssistantConfigFromSupabase();
       if (aiAssistantDb && typeof aiAssistantDb === 'object' && ('isEnabled' in aiAssistantDb || 'aiName' in aiAssistantDb || 'customKnowledge' in aiAssistantDb || 'welcomeMessage' in aiAssistantDb)) {
         if (callbacks.setAiAssistantConfig) callbacks.setAiAssistantConfig(aiAssistantDb);
@@ -1341,6 +1386,7 @@ export const syncWithServerCMS = async (callbacks: {
     if (callbacks.setHeroSettings) callbacks.setHeroSettings(loadHeroSettings());
     if (callbacks.setSmartToolsSettings) callbacks.setSmartToolsSettings(loadSmartToolsSettings());
     if (callbacks.setEstimatorConfig) callbacks.setEstimatorConfig(loadBuildMaterialEstimatorConfig());
+    if (callbacks.setFittingBuilderConfig) callbacks.setFittingBuilderConfig(loadFittingBuilderConfig());
   } catch (e) {
     console.warn('Local storage sync fallback error:', e);
   }
