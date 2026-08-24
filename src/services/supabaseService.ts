@@ -203,6 +203,13 @@ export function mapDbProductToProduct(row: any): Product {
     'Select Paint Shade / Color'
   );
 
+  const shadeSheetUrl = String(
+    row.shade_sheet_url ||
+    rawSpecs._shade_sheet_url ||
+    rawSpecs._paint_shades_config?.shadeSheetUrl ||
+    ''
+  );
+
   return {
     id: String(row.id),
     sku: row.sku || '',
@@ -239,10 +246,12 @@ export function mapDbProductToProduct(row: any): Product {
     // Paint Shades
     shadesEnabled: isShadesEnabled,
     shadesTitle: shadesTitle,
+    shadeSheetUrl: shadeSheetUrl || undefined,
     shadesList: parsedShadesList,
     paintShadesConfig: {
       shadesEnabled: isShadesEnabled,
       shadesTitle: shadesTitle,
+      shadeSheetUrl: shadeSheetUrl || undefined,
       shades: parsedShadesList
     },
     isPaintProduct: Boolean(row.is_paint_product ?? rawSpecs._is_paint_product),
@@ -357,10 +366,12 @@ export function mapProductToDb(product: Product): any {
     },
     _shades_enabled: isShadesEnabled,
     _shades_title: shadesTitle,
+    _shade_sheet_url: product.shadeSheetUrl || product.paintShadesConfig?.shadeSheetUrl || null,
     _shades_list: cleanShadesList,
     _paint_shades_config: {
       shadesEnabled: isShadesEnabled,
       shadesTitle: shadesTitle,
+      shadeSheetUrl: product.shadeSheetUrl || product.paintShadesConfig?.shadeSheetUrl || null,
       shades: cleanShadesList
     },
     _is_paint_product: Boolean(product.isPaintProduct),
@@ -1568,11 +1579,9 @@ export async function uploadMediaToSupabase(
   bucketName: string = 'product-media',
   customFileName?: string
 ): Promise<{ url?: string; error?: string }> {
-  await initializeSupabaseRuntime();
-  if (!isSupabaseConfigured) {
-    console.warn(`[Supabase Storage] Bucket: ${bucketName} | Status: SKIPPED | Reason: Supabase not configured`);
-    return { error: 'Supabase not configured' };
-  }
+  try {
+    await initializeSupabaseRuntime();
+  } catch {}
 
   try {
     let base64String: string = '';
@@ -1602,7 +1611,7 @@ export async function uploadMediaToSupabase(
 
     const fileName = customFileName || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
 
-    // 1. Try secure backend upload proxy first (uses service role key on server)
+    // 1. Try secure backend upload proxy first (uses service role key on server or local static uploads)
     try {
       const headers = await getAuthHeaders();
       const res = await fetch('/api/db/upload', {
@@ -1617,47 +1626,58 @@ export async function uploadMediaToSupabase(
       });
       const json = await res.json().catch(() => null);
       if (res.ok && json?.success && json?.url) {
-        console.log(`[Supabase Storage] Upload SUCCESS via backend proxy: ${json.url}`);
+        console.log(`[Storage] Upload SUCCESS via server backend: ${json.url}`);
         return { url: json.url };
       }
     } catch (proxyErr) {
-      console.warn('[Supabase Storage] Backend upload proxy attempt skipped/failed, trying direct SDK:', proxyErr);
+      console.warn('[Storage] Backend upload proxy attempt skipped/failed:', proxyErr);
     }
 
-    // 2. Direct Supabase SDK fallback
-    let fileBody: Blob;
-    if (base64String.startsWith('data:')) {
-      const parts = base64String.split(',');
-      const byteString = atob(parts[1]);
-      const ab = new ArrayBuffer(byteString.length);
-      const ia = new Uint8Array(ab);
-      for (let i = 0; i < byteString.length; i++) {
-        ia[i] = byteString.charCodeAt(i);
-      }
-      fileBody = new Blob([ab], { type: mimeType });
-    } else {
-      fileBody = fileOrDataUrl as Blob;
-    }
-
-    const filePath = `uploads/${fileName}`;
-    const candidateBuckets = Array.from(new Set([bucketName, 'product-media', 'products', 'categories', 'gallery', 'media', 'brand-assets', 'hero-media', 'public']));
-
-    for (const b of candidateBuckets) {
+    // 2. Direct Supabase SDK fallback if configured
+    if (isSupabaseConfigured && supabase) {
       try {
-        const { error: uploadErr } = await supabase.storage.from(b).upload(filePath, fileBody, {
-          cacheControl: '3600',
-          upsert: true
-        });
-
-        if (!uploadErr) {
-          const { data: publicUrlData } = supabase.storage.from(b).getPublicUrl(filePath);
-          console.log(`[Supabase Direct SDK] Storage: Upload SUCCESS to "${b}". Public URL: ${publicUrlData.publicUrl}`);
-          return { url: publicUrlData.publicUrl };
+        let fileBody: Blob;
+        if (base64String.startsWith('data:')) {
+          const parts = base64String.split(',');
+          const byteString = atob(parts[1]);
+          const ab = new ArrayBuffer(byteString.length);
+          const ia = new Uint8Array(ab);
+          for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+          }
+          fileBody = new Blob([ab], { type: mimeType });
+        } else {
+          fileBody = fileOrDataUrl as Blob;
         }
-      } catch {}
+
+        const filePath = `uploads/${fileName}`;
+        const candidateBuckets = Array.from(new Set([bucketName, 'product-media', 'products', 'categories', 'gallery', 'media', 'brand-assets', 'hero-media', 'public']));
+
+        for (const b of candidateBuckets) {
+          try {
+            const { error: uploadErr } = await supabase.storage.from(b).upload(filePath, fileBody, {
+              cacheControl: '3600',
+              upsert: true
+            });
+
+            if (!uploadErr) {
+              const { data: publicUrlData } = supabase.storage.from(b).getPublicUrl(filePath);
+              console.log(`[Supabase Direct SDK] Storage: Upload SUCCESS to "${b}". Public URL: ${publicUrlData.publicUrl}`);
+              return { url: publicUrlData.publicUrl };
+            }
+          } catch {}
+        }
+      } catch (directSdkErr) {
+        console.warn('[Supabase Direct SDK] Storage direct upload error:', directSdkErr);
+      }
     }
 
-    return { error: 'Unable to upload to Supabase storage buckets. Please check bucket configuration.' };
+    // 3. Guaranteed fallback: return base64DataUrl
+    if (base64String) {
+      return { url: base64String };
+    }
+
+    return { error: 'Unable to process image file.' };
   } catch (err: any) {
     console.error(`[Supabase Storage] Upload Error:`, err);
     return { error: err?.message || 'Media upload failed' };

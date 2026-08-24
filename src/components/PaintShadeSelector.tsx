@@ -1,10 +1,42 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 import {
   Palette, Search, Check, X, Sparkles, ChevronRight, Layers,
-  SlidersHorizontal, CheckCircle2, Image as ImageIcon
+  SlidersHorizontal, CheckCircle2, Image as ImageIcon, Filter, AlertCircle
 } from 'lucide-react';
 import { PaintShade } from '../types';
-import { searchPaintShades, formatPaintShadeLabel } from '../utils/paintShadeUtils';
+import { searchPaintShades, formatPaintShadeLabel, getColorFamily } from '../utils/paintShadeUtils';
+
+// Safe Error Boundary to guarantee Paint Shade selector never breaks the host page
+interface ErrorBoundaryProps {
+  children: ReactNode;
+  fallback?: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class SafePaintShadeBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): ErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('PaintShadeSelector Error Boundary caught error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || null;
+    }
+    return this.props.children;
+  }
+}
 
 interface PaintShadeSelectorProps {
   shades: PaintShade[];
@@ -14,7 +46,7 @@ interface PaintShadeSelectorProps {
   className?: string;
 }
 
-export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = ({
+const PaintShadeSelectorInternal: React.FC<PaintShadeSelectorProps> = ({
   shades,
   selectedShade,
   onSelectShade,
@@ -23,6 +55,7 @@ export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = ({
 }) => {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedFamily, setSelectedFamily] = useState<string>('All');
   // Internal pending selection while browsing in modal before clicking [ Apply Shade ]
   const [pendingShade, setPendingShade] = useState<PaintShade | null>(selectedShade || null);
 
@@ -31,10 +64,25 @@ export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = ({
     return (shades || []).filter(s => s && s.isActive !== false);
   }, [shades]);
 
-  // Real-time search by exact/partial shade code (e.g. 3044, 3001) or shade name (e.g. Grey Mist)
+  // Color families present in available shades
+  const availableFamilies = useMemo(() => {
+    const families = new Set<string>();
+    availableShades.forEach(s => {
+      if (s.colorHex) {
+        families.add(getColorFamily(s.colorHex));
+      }
+    });
+    return ['All', ...Array.from(families).filter(f => f !== 'All')];
+  }, [availableShades]);
+
+  // Real-time search and color family filter
   const filteredShades = useMemo(() => {
-    return searchPaintShades(availableShades, searchQuery);
-  }, [availableShades, searchQuery]);
+    let result = searchPaintShades(availableShades, searchQuery);
+    if (selectedFamily !== 'All') {
+      result = result.filter(s => getColorFamily(s.colorHex) === selectedFamily);
+    }
+    return result;
+  }, [availableShades, searchQuery, selectedFamily]);
 
   // Active chosen shade for display
   const activeSelected = selectedShade || availableShades[0] || null;
@@ -42,6 +90,7 @@ export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = ({
   const handleOpenPicker = () => {
     setPendingShade(activeSelected);
     setSearchQuery('');
+    setSelectedFamily('All');
     setIsPickerOpen(true);
   };
 
@@ -60,7 +109,7 @@ export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = ({
 
   return (
     <>
-      {/* 1. CLEAN PRODUCT PAGE BAR (DO NOT OVERWHELM WITH HUNDREDS OF CARDS) */}
+      {/* 1. CLEAN PRODUCT PAGE BAR (DO NOT OVERWHELM MAIN PRODUCT VIEW WITH 100+ CARDS) */}
       <div className={`p-3.5 sm:p-4 rounded-2xl bg-slate-950/90 border border-slate-800/90 space-y-2.5 ${className}`}>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -125,7 +174,7 @@ export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = ({
                 </div>
 
                 <p className="text-[10px] text-slate-400 mt-0.5 truncate">
-                  Real shade reference confirmed • Mixing center match
+                  Visual color swatch matched • Exact code on invoice
                 </p>
               </div>
             </div>
@@ -150,7 +199,7 @@ export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = ({
       {/* 2. DEDICATED REAL SHADE PICKER MODAL */}
       {isPickerOpen && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5">
-          <div className="bg-slate-950 border border-slate-800 rounded-3xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-slate-950 border border-slate-800 rounded-3xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             {/* Modal Header */}
             <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/80">
               <div className="flex items-center gap-2.5">
@@ -159,7 +208,7 @@ export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white tracking-tight">Select Paint Shade</h3>
-                  <p className="text-xs text-slate-400">Search by manufacturer code (e.g. 3044) or shade name</p>
+                  <p className="text-xs text-slate-400">Search by shade code (e.g. 3044) or name (e.g. Emerald)</p>
                 </div>
               </div>
               <button
@@ -171,8 +220,8 @@ export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = ({
               </button>
             </div>
 
-            {/* Modal Search Bar (Instant Filter by Shade Code or Name) */}
-            <div className="p-4 border-b border-slate-850 bg-slate-950 space-y-2">
+            {/* Modal Search Bar & Color Family Filter Chips */}
+            <div className="p-4 border-b border-slate-850 bg-slate-950 space-y-3">
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
@@ -180,7 +229,7 @@ export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = ({
                   autoFocus
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search shade code (e.g. 3044, 3001) or name (e.g. Grey Mist)..."
+                  placeholder="Search shade code (e.g. 3044, 3001) or name (e.g. Emerald)..."
                   className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-medium"
                 />
                 {searchQuery && (
@@ -194,13 +243,33 @@ export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = ({
                 )}
               </div>
 
-              {/* Real search hint */}
+              {/* Color Family Filter Chips */}
+              {availableFamilies.length > 2 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  {availableFamilies.map(fam => (
+                    <button
+                      key={fam}
+                      type="button"
+                      onClick={() => setSelectedFamily(fam)}
+                      className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
+                        selectedFamily === fam
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                      }`}
+                    >
+                      {fam}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Real search count hint */}
               <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
                 <span>
                   Showing <strong>{filteredShades.length}</strong> of {availableShades.length} shades
                 </span>
                 <span className="font-mono text-indigo-400">
-                  Exact Code Source of Truth
+                  Exact Code Preserved on Order
                 </span>
               </div>
             </div>
@@ -210,13 +279,13 @@ export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = ({
               {filteredShades.length === 0 ? (
                 <div className="text-center py-12 space-y-3">
                   <Palette className="w-10 h-10 text-slate-600 mx-auto" />
-                  <h4 className="text-sm font-bold text-white">No Shade Found for "{searchQuery}"</h4>
+                  <h4 className="text-sm font-bold text-white">No Shade Found</h4>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                    Try searching by exact code number (e.g. <strong>3044</strong>) or clear your search to view all available shades.
+                    Try searching by code number (e.g. <strong>3044</strong>) or clear your filter to view all available shades.
                   </p>
                   <button
                     type="button"
-                    onClick={() => setSearchQuery('')}
+                    onClick={() => { setSearchQuery(''); setSelectedFamily('All'); }}
                     className="px-4 py-2 rounded-xl bg-slate-800 text-white text-xs font-bold hover:bg-slate-700 transition-colors"
                   >
                     View All Shades
@@ -246,7 +315,7 @@ export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = ({
                           </div>
                         )}
 
-                        {/* Real Shade Reference Image / Swatch */}
+                        {/* Real Shade Reference Swatch */}
                         <div className="relative w-full aspect-square rounded-xl overflow-hidden border border-slate-700/80 bg-slate-950 shadow-inner mb-2.5 flex items-center justify-center">
                           {shadeImg ? (
                             <img
@@ -296,10 +365,13 @@ export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = ({
               <div className="min-w-0">
                 {pendingShade ? (
                   <div className="flex items-center gap-2.5">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-400">Selected Shade:</span>
+                    <div
+                      className="w-6 h-6 rounded-lg border border-slate-700 shrink-0"
+                      style={{ backgroundColor: pendingShade.colorHex || '#CBD5E1' }}
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-slate-400">Selected:</span>
                         <span className="text-sm font-bold text-white truncate">{pendingShade.name}</span>
                         <span className="px-2 py-0.5 rounded bg-indigo-950 border border-indigo-500/40 text-indigo-300 text-[10px] font-mono font-bold">
                           Code: {pendingShade.code}
@@ -308,7 +380,7 @@ export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <span className="text-xs text-slate-400">Please choose a shade from the catalogue</span>
+                  <span className="text-xs text-slate-400">Please choose a shade from the collection</span>
                 )}
               </div>
 
@@ -336,5 +408,13 @@ export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = ({
         </div>
       )}
     </>
+  );
+};
+
+export const PaintShadeSelector: React.FC<PaintShadeSelectorProps> = (props) => {
+  return (
+    <SafePaintShadeBoundary>
+      <PaintShadeSelectorInternal {...props} />
+    </SafePaintShadeBoundary>
   );
 };

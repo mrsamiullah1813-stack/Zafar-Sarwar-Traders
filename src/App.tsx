@@ -896,6 +896,20 @@ export default function App() {
         config={fittingBuilderConfig}
         businessConfig={config}
         products={products}
+        onAddToCart={handleAddToCart}
+        onAddPackageToCart={(items) => {
+          items.forEach(item => {
+            handleAddToCart(
+              item.product,
+              item.quantity,
+              undefined,
+              undefined,
+              undefined,
+              item.selectedVariantName
+            );
+          });
+        }}
+        onViewProduct={(p) => setSelectedProduct(p)}
       />
 
       {/* Smart Tools Modal */}
