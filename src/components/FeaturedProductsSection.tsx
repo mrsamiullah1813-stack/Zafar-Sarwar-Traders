@@ -125,7 +125,8 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
     console.log(`[UI Diagnostics] FeaturedProductsSection: received ${safeCategories.length} categories, rendering ${safeCategories.filter(c => c && c.showOnHomepage !== false).length} category filter pills`);
   }, [safeCategories.length]);
 
-  const targetWhatsAppNumber = "923108002863";
+  const rawWhatsApp = config?.whatsapp || config?.phone || '923108002863';
+  const targetWhatsAppNumber = rawWhatsApp.replace(/[^0-9]/g, '');
 
   const handleWhatsAppProduct = (e: React.MouseEvent, product: Product) => {
     e.stopPropagation();
@@ -138,7 +139,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
     if (pricing.isVariantPricingActive && pricing.activeVariant) {
       variantNote = `\nDefault Option: ${pricing.activeVariant.name}`;
     }
-    const message = `Hello Zafar Sarwar Traders,\n\nI would like to order this item:\nProduct Name: ${product.name}${variantNote}\nSKU: ${pricing.activeVariant?.sku || product.sku || 'N/A'}\nPrice: ${priceText}\n\nPlease confirm availability and delivery timeframe.`;
+    const message = `Hello ${config?.name || 'Zafar Sarwar Traders'},\n\nI would like to order this item:\nProduct Name: ${product.name}${variantNote}\nSKU: ${pricing.activeVariant?.sku || product.sku || 'N/A'}\nPrice: ${priceText}\n\nPlease confirm availability and delivery timeframe.`;
     window.open(`https://wa.me/${targetWhatsAppNumber}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
@@ -243,8 +244,8 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
               </button>
               <button
                 onClick={(e) => {
-                  const targetWhatsApp = config?.phone || '923108002863';
-                  window.open(`https://wa.me/${targetWhatsApp.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Hello Zafar Sarwar Traders, I am looking for specific products in category: ' + (matchedCategoryObj ? matchedCategoryObj.name : activeFilter))}`, '_blank');
+                  const targetWhatsApp = (config?.whatsapp || config?.phone || '923108002863').replace(/[^0-9]/g, '');
+                  window.open(`https://wa.me/${targetWhatsApp}?text=${encodeURIComponent(`Hello ${config?.name || 'Zafar Sarwar Traders'}, I am looking for specific products in category: ` + (matchedCategoryObj ? matchedCategoryObj.name : activeFilter))}`, '_blank');
                 }}
                 className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-500 transition-all shadow-md flex items-center gap-1.5"
               >
@@ -282,6 +283,12 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                     <img
                       src={product.image || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80'}
                       alt={`${product.name} - Luxury Sanitaryware & Bathroom Fittings Pakistan | Zafar Sarwar Traders`}
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (!target.src.includes('unsplash.com/photo-1584622650111')) {
+                          target.src = 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80';
+                        }
+                      }}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />
 

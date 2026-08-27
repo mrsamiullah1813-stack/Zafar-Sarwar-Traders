@@ -69,7 +69,7 @@ import { Megaphone, Palette, HardHat } from 'lucide-react';
 import { AdminThemeManager } from './AdminThemeManager';
 import { AdminSmartToolsManager } from './AdminSmartToolsManager';
 import { Product, ProductCategory, ProductVideo, BusinessConfig, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, ThemeSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig } from '../types';
-import { getAdminPin, setAdminPin, loadPlannerConfig, savePlannerConfig, loadBuildMaterialEstimatorConfig, saveBuildMaterialEstimatorConfig, loadAiAssistantConfig, saveAiAssistantConfig, loadThemeSettings, saveThemeSettings, loadHeroSettings, saveHeroSettings, loadSmartToolsSettings, saveSmartToolsSettings, loadFittingBuilderConfig, saveFittingBuilderConfig, deleteProductFromStorage, saveStoredProducts, deleteCategoryFromStorage, deleteBrandFromStorage } from '../utils/storage';
+import { getAdminPin, setAdminPin, loadPlannerConfig, savePlannerConfig, loadBuildMaterialEstimatorConfig, saveBuildMaterialEstimatorConfig, loadAiAssistantConfig, saveAiAssistantConfig, loadThemeSettings, saveThemeSettings, loadHeroSettings, saveHeroSettings, loadSmartToolsSettings, saveSmartToolsSettings, loadFittingBuilderConfig, saveFittingBuilderConfig, deleteProductFromStorage, saveStoredProducts, saveStoredProductSingle, deleteCategoryFromStorage, saveStoredCategories, saveStoredCategorySingle, deleteBrandFromStorage, saveStoredBrands, saveStoredBrandSingle } from '../utils/storage';
 
 interface AdminDashboardProps {
   products: Product[];
@@ -216,6 +216,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Single Product Save
   const handleSaveSingleProduct = async (productToSave: Product) => {
+    const res = await saveStoredProductSingle(productToSave);
+    if (res && res.success === false) {
+      const errMsg = res.error || 'Database error saving product';
+      showToast(`Save failed: ${errMsg}`);
+      throw new Error(errMsg);
+    }
     const exists = products.some(p => p.id === productToSave.id);
     let updated: Product[];
     if (exists) {
@@ -223,15 +229,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } else {
       updated = [productToSave, ...products];
     }
-    const res = await onSaveProducts(updated);
-    if (res && res.success === false) {
-      const errMsg = res.error || 'Database error saving product';
-      showToast(`Save failed: ${errMsg}`);
-      throw new Error(errMsg);
+    if (onSaveProducts) {
+      // Update in-memory React state in parent App.tsx
+      onSaveProducts(updated);
     }
     setIsProductModalOpen(false);
     setEditingProduct(null);
-    showToast(`Product "${productToSave.name}" saved permanently!`);
+    showToast(`Product "${productToSave.name}" saved successfully!`);
   };
 
   // Product Delete
@@ -250,6 +254,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Category Save
   const handleSaveCategory = async (catToSave: ProductCategory) => {
+    const res = await saveStoredCategorySingle(catToSave);
+    if (res && res.success === false) {
+      const errMsg = res.error || 'Database error saving category';
+      showToast(`Save failed: ${errMsg}`);
+      throw new Error(errMsg);
+    }
     const exists = categories.some(c => c.id === catToSave.id);
     let updated: ProductCategory[];
     if (exists) {
@@ -257,11 +267,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } else {
       updated = [...categories, catToSave];
     }
-    const res = await onSaveCategories(updated);
-    if (res && res.success === false) {
-      const errMsg = res.error || 'Database error saving category';
-      showToast(`Save failed: ${errMsg}`);
-      throw new Error(errMsg);
+    if (onSaveCategories) {
+      onSaveCategories(updated);
     }
     showToast(exists ? `Category "${catToSave.name}" updated successfully!` : `New category "${catToSave.name}" created!`);
     setIsCategoryModalOpen(false);
@@ -270,6 +277,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Brand Management Handlers
   const handleSaveBrand = async (brandToSave: ProductBrand) => {
+    const res = await saveStoredBrandSingle(brandToSave);
+    if (res && res.success === false) {
+      const errMsg = res.error || 'Database error saving brand';
+      showToast(`Save failed: ${errMsg}`);
+      throw new Error(errMsg);
+    }
     const exists = brands.some(b => b.id === brandToSave.id);
     let updated: ProductBrand[];
     if (exists) {
@@ -277,11 +290,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } else {
       updated = [...brands, brandToSave];
     }
-    const res = await onSaveBrands(updated);
-    if (res && res.success === false) {
-      const errMsg = res.error || 'Database error saving brand';
-      showToast(`Save failed: ${errMsg}`);
-      throw new Error(errMsg);
+    if (onSaveBrands) {
+      onSaveBrands(updated);
     }
     setIsBrandModalOpen(false);
     setEditingBrand(null);
@@ -312,7 +322,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // Product Duplicate & Toggles
-  const handleDuplicateProduct = (prod: Product) => {
+  const handleDuplicateProduct = async (prod: Product) => {
     const copy: Product = {
       ...prod,
       id: `prod-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -320,13 +330,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       name: `${prod.name} (Copy)`,
       displayOrder: (prod.displayOrder || products.length) + 1
     };
+    await saveStoredProductSingle(copy);
     onSaveProducts([copy, ...products]);
     showToast(`Duplicated "${prod.name}" successfully!`);
   };
 
-  const handleToggleProductHidden = (prod: Product) => {
-    const updated = products.map(p => p.id === prod.id ? { ...p, isHidden: !p.isHidden } : p);
-    onSaveProducts(updated);
+  const handleToggleProductHidden = async (prod: Product) => {
+    const updatedItem = { ...prod, isHidden: !prod.isHidden };
+    const updatedList = products.map(p => p.id === prod.id ? updatedItem : p);
+    onSaveProducts(updatedList);
+    await saveStoredProductSingle(updatedItem);
     showToast(`Product "${prod.name}" ${!prod.isHidden ? 'Hidden' : 'Visible'}.`);
   };
 
@@ -466,21 +479,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // Quick Active Status Toggle
-  const handleToggleCategoryActive = (cat: ProductCategory) => {
+  const handleToggleCategoryActive = async (cat: ProductCategory) => {
+    const updatedCat = { ...cat, isActive: cat.isActive === false ? true : false };
     const updated = categories.map(c => 
-      c.id === cat.id ? { ...c, isActive: c.isActive === false ? true : false } : c
+      c.id === cat.id ? updatedCat : c
     );
     onSaveCategories(updated);
+    await saveStoredCategorySingle(updatedCat);
     const newStatus = cat.isActive === false ? 'Activated' : 'Deactivated';
     showToast(`Category "${cat.name}" ${newStatus}.`);
   };
 
   // Quick Featured Status Toggle
-  const handleToggleCategoryFeatured = (cat: ProductCategory) => {
+  const handleToggleCategoryFeatured = async (cat: ProductCategory) => {
+    const updatedCat = { ...cat, isFeatured: !cat.isFeatured };
     const updated = categories.map(c => 
-      c.id === cat.id ? { ...c, isFeatured: !c.isFeatured } : c
+      c.id === cat.id ? updatedCat : c
     );
     onSaveCategories(updated);
+    await saveStoredCategorySingle(updatedCat);
     showToast(`Category "${cat.name}" featured status toggled.`);
   };
 

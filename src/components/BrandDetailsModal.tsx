@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, MessageSquare, Sparkles, Check, ChevronRight, ShieldCheck, Tag } from 'lucide-react';
 import { ProductBrand, Product } from '../types';
+import { loadStoredConfig } from '../utils/storage';
 
 interface BrandDetailsModalProps {
   brand: ProductBrand | null;
@@ -19,10 +20,12 @@ export const BrandDetailsModal: React.FC<BrandDetailsModalProps> = ({
 }) => {
   if (!brand) return null;
 
-  const targetWhatsAppNumber = "923108002863";
+  const currentConfig = loadStoredConfig();
+  const rawWhatsApp = currentConfig?.whatsapp || currentConfig?.phone || '923108002863';
+  const targetWhatsAppNumber = rawWhatsApp.replace(/[^0-9]/g, '');
 
   const handleBrandWhatsAppInquiry = () => {
-    const message = `Hello,\n\nI am inquiring about products from ${brand.name}.\n\nPlease share availability, catalog, and wholesale rate sheet.`;
+    const message = `Hello ${currentConfig?.name || 'Zafar Sarwar Traders'},\n\nI am inquiring about products from ${brand.name}.\n\nPlease share availability, catalog, and wholesale rate sheet.`;
     const encoded = encodeURIComponent(message);
     window.open(`https://wa.me/${targetWhatsAppNumber}?text=${encoded}`, '_blank');
   };

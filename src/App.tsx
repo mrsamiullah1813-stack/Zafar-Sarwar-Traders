@@ -95,14 +95,8 @@ import { DeliveryCheckerModal } from './components/DeliveryCheckerModal';
 import { DeliveryAreasPage } from './components/DeliveryAreasPage';
 
 export default function App() {
-  const [showIntro, setShowIntro] = useState<boolean>(() => {
-    try {
-      const played = sessionStorage.getItem('zt_intro_played');
-      return played !== 'true';
-    } catch (e) {
-      return true;
-    }
-  });
+  // Showroom Cinematic presentation can be replayed on demand from footer
+  const [showIntro, setShowIntro] = useState<boolean>(false);
 
   const handleIntroComplete = () => {
     try {

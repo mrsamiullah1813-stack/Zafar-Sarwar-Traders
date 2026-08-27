@@ -2,7 +2,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // Safe static access to Vite environment variables (statically replaced by Vite during build)
 const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env || {} : {};
-const winEnv = typeof window !== 'undefined' ? ((window as any).__ENV__ || (window as any) || {}) : {};
+const winEnv = typeof window !== 'undefined' && (window as any).__ENV__ ? (window as any).__ENV__ : {};
 
 let rawUrl = (
   metaEnv.VITE_SUPABASE_URL ||
@@ -118,46 +118,12 @@ export function getSafeHost(url: string): string {
   }
 }
 
-/**
- * Diagnostic fetch interceptor that logs the exact request URL Host and Path
- * without exposing API keys, Authorization headers, or JWT tokens.
- */
-function createDiagnosticFetch() {
-  return async (input: RequestInfo | URL, init?: RequestInit) => {
-    const urlString = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
-    let safeHost = '';
-    let safePath = '';
-    let fullCleanUrl = '';
-
-    try {
-      const u = new URL(urlString);
-      safeHost = u.host;
-      safePath = u.pathname;
-      fullCleanUrl = `${u.protocol}//${u.host}${u.pathname}`;
-    } catch {
-      safeHost = 'unknown';
-      safePath = 'unknown';
-      fullCleanUrl = 'unknown';
-    }
-
-    const method = init?.method || (typeof input === 'object' && 'method' in input ? (input as Request).method : 'GET');
-    console.log(`[Supabase REST Request] ${method} ${fullCleanUrl} (Host: ${safeHost} | Path: ${safePath})`);
-
-    const res = await fetch(input, init);
-
-    if (!res.ok) {
-      try {
-        const cloned = res.clone();
-        const bodyText = await cloned.text();
-        console.warn(`[Supabase REST Response] HTTP ${res.status} ${res.statusText} | Target: ${fullCleanUrl} | Body: ${bodyText.slice(0, 200)}`);
-      } catch {}
-    } else {
-      console.log(`[Supabase REST Response] HTTP ${res.status} OK | Target: ${fullCleanUrl}`);
-    }
-
-    return res;
-  };
-}
+const safeGlobalFetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
+    return window.fetch(input, init);
+  }
+  return fetch(input, init);
+};
 
 function createSupabaseInstance(url: string, key: string, isReal: boolean): SupabaseClient {
   const strictBaseUrl = normalizeSupabaseUrl(url);
@@ -169,7 +135,7 @@ function createSupabaseInstance(url: string, key: string, isReal: boolean): Supa
         detectSessionInUrl: isReal,
       },
       global: {
-        fetch: createDiagnosticFetch(),
+        fetch: safeGlobalFetch,
       },
     });
   } catch (e) {
@@ -179,6 +145,9 @@ function createSupabaseInstance(url: string, key: string, isReal: boolean): Supa
         persistSession: false,
         autoRefreshToken: false,
         detectSessionInUrl: false,
+      },
+      global: {
+        fetch: safeGlobalFetch,
       },
     });
   }
@@ -192,17 +161,27 @@ if (isSupabaseConfigured) {
   console.warn(`[Supabase Direct SDK] Initialization PENDING | Base URL: ${rawUrl || 'None'} | Key Present: ${Boolean(rawKey)}`);
 }
 
-// Proxied supabase client that dynamically routes all calls to activeClient
+// Proxied supabase client that dynamically routes all calls to activeClient without leaking Window receiver
 export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
-  get(_target, prop, receiver) {
-    const value = Reflect.get(activeClient, prop, receiver);
+  get(_target, prop) {
+    if (prop === 'then') return undefined;
+    if (!activeClient) return undefined;
+    const value = (activeClient as any)[prop];
     if (typeof value === 'function') {
       return value.bind(activeClient);
     }
     return value;
   },
-  set(_target, prop, value, receiver) {
-    return Reflect.set(activeClient, prop, value, receiver);
+  set(_target, prop, value) {
+    if (activeClient) {
+      try {
+        (activeClient as any)[prop] = value;
+      } catch {}
+    }
+    return true;
+  },
+  has(_target, prop) {
+    return Boolean(activeClient && prop in activeClient);
   }
 });
 

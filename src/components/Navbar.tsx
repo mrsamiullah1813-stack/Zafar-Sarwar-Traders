@@ -87,7 +87,9 @@ export const Navbar: React.FC<NavbarProps> = ({
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const targetWhatsAppNumber = "923108002863";
+  const targetWhatsAppNumber = (config?.whatsapp || config?.phone || '923108002863').replace(/[^0-9]/g, '');
+  const displayPhone = config?.phone || config?.whatsapp || '+92 310 8002863';
+  const telHref = 'tel:' + (config?.phone || config?.whatsapp || '+923108002863').replace(/\s+/g, '');
 
   const handleWhatsAppClick = () => {
     const text = encodeURIComponent(`Hello ${config.name}, I would like to inquire about sanitaryware, tiles and pricing.`);
@@ -204,11 +206,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
 
             <a
-              href={`tel:+923108002863`}
+              href={telHref}
               className="flex items-center gap-1 text-white font-bold hover:text-blue-400 transition-colors"
             >
               <Phone className="w-3 h-3 text-blue-400" />
-              <span>+92 310 8002863</span>
+              <span>{displayPhone}</span>
             </a>
           </div>
 

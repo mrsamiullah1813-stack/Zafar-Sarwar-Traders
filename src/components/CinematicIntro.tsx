@@ -39,8 +39,27 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({ onComplete }) =>
           initial={{ opacity: 1 }}
           exit={{ opacity: 0, scale: 1.04, filter: 'blur(8px)' }}
           transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-          className="fixed inset-0 z-[9999] bg-slate-950 flex flex-col items-center justify-center overflow-hidden select-none pointer-events-auto"
+          onClick={() => {
+            setIsExiting(true);
+            setTimeout(onComplete, 100);
+          }}
+          className="fixed inset-0 z-[9999] bg-slate-950 flex flex-col items-center justify-center overflow-hidden select-none cursor-pointer"
         >
+          {/* Skip / Enter Showroom Button in top right */}
+          <div className="absolute top-6 right-6 z-20">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExiting(true);
+                setTimeout(onComplete, 50);
+              }}
+              className="px-4 py-2 rounded-full bg-slate-900/80 hover:bg-slate-800 text-amber-300 hover:text-white border border-amber-500/30 text-xs font-bold tracking-wider uppercase transition-all backdrop-blur-md shadow-lg flex items-center gap-2 cursor-pointer"
+            >
+              <span>Skip Intro</span>
+              <span>&rarr;</span>
+            </button>
+          </div>
           {/* Ambient Showroom Radial Lighting */}
           <div className="absolute inset-0 pointer-events-none">
             {/* Subtle overhead showroom spotlight beam */}

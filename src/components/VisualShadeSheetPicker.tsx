@@ -57,19 +57,25 @@ export const VisualShadeSheetPicker: React.FC<VisualShadeSheetPickerProps> = ({
     setImageError(false);
 
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    if (!sheetUrl.startsWith('data:') && !sheetUrl.startsWith('blob:')) {
+      img.crossOrigin = 'anonymous';
+    }
     img.onload = () => {
       imgRef.current = img;
       setImageLoaded(true);
 
       // Render to internal sampling canvas
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth || img.width;
-      canvas.height = img.naturalHeight || img.height;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (ctx) {
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvasRef.current = canvas;
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvasRef.current = canvas;
+        }
+      } catch (cErr) {
+        console.warn('Canvas offscreen render warning:', cErr);
       }
     };
     img.onerror = () => {

@@ -40,12 +40,26 @@ export class ErrorBoundary extends Component<Props, State> {
                 {this.state.error.toString()}
               </pre>
             )}
-            <button
-              onClick={() => window.location.reload()}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 px-4 rounded-xl transition-all"
-            >
-              Reload Page
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => window.location.reload()}
+                className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 px-4 rounded-xl transition-all shadow-lg cursor-pointer"
+              >
+                Reload Store
+              </button>
+              <button
+                onClick={() => {
+                  try {
+                    sessionStorage.clear();
+                    localStorage.removeItem('zt_intro_played');
+                  } catch (e) {}
+                  window.location.reload();
+                }}
+                className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold py-2.5 px-4 rounded-xl transition-all cursor-pointer text-xs"
+              >
+                Clear Temp State
+              </button>
+            </div>
           </div>
         </div>
       );

@@ -108,7 +108,7 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
 
           const processedDataUrl = canvas.toDataURL('image/jpeg', 0.88);
           // Upload to Supabase storage bucket
-          uploadMediaToSupabase(processedDataUrl, 'categories')
+          uploadMediaToSupabase(processedDataUrl, 'project media')
             .then(res => {
               if (res && res.url) {
                 onChange(res.url);

@@ -1,32 +1,37 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      (function() {
+        try {
+          if (typeof window !== 'undefined') {
+            var origFetch = window.fetch ? window.fetch.bind(window) : undefined;
+            if (origFetch) {
+              try {
+                window.fetch = origFetch;
+              } catch (e) {
+                var currentFetch = origFetch;
+                try {
+                  Object.defineProperty(window, 'fetch', {
+                    get: function() { return currentFetch; },
+                    set: function(fn) { currentFetch = typeof fn === 'function' ? fn : origFetch; },
+                    configurable: true,
+                    enumerable: true
+                  });
+                } catch (err) {}
+              }
+            }
+          }
+        } catch (ignored) {}
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="google-site-verification" content="MqPLHZ6Yl_-C98YcbSTbx1DWnURrQQfInwn8T_2fivo" />
     <link rel="icon" type="image/png" href="/favicon.png.png">
     <title>Zafar Sarwar Traders | Luxury Sanitaryware & Building Materials</title>
-    <script>
-      (function() {
-        try {
-          let currentFetch = window.fetch;
-          Object.defineProperty(window, 'fetch', {
-            get() {
-              return currentFetch;
-            },
-            set(newFetch) {
-              currentFetch = newFetch;
-            },
-            configurable: true,
-            enumerable: true
-          });
-        } catch (e) {
-          // Ignore if redefine fails
-        }
-      })();
-    </script>
   </head>
-  <body>
+  <body class="bg-slate-950 text-slate-100 antialiased min-h-screen">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -40,47 +40,47 @@ export const MultiImageUploader: React.FC<MultiImageUploaderProps> = ({
     if (!filesArray.length) return;
 
     setErrorMsg(null);
-    setUploadProgress(10);
+    setUploadProgress(15);
 
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/avif'];
     const maxSize = 20 * 1024 * 1024; // 20 MB
 
-    const processedDataUrls: string[] = [];
-
-    for (let i = 0; i < filesArray.length; i++) {
-      const file = filesArray[i];
-
+    let completed = 0;
+    const uploadTaskPromises = filesArray.map(async (file) => {
       if (file.size > maxSize) {
         setErrorMsg(`File "${file.name}" exceeds 20MB limit.`);
-        continue;
+        return null;
       }
 
       if (!validTypes.includes(file.type) && !file.type.startsWith('image/')) {
         setErrorMsg(`Unsupported format for "${file.name}". Allowed: JPG, JPEG, PNG, WEBP, AVIF.`);
-        continue;
+        return null;
       }
-
-      setUploadProgress(Math.round(((i + 1) / filesArray.length) * 70));
 
       try {
         const dataUrl = await compressAndResizeImage(file);
         // Upload to Supabase Storage bucket
-        const uploadRes = await uploadMediaToSupabase(dataUrl, 'product-media');
+        const uploadRes = await uploadMediaToSupabase(dataUrl, 'project media');
+        completed++;
+        setUploadProgress(Math.min(95, Math.round(15 + (completed / filesArray.length) * 80)));
         if (uploadRes && uploadRes.url) {
-          processedDataUrls.push(uploadRes.url);
-        } else {
-          processedDataUrls.push(dataUrl);
+          return uploadRes.url;
         }
+        return dataUrl;
       } catch (err) {
         console.error('Failed to compress/upload image:', err);
+        return null;
       }
-    }
+    });
+
+    const results = await Promise.all(uploadTaskPromises);
+    const validUploadedUrls = results.filter((url): url is string => Boolean(url));
 
     setUploadProgress(100);
-    setTimeout(() => setUploadProgress(null), 400);
+    setTimeout(() => setUploadProgress(null), 300);
 
-    if (processedDataUrls.length > 0) {
-      onChange([...images, ...processedDataUrls].slice(0, maxFiles));
+    if (validUploadedUrls.length > 0) {
+      onChange([...images, ...validUploadedUrls].slice(0, maxFiles));
     }
   };
 

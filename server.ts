@@ -73,6 +73,25 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   // =========================================================
+  // LOCAL UPLOADS STATIC DIRECTORY
+  // =========================================================
+  const UPLOADS_DIR = path.join(process.cwd(), "uploads");
+  const DIST_UPLOADS_DIR = path.join(process.cwd(), "dist", "uploads");
+  const PUBLIC_UPLOADS_DIR = path.join(process.cwd(), "public", "uploads");
+
+  try {
+    const fsSync = await import("fs");
+    if (!fsSync.existsSync(UPLOADS_DIR)) fsSync.mkdirSync(UPLOADS_DIR, { recursive: true });
+    if (!fsSync.existsSync(DIST_UPLOADS_DIR)) fsSync.mkdirSync(DIST_UPLOADS_DIR, { recursive: true });
+    if (!fsSync.existsSync(PUBLIC_UPLOADS_DIR)) fsSync.mkdirSync(PUBLIC_UPLOADS_DIR, { recursive: true });
+  } catch (err) {
+    console.warn("Uploads folder initialization notice:", err);
+  }
+
+  app.use("/uploads", express.static(UPLOADS_DIR));
+  app.use("/uploads", express.static(PUBLIC_UPLOADS_DIR));
+
+  // =========================================================
   // PERSISTENT CMS DATA BACKEND DISK & MEMORY STORE
   // =========================================================
   const fs = await import("fs/promises");
@@ -89,17 +108,19 @@ async function startServer() {
     console.log("ℹ️ Initializing fresh cms_store_data.json on first save.");
   }
 
-  let saveQueuePromise: Promise<void> = Promise.resolve();
-
+  let saveTimer: NodeJS.Timeout | null = null;
   const persistDataStoreToDisk = () => {
-    saveQueuePromise = saveQueuePromise.then(async () => {
-      try {
-        await fs.writeFile(CMS_FILE_PATH, JSON.stringify(cmsDataStore, null, 2), "utf-8");
-      } catch (err) {
-        console.error("Error persisting cms_store_data.json to disk:", err);
-      }
+    if (saveTimer) clearTimeout(saveTimer);
+    return new Promise<void>((resolve) => {
+      saveTimer = setTimeout(async () => {
+        try {
+          await fs.writeFile(CMS_FILE_PATH, JSON.stringify(cmsDataStore, null, 2), "utf-8");
+        } catch (err) {
+          console.error("Error persisting cms_store_data.json to disk:", err);
+        }
+        resolve();
+      }, 200);
     });
-    return saveQueuePromise;
   };
 
   // Health check endpoint
@@ -201,13 +222,25 @@ async function startServer() {
     return next();
   };
 
-  // Robust Supabase Upsert Helper with automatic column negotiation and foreign-key healing
+  // Cache of known missing/invalid columns per table to eliminate retry rounds on future requests
+  const knownInvalidColumnsByTable = new Map<string, Set<string>>();
+
+  // Robust Supabase Upsert Helper with automatic column negotiation, in-memory column caching, and foreign-key healing
   async function robustUpsert(table: string, payloads: any[], options: { onConflict?: string } = { onConflict: "id" }): Promise<{ success: boolean; data?: any; error?: string }> {
     if (!dbClient) return { success: false, error: "Database client not configured on server" };
     if (!payloads || payloads.length === 0) return { success: true };
 
-    let currentPayloads = payloads.map(p => ({ ...p }));
-    const maxRetries = 35;
+    // Strip any columns known to be missing from previous schema negotiations
+    const badCols = knownInvalidColumnsByTable.get(table);
+    let currentPayloads = payloads.map(p => {
+      const copy = { ...p };
+      if (badCols && badCols.size > 0) {
+        badCols.forEach(col => delete copy[col]);
+      }
+      return copy;
+    });
+
+    const maxRetries = 6;
     let attempts = 0;
     let lastError: any = null;
 
@@ -216,7 +249,7 @@ async function startServer() {
       const { data, error } = await dbClient.from(table).upsert(currentPayloads, options);
       if (!error) {
         if (attempts > 1) {
-          console.log(`[Robust DB Upsert] Table "${table}": Successfully saved after ${attempts} adaptation attempts.`);
+          console.log(`[Robust DB Upsert] Table "${table}": Successfully saved after ${attempts} adaptation attempt(s).`);
         }
         return { success: true, data };
       }
@@ -225,8 +258,6 @@ async function startServer() {
       const errMsg = String(error.message || "");
 
       // 1. Missing Column Error (PostgREST schema cache or relation missing column)
-      // e.g.: "Could not find the 'sale_enabled' column of 'products' in the schema cache"
-      // e.g.: "column "sale_enabled" of relation "products" does not exist"
       const colMatch =
         errMsg.match(/Could not find the '([^']+)' column/i) ||
         errMsg.match(/Could not find the "([^"]+)" column/i) ||
@@ -241,7 +272,11 @@ async function startServer() {
 
       if (colMatch && colMatch[1]) {
         const badCol = colMatch[1];
-        console.warn(`[Robust DB Upsert] Table "${table}": Column "${badCol}" not found in schema cache. Stripping column and retrying (attempt ${attempts})...`);
+        if (!knownInvalidColumnsByTable.has(table)) {
+          knownInvalidColumnsByTable.set(table, new Set());
+        }
+        knownInvalidColumnsByTable.get(table)!.add(badCol);
+        console.warn(`[Robust DB Upsert] Table "${table}": Column "${badCol}" not found in schema cache. Cached and stripping column (attempt ${attempts})...`);
         currentPayloads = currentPayloads.map(item => {
           const copy = { ...item };
           delete copy[badCol];
@@ -297,25 +332,9 @@ async function startServer() {
   app.post("/api/db/categories/upsert", requireAdminAuth, async (req, res) => {
     if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
-      const { categories } = req.body;
-      const list = Array.isArray(categories) ? categories : (req.body.category ? [req.body.category] : []);
+      const { categories, category } = req.body;
+      const list = Array.isArray(categories) ? categories : (category ? [category] : (req.body.id ? [req.body] : []));
       if (list.length === 0) return res.json({ success: true });
-
-      // Pre-fetch existing category slugs and IDs to resolve conflicts gracefully
-      let existingRows: { id: any; slug: string }[] = [];
-      try {
-        const { data } = await dbClient.from("categories").select("id, slug");
-        if (Array.isArray(data)) existingRows = data;
-      } catch (fetchErr) {
-        console.warn("Could not pre-fetch existing categories:", fetchErr);
-      }
-
-      const existingSlugToIdMap = new Map<string, string>();
-      existingRows.forEach(r => {
-        if (r.slug && r.id) {
-          existingSlugToIdMap.set(String(r.slug).toLowerCase().trim(), String(r.id));
-        }
-      });
 
       const usedSlugs = new Set<string>();
 
@@ -328,18 +347,8 @@ async function startServer() {
         if (!rawSlug) rawSlug = `category-${idx + 1}`;
 
         let finalSlug = rawSlug;
-        const ownerId = existingSlugToIdMap.get(finalSlug);
-        // If an existing DB record has this slug with a DIFFERENT id, make slug unique
-        if (ownerId && ownerId !== catId) {
-          const suffix = catId.replace(/[^a-z0-9]/gi, "").slice(-4) || String(idx + 1);
-          finalSlug = `${rawSlug}-${suffix}`;
-        }
-
-        // Deduplicate within the current batch
-        let dedupCounter = 1;
-        while (usedSlugs.has(finalSlug)) {
-          dedupCounter++;
-          finalSlug = `${rawSlug}-${dedupCounter}`;
+        if (usedSlugs.has(finalSlug)) {
+          finalSlug = `${rawSlug}-${idx + 1}`;
         }
         usedSlugs.add(finalSlug);
 
@@ -395,24 +404,9 @@ async function startServer() {
   app.post("/api/db/brands/upsert", requireAdminAuth, async (req, res) => {
     if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
-      const { brands } = req.body;
-      const list = Array.isArray(brands) ? brands : (req.body.brand ? [req.body.brand] : []);
+      const { brands, brand } = req.body;
+      const list = Array.isArray(brands) ? brands : (brand ? [brand] : (req.body.id ? [req.body] : []));
       if (list.length === 0) return res.json({ success: true });
-
-      let existingRows: { id: any; slug: string }[] = [];
-      try {
-        const { data } = await dbClient.from("brands").select("id, slug");
-        if (Array.isArray(data)) existingRows = data;
-      } catch {
-        // ignore
-      }
-
-      const existingSlugToIdMap = new Map<string, string>();
-      existingRows.forEach(r => {
-        if (r.slug && r.id) {
-          existingSlugToIdMap.set(String(r.slug).toLowerCase().trim(), String(r.id));
-        }
-      });
 
       const usedSlugs = new Set<string>();
 
@@ -425,16 +419,8 @@ async function startServer() {
         if (!rawSlug) rawSlug = `brand-${idx + 1}`;
 
         let finalSlug = rawSlug;
-        const ownerId = existingSlugToIdMap.get(finalSlug);
-        if (ownerId && ownerId !== brandId) {
-          const suffix = brandId.replace(/[^a-z0-9]/gi, "").slice(-4) || String(idx + 1);
-          finalSlug = `${rawSlug}-${suffix}`;
-        }
-
-        let dedupCounter = 1;
-        while (usedSlugs.has(finalSlug)) {
-          dedupCounter++;
-          finalSlug = `${rawSlug}-${dedupCounter}`;
+        if (usedSlugs.has(finalSlug)) {
+          finalSlug = `${rawSlug}-${idx + 1}`;
         }
         usedSlugs.add(finalSlug);
 
@@ -443,6 +429,7 @@ async function startServer() {
           name: b.name || "Brand",
           slug: finalSlug,
           logo: b.logo || "",
+          banner_image: b.bannerImage || null,
           description: b.description || "",
           official_badge: b.officialBadge || null,
           featured: Boolean(b.isFeatured),
@@ -918,86 +905,6 @@ async function startServer() {
   });
 
   // =========================================================
-  // STORAGE MEDIA UPLOAD PROXY (SUPABASE SERVICE ROLE)
-  // =========================================================
-  app.post("/api/db/upload", async (req, res) => {
-    try {
-      const { fileData, fileName, bucketName = "product-media", mimeType = "image/jpeg" } = req.body;
-      if (!fileData) {
-        return res.status(400).json({ success: false, error: "fileData is required" });
-      }
-
-      const safeName = fileName || `upload-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.jpg`;
-
-      // 1. Try Supabase Storage via Service Role if configured
-      if (dbClient) {
-        try {
-          let buffer: Buffer;
-          if (fileData.startsWith("data:")) {
-            const base64Content = fileData.split(",")[1];
-            buffer = Buffer.from(base64Content, "base64");
-          } else {
-            buffer = Buffer.from(fileData, "base64");
-          }
-
-          const candidateBuckets = Array.from(new Set([bucketName, "product-media", "products", "categories", "gallery", "media", "public"]));
-          for (const b of candidateBuckets) {
-            try {
-              const { error: uploadErr } = await dbClient.storage.from(b).upload(`uploads/${safeName}`, buffer, {
-                contentType: mimeType,
-                upsert: true
-              });
-
-              if (!uploadErr) {
-                const { data: publicUrlData } = dbClient.storage.from(b).getPublicUrl(`uploads/${safeName}`);
-                if (publicUrlData?.publicUrl) {
-                  return res.json({ success: true, url: publicUrlData.publicUrl });
-                }
-              }
-            } catch (bErr) {
-              // Try next bucket
-            }
-          }
-        } catch (storageErr) {
-          console.warn("[Server Storage Proxy] Supabase bucket upload attempt failed:", storageErr);
-        }
-      }
-
-      // 2. Safe Fallback: Save to static public uploads folder
-      try {
-        const fs = await import("fs/promises");
-        const uploadsDir = path.join(process.cwd(), "public", "uploads");
-        await fs.mkdir(uploadsDir, { recursive: true });
-        
-        let buffer: Buffer;
-        if (fileData.startsWith("data:")) {
-          const base64Content = fileData.split(",")[1];
-          buffer = Buffer.from(base64Content, "base64");
-        } else {
-          buffer = Buffer.from(fileData, "base64");
-        }
-
-        const filePath = path.join(uploadsDir, safeName);
-        await fs.writeFile(filePath, buffer);
-        const localUrl = `/uploads/${safeName}`;
-        return res.json({ success: true, url: localUrl });
-      } catch (fsErr) {
-        console.warn("[Server Storage Proxy] Local filesystem write fallback error:", fsErr);
-      }
-
-      // 3. Fallback: Return processed data URL
-      if (fileData.startsWith("data:")) {
-        return res.json({ success: true, url: fileData });
-      }
-
-      return res.json({ success: true, url: `data:${mimeType};base64,${fileData}` });
-    } catch (err: any) {
-      console.error("[Server Storage Proxy] Upload handler error:", err);
-      return res.status(500).json({ success: false, error: err?.message || String(err) });
-    }
-  });
-
-  // =========================================================
   // SMART FITTING BUILDER CONFIG PROXY (SUPABASE)
   // =========================================================
   app.get("/api/db/fitting-builder", async (req, res) => {
@@ -1069,14 +976,24 @@ async function startServer() {
   const getCachedDatabaseCatalogForAi = async (storeContext: any = {}) => {
     const now = Date.now();
     if (aiCatalogCache && (now - aiCatalogCache.timestamp) < CACHE_TTL_MS) {
+      const mergedKnowledgeMap = new Map<string, any>();
+      (aiCatalogCache.aiKnowledge || []).forEach((k: any) => {
+        const key = String(k.id || k.title || '').trim().toLowerCase();
+        if (key) mergedKnowledgeMap.set(key, k);
+      });
+      (storeContext.aiAssistantConfig?.customKnowledge || []).forEach((k: any) => {
+        const key = String(k.id || k.title || '').trim().toLowerCase();
+        if (key && !mergedKnowledgeMap.has(key)) mergedKnowledgeMap.set(key, k);
+      });
+
       return {
-        products: storeContext.products?.length ? storeContext.products : aiCatalogCache.products,
-        categories: storeContext.categories?.length ? storeContext.categories : aiCatalogCache.categories,
-        brands: storeContext.brands?.length ? storeContext.brands : aiCatalogCache.brands,
-        deliveryCities: storeContext.cities?.length ? storeContext.cities : aiCatalogCache.deliveryCities,
-        aiKnowledge: storeContext.aiAssistantConfig?.customKnowledge?.length ? storeContext.aiAssistantConfig.customKnowledge : aiCatalogCache.aiKnowledge,
-        aiConfig: storeContext.aiAssistantConfig || aiCatalogCache.aiConfig,
-        businessConfig: storeContext.config || aiCatalogCache.businessConfig
+        products: aiCatalogCache.products?.length ? aiCatalogCache.products : (storeContext.products || []),
+        categories: aiCatalogCache.categories?.length ? aiCatalogCache.categories : (storeContext.categories || []),
+        brands: aiCatalogCache.brands?.length ? aiCatalogCache.brands : (storeContext.brands || []),
+        deliveryCities: aiCatalogCache.deliveryCities?.length ? aiCatalogCache.deliveryCities : (storeContext.cities || []),
+        aiKnowledge: Array.from(mergedKnowledgeMap.values()),
+        aiConfig: aiCatalogCache.aiConfig || storeContext.aiAssistantConfig || {},
+        businessConfig: aiCatalogCache.businessConfig || storeContext.config || {}
       };
     }
 
@@ -1358,6 +1275,132 @@ async function startServer() {
 
       return res.json({ success: true, id, isEnabled });
     } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // =========================================================
+  // STORAGE MEDIA UPLOAD BACKEND PROXY & PERSISTENCE
+  // =========================================================
+  app.post("/api/db/upload", async (req, res) => {
+    try {
+      const { fileData, fileName, bucketName = "product-media", mimeType = "image/jpeg" } = req.body;
+      if (!fileData) {
+        return res.status(400).json({ success: false, error: "No fileData payload provided" });
+      }
+
+      // 1. Process Base64 buffer
+      let buffer: Buffer;
+      let ext = "jpg";
+      if (typeof fileData === "string" && fileData.startsWith("data:")) {
+        const parts = fileData.split(",");
+        const matchMime = parts[0].match(/:(.*?);/);
+        if (matchMime) ext = matchMime[1].split("/")[1] || "jpg";
+        buffer = Buffer.from(parts[1], "base64");
+      } else if (typeof fileData === "string") {
+        buffer = Buffer.from(fileData, "base64");
+      } else {
+        buffer = Buffer.from(fileData);
+      }
+
+      // Safe clean file name
+      const rawExt = (fileName && fileName.includes(".")) ? fileName.split(".").pop() : ext;
+      const cleanExt = (rawExt || "jpg").replace(/[^a-zA-Z0-9]/g, "");
+      const cleanBase = (fileName ? fileName.replace(/\.[^/.]+$/, "") : "media").replace(/[^a-zA-Z0-9_-]/g, "_");
+      const finalFileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}-${cleanBase}.${cleanExt}`;
+
+      // 2. Save directly to local disk uploads folders for 100% reliable serving
+      const localFilePath = path.join(UPLOADS_DIR, finalFileName);
+      const publicFilePath = path.join(PUBLIC_UPLOADS_DIR, finalFileName);
+      const distFilePath = path.join(DIST_UPLOADS_DIR, finalFileName);
+
+      await fs.writeFile(localFilePath, buffer);
+      try {
+        await fs.writeFile(publicFilePath, buffer);
+        await fs.writeFile(distFilePath, buffer);
+      } catch (e) {}
+
+      const localPublicUrl = `/uploads/${finalFileName}`;
+
+      // 3. If Supabase DB Client is active, also upload to Supabase Storage bucket
+      if (dbClient) {
+        try {
+          let availableBuckets: string[] = [];
+          try {
+            const { data: bList, error: bListErr } = await dbClient.storage.listBuckets();
+            if (!bListErr && bList && bList.length > 0) {
+              availableBuckets = bList.map((b: any) => b.name);
+            }
+          } catch (listErr) {
+            console.warn("Storage listBuckets query notice:", listErr);
+          }
+
+          const targetBuckets = Array.from(new Set([
+            bucketName,
+            bucketName.replace(/-/g, " "),
+            bucketName.replace(/\s+/g, "-"),
+            "project media",
+            "project-media",
+            "brand assets",
+            "brand-assets",
+            "hero media",
+            "hero-media",
+            "product-media",
+            "products",
+            "categories",
+            "gallery",
+            "media",
+            "public",
+            ...availableBuckets
+          ]));
+
+          const storagePath = `uploads/${finalFileName}`;
+
+          for (const b of targetBuckets) {
+            try {
+              const { error: uploadError } = await dbClient.storage
+                .from(b)
+                .upload(storagePath, buffer, {
+                  contentType: mimeType,
+                  upsert: true
+                });
+
+              if (!uploadError) {
+                const { data: publicData } = dbClient.storage.from(b).getPublicUrl(storagePath);
+                if (publicData?.publicUrl) {
+                  console.log(`✅ [Supabase Upload] Successfully stored in bucket "${b}":`, publicData.publicUrl);
+                  return res.json({
+                    success: true,
+                    url: publicData.publicUrl,
+                    localUrl: localPublicUrl,
+                    fileName: finalFileName,
+                    bucket: b
+                  });
+                }
+              }
+            } catch (bErr) {
+              // Try next candidate bucket
+            }
+          }
+        } catch (supabaseUploadErr) {
+          console.warn("Supabase Storage upload warning:", supabaseUploadErr);
+        }
+      }
+
+      // Safe persistent fallback: If Supabase Storage was not reachable, return permanent base64 data URI
+      // (ensures images never break or 404 when container filesystem restarts)
+      const dataUriFallback = typeof fileData === "string" && fileData.startsWith("data:")
+        ? fileData
+        : `data:${mimeType};base64,${buffer.toString("base64")}`;
+
+      return res.json({
+        success: true,
+        url: dataUriFallback,
+        localUrl: localPublicUrl,
+        fileName: finalFileName
+      });
+    } catch (err: any) {
+      console.error("Storage upload server error:", err);
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
   });

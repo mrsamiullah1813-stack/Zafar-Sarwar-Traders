@@ -24,6 +24,7 @@ import {
 import { Product, ProductCategory, ProductBrand, HeroSettings } from '../types';
 import { ProductSaleBadge } from './ProductSaleBadge';
 import { getProductPricingDetails } from '../utils/pricingUtils';
+import { loadStoredConfig } from '../utils/storage';
 
 interface HeroSectionProps {
   products: Product[];
@@ -202,14 +203,16 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
   const handleWhatsAppOrder = (e: React.MouseEvent, prod: Product) => {
     e.stopPropagation();
-    const phone = '923108002863';
+    const currentConfig = loadStoredConfig();
+    const rawPhone = currentConfig?.whatsapp || currentConfig?.phone || '923108002863';
+    const phone = rawPhone.replace(/[^0-9]/g, '');
     const pricing = getProductPricingDetails(prod);
     let priceText = pricing.effectivePriceString;
     if (pricing.isSaleActive && pricing.discountPercentage > 0) {
       priceText = `${pricing.formattedSalePrice} (Special Sale: ${pricing.discountPercentage}% OFF — Regular: ${pricing.formattedRegularPrice})`;
     }
     const text = encodeURIComponent(
-      `Assalam-o-Alaikum! I am interested in purchasing from Zafar Sarwar Traders:\n\n*Product:* ${prod.name}\n*Price:* ${priceText}\n*SKU:* ${prod.sku || prod.id}\n\nPlease share availability and order confirmation.`
+      `Assalam-o-Alaikum! I am interested in purchasing from ${currentConfig?.name || 'Zafar Sarwar Traders'}:\n\n*Product:* ${prod.name}\n*Price:* ${priceText}\n*SKU:* ${prod.sku || prod.id}\n\nPlease share availability and order confirmation.`
     );
     window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
   };

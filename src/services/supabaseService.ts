@@ -210,6 +210,15 @@ export function mapDbProductToProduct(row: any): Product {
     ''
   );
 
+  const primaryImage = row.main_image || row.image || (Array.isArray(row.gallery_images) && row.gallery_images[0]) || (Array.isArray(row.images) && row.images[0]) || (Array.isArray(row.gallery) && row.gallery[0]) || '';
+  const galleryImagesList = Array.isArray(row.gallery_images) && row.gallery_images.length > 0 
+    ? row.gallery_images 
+    : (Array.isArray(row.images) && row.images.length > 0 
+      ? row.images 
+      : (Array.isArray(row.gallery) && row.gallery.length > 0 
+        ? row.gallery 
+        : (primaryImage ? [primaryImage] : [])));
+
   return {
     id: String(row.id),
     sku: row.sku || '',
@@ -218,8 +227,8 @@ export function mapDbProductToProduct(row: any): Product {
     categoryId: row.category_id || row.categoryId || rawSpecs._category_id || '',
     brand: row.brand_name || row.brand || rawSpecs._brand_name || '',
     brandId: row.brand_id || row.brandId || rawSpecs._brand_id || '',
-    image: row.main_image || row.image || '',
-    images: Array.isArray(row.gallery_images) ? row.gallery_images : (Array.isArray(row.images) ? row.images : (Array.isArray(row.gallery) ? row.gallery : [])),
+    image: primaryImage,
+    images: galleryImagesList,
     description: row.description || '',
     shortDescription: row.short_description || row.shortDescription || '',
     price: resolvedPrice,
@@ -1651,7 +1660,32 @@ export async function uploadMediaToSupabase(
         }
 
         const filePath = `uploads/${fileName}`;
-        const candidateBuckets = Array.from(new Set([bucketName, 'product-media', 'products', 'categories', 'gallery', 'media', 'brand-assets', 'hero-media', 'public']));
+        let availableBuckets: string[] = [];
+        try {
+          const { data: bList } = await supabase.storage.listBuckets();
+          if (bList && bList.length > 0) {
+            availableBuckets = bList.map((b: any) => b.name);
+          }
+        } catch {}
+
+        const candidateBuckets = Array.from(new Set([
+          bucketName,
+          bucketName.replace(/-/g, ' '),
+          bucketName.replace(/\s+/g, '-'),
+          'project media',
+          'project-media',
+          'brand assets',
+          'brand-assets',
+          'hero media',
+          'hero-media',
+          'product-media',
+          'products',
+          'categories',
+          'gallery',
+          'media',
+          'public',
+          ...availableBuckets
+        ]));
 
         for (const b of candidateBuckets) {
           try {

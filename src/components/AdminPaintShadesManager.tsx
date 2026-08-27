@@ -237,7 +237,7 @@ export const AdminPaintShadesManager: React.FC<AdminPaintShadesManagerProps> = (
         });
 
         // 2. Upload to Supabase/server in background
-        const res = await uploadMediaToSupabase(file, 'product-media', `shade-ref-${shadeId}-${Date.now()}`);
+        const res = await uploadMediaToSupabase(file, 'project media', `shade-ref-${shadeId}-${Date.now()}`);
         if (res?.url && res.url !== previewUrl) {
           updateShade(shadeId, {
             referenceImage: res.url,
@@ -305,7 +305,7 @@ export const AdminPaintShadesManager: React.FC<AdminPaintShadesManagerProps> = (
 
       // 2. Persist to storage / server backend proxy in parallel
       try {
-        const res = await uploadMediaToSupabase(file, 'product-media', `shade-sheet-${Date.now()}`);
+        const res = await uploadMediaToSupabase(file, 'project media', `shade-sheet-${Date.now()}`);
         if (res?.url && res.url !== optimizedDataUrl) {
           updateShadeSheetUrl(res.url);
           setJustSavedNotice('Shade sheet uploaded and saved to cloud storage!');

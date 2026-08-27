@@ -128,6 +128,9 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
 
   // Dynamic Pricing: Single source of truth. If variant is active/selected, variant controls price
   const pricing = getActiveProductPrice(product, selectedVariantObj || selectedVariant);
+  const unitPriceNumeric = pricing.effectivePriceNumeric;
+  const lineTotalNumeric = unitPriceNumeric > 0 ? unitPriceNumeric * quantity : 0;
+  const lineTotalString = lineTotalNumeric > 0 ? formatPakistaniPrice(lineTotalNumeric) : pricing.effectivePriceString;
 
   // Compile list of all images available for gallery
   const galleryImages = [
@@ -137,10 +140,11 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
 
   const currentImage = galleryImages[selectedImageIndex] || product.image;
 
-  // Exact WhatsApp number as required: +92 310 8002863
-  const targetWhatsAppNumber = "923108002863";
+  const rawPhone = config?.whatsapp || config?.phone || '923108002863';
+  const targetWhatsAppNumber = rawPhone.replace(/[^0-9]/g, '');
+  const displayPhone = config?.whatsapp || config?.phone || '+92 310 8002863';
 
-  // Pre-filled WhatsApp message format with selected variant price
+  // Pre-filled WhatsApp message format with selected variant price, quantity and automatically calculated subtotal
   const handleWhatsAppOrder = () => {
     let priceText = pricing.effectivePriceString;
     if (pricing.isSaleActive && pricing.discountPercentage > 0) {
@@ -149,15 +153,15 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
 
     let variantSection = '';
     if (selectedVariantObj) {
-      variantSection = `\nSelected ${optionLabel}:\n${selectedVariantObj.name}${selectedVariantObj.sku ? ` (SKU: ${selectedVariantObj.sku})` : ''}\nVariant Price: ${pricing.effectivePriceString}\n`;
+      variantSection = `\nSelected ${optionLabel}: ${selectedVariantObj.name}${selectedVariantObj.sku ? ` (SKU: ${selectedVariantObj.sku})` : ''}\nVariant Unit Price: ${pricing.effectivePriceString}\n`;
     }
 
     let shadeSection = '';
     if (isPaintShadesActive && selectedShade) {
-      shadeSection = `\nShade: ${selectedShade.name}\nShade Code: ${selectedShade.code}\n`;
+      shadeSection = `\nSelected Shade: ${selectedShade.name} (Code: ${selectedShade.code})\n`;
     }
 
-    const message = `Hello,\n\nI would like to order this product.\n\nProduct Name:\n${product.name}\n\nCategory:\n${product.category || 'Sanitaryware'}${variantSection}${shadeSection}\nPrice:\n${priceText}\n\nQuantity: ${quantity}\n\nPlease provide availability and delivery confirmation.`;
+    const message = `Hello ${config?.name || 'Zafar Sarwar Traders'},\n\nI would like to order this product:\n\nProduct Name: ${product.name}\nCategory: ${product.category || 'Sanitaryware'}${variantSection}${shadeSection}Unit Price: ${priceText}\nQuantity: ${quantity}\nTotal / Subtotal: ${lineTotalString}\n\nPlease provide availability and delivery confirmation.`;
     const encoded = encodeURIComponent(message);
     window.open(`https://wa.me/${targetWhatsAppNumber}?text=${encoded}`, '_blank');
   };
@@ -424,6 +428,47 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                         </button>
                       );
                     })}
+                  </div>
+
+                  {/* CUSTOMER QUANTITY SELECTOR & INSTANT DYNAMIC TOTAL INSIDE VARIANT SECTION */}
+                  <div className="mt-3 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 p-2.5 rounded-xl">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-[11px] font-bold text-slate-300">Quantity:</span>
+                      <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => setQuantity(q => Math.max(1, q - 1))}
+                          className="w-6 h-6 rounded flex items-center justify-center bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={999}
+                          value={quantity}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            setQuantity(isNaN(val) || val < 1 ? 1 : val);
+                          }}
+                          className="w-10 text-center text-xs font-bold text-white bg-transparent border-0 focus:outline-none font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setQuantity(q => q + 1)}
+                          className="w-6 h-6 rounded flex items-center justify-center bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-400 font-semibold block">Calculated Total:</span>
+                      <span className="text-sm font-extrabold text-emerald-400 font-mono">
+                        {lineTotalString}
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -725,26 +770,44 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
           {/* QUANTITY & ADD TO CART / WHATSAPP ACTION BUTTONS */}
           <div className="pt-2 space-y-3">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              {/* Quantity selector */}
+              {/* Quantity selector & Dynamic Line Total */}
               <div className="flex items-center justify-between sm:justify-start gap-3 bg-slate-950 p-2.5 rounded-2xl border border-slate-800 shrink-0">
-                <span className="text-xs font-bold text-slate-400 pl-1">Quantity:</span>
-                <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-400 pl-1">Qty:</span>
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => setQuantity(q => Math.max(1, q - 1))}
                     className="p-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
                   >
-                    <Minus className="w-4 h-4" />
+                    <Minus className="w-3.5 h-3.5" />
                   </button>
-                  <span className="w-8 text-center text-sm font-extrabold text-white font-mono">{quantity}</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={999}
+                    value={quantity}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      setQuantity(isNaN(val) || val < 1 ? 1 : val);
+                    }}
+                    className="w-10 text-center text-sm font-extrabold text-white bg-transparent border-0 focus:outline-none font-mono"
+                  />
                   <button
                     type="button"
                     onClick={() => setQuantity(q => q + 1)}
                     className="p-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
                   >
-                    <Plus className="w-4 h-4" />
+                    <Plus className="w-3.5 h-3.5" />
                   </button>
                 </div>
+                {lineTotalNumeric > 0 && (
+                  <div className="border-l border-slate-800 pl-2 text-right">
+                    <span className="text-[9px] text-slate-400 font-semibold block leading-none">Total</span>
+                    <span className="text-xs font-extrabold text-emerald-400 font-mono leading-tight block">
+                      {lineTotalString}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Add to Cart button */}
@@ -777,7 +840,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
               className="w-full py-3.5 px-6 rounded-2xl text-xs sm:text-sm font-bold text-white bg-slate-900 hover:bg-emerald-700 transition-all duration-300 shadow-xl flex items-center justify-center gap-2.5 border border-slate-800 hover:border-emerald-500"
             >
               <MessageSquare className="w-4 h-4 text-emerald-400" />
-              <span>Order via WhatsApp Directly (+92 310 8002863)</span>
+              <span>Order via WhatsApp Directly ({displayPhone})</span>
             </button>
           </div>
 

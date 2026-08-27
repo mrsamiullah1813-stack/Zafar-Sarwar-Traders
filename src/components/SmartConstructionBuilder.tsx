@@ -705,11 +705,11 @@ export const SmartConstructionBuilder: React.FC<SmartConstructionBuilderProps> =
       <div className="px-3 sm:px-6 py-2.5 bg-slate-950 border-b border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-2.5 shrink-0">
         
         {/* Category Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-thin scrollbar-thumb-slate-800">
+        <div className="flex items-center gap-1.5 overflow-x-auto flex-nowrap whitespace-nowrap pb-1 md:pb-0 scrollbar-thin scrollbar-thumb-slate-800 shrink-0 min-w-0 max-w-full">
           <button
             type="button"
             onClick={() => setSelectedCategoryId('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
               selectedCategoryId === 'all'
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
@@ -726,7 +726,7 @@ export const SmartConstructionBuilder: React.FC<SmartConstructionBuilderProps> =
                 key={cat.id}
                 type="button"
                 onClick={() => setSelectedCategoryId(cat.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 flex items-center gap-1.5 transition-all cursor-pointer ${
                   isCatActive
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
@@ -812,7 +812,7 @@ export const SmartConstructionBuilder: React.FC<SmartConstructionBuilderProps> =
       {/* ---------------------------------------------------- */}
       {/* 4. STEP 3: ITEMS GRID (FLUID SCROLLABLE CONTAINER) */}
       {/* ---------------------------------------------------- */}
-      <div className="flex-1 overflow-y-auto min-h-0 p-3 sm:p-5 scrollbar-thin scrollbar-thumb-slate-800">
+      <div className="flex-1 overflow-y-auto min-h-0 p-3 sm:p-5 pb-32 sm:pb-36 scrollbar-thin scrollbar-thumb-slate-800">
         {filteredItems.length === 0 ? (
           <div className="p-12 text-center flex flex-col items-center justify-center">
             <div className="w-12 h-12 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 mb-3">

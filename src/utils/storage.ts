@@ -636,6 +636,34 @@ export const loadStoredProducts = (): Product[] => {
   return featuredProducts;
 };
 
+export const saveStoredProductSingle = async (product: Product): Promise<{ success: boolean; error?: string }> => {
+  try {
+    if (isSupabaseConfigured) {
+      const res = await upsertProductInSupabase(product);
+      if (res && res.success === false) {
+        console.error('[Supabase Save Error] Single product save returned error:', res.error);
+        return { success: false, error: res.error };
+      }
+    }
+    const current = loadStoredProducts();
+    const existingIndex = current.findIndex(p => p.id === product.id);
+    let updated: Product[];
+    if (existingIndex >= 0) {
+      updated = [...current];
+      updated[existingIndex] = product;
+    } else {
+      updated = [product, ...current];
+    }
+    const sanitized = updated.slice(0, 60).map(sanitizeProductForLocalStorage);
+    safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, sanitized);
+    saveToServerCMS(STORAGE_KEYS.PRODUCTS, updated);
+    return { success: true };
+  } catch (e: any) {
+    console.error('Error saving single product', e);
+    return { success: false, error: e?.message || String(e) };
+  }
+};
+
 export const saveStoredProducts = async (products: Product[]): Promise<{ success: boolean; error?: string }> => {
   try {
     if (isSupabaseConfigured) {
@@ -688,6 +716,33 @@ export const loadStoredCategories = (): ProductCategory[] => {
     console.error('Error loading stored categories', e);
   }
   return productCategories;
+};
+
+export const saveStoredCategorySingle = async (category: ProductCategory): Promise<{ success: boolean; error?: string }> => {
+  try {
+    if (isSupabaseConfigured) {
+      const res = await upsertCategoryInSupabase(category);
+      if (res && !res.success) {
+        console.error('Failed to save single category to Supabase:', res.error);
+        return { success: false, error: res.error };
+      }
+    }
+    const current = loadStoredCategories();
+    const existingIndex = current.findIndex(c => c.id === category.id);
+    let updated: ProductCategory[];
+    if (existingIndex >= 0) {
+      updated = [...current];
+      updated[existingIndex] = category;
+    } else {
+      updated = [...current, category];
+    }
+    safeSetLocalStorage(STORAGE_KEYS.CATEGORIES, updated);
+    saveToServerCMS(STORAGE_KEYS.CATEGORIES, updated);
+    return { success: true };
+  } catch (e: any) {
+    console.error('Error saving single category', e);
+    return { success: false, error: e?.message || String(e) };
+  }
 };
 
 export const saveStoredCategories = async (categories: ProductCategory[]): Promise<{ success: boolean; error?: string }> => {
@@ -765,6 +820,33 @@ export const loadStoredBrands = (): ProductBrand[] => {
     console.error('Error loading stored brands', e);
   }
   return productBrands;
+};
+
+export const saveStoredBrandSingle = async (brand: ProductBrand): Promise<{ success: boolean; error?: string }> => {
+  try {
+    if (isSupabaseConfigured) {
+      const res = await upsertBrandInSupabase(brand);
+      if (res && !res.success) {
+        console.error('Failed to save single brand to Supabase:', res.error);
+        return { success: false, error: res.error };
+      }
+    }
+    const current = loadStoredBrands();
+    const existingIndex = current.findIndex(b => b.id === brand.id);
+    let updated: ProductBrand[];
+    if (existingIndex >= 0) {
+      updated = [...current];
+      updated[existingIndex] = brand;
+    } else {
+      updated = [...current, brand];
+    }
+    safeSetLocalStorage(STORAGE_KEYS.BRANDS, updated);
+    saveToServerCMS(STORAGE_KEYS.BRANDS, updated);
+    return { success: true };
+  } catch (e: any) {
+    console.error('Error saving single brand', e);
+    return { success: false, error: e?.message || String(e) };
+  }
 };
 
 export const saveStoredBrands = async (brands: ProductBrand[]): Promise<{ success: boolean; error?: string }> => {
