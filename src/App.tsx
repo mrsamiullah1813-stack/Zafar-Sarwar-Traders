@@ -170,7 +170,13 @@ export default function App() {
     }
   }, [products]);
 
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => getIsAdminLoggedIn());
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+    try {
+      return getIsAdminLoggedIn() && sessionStorage.getItem('zst_admin_time_pin_verified') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [adminLoginOpen, setAdminLoginOpen] = useState(false);
   const [adminDashboardOpen, setAdminDashboardOpen] = useState(false);
   const [adminProductModalOpen, setAdminProductModalOpen] = useState(false);
@@ -232,9 +238,17 @@ export default function App() {
     let isMounted = true;
     initializeSupabaseRuntime().then(() => {
       supabase.auth.getSession().then(({ data }) => {
-        if (isMounted && data?.session?.user) {
-          setIsAdmin(true);
-          setIsAdminLoggedIn(true);
+        if (isMounted) {
+          if (data?.session?.user) {
+            const isPinVerified = sessionStorage.getItem('zst_admin_time_pin_verified') === 'true';
+            if (isPinVerified) {
+              setIsAdmin(true);
+              setIsAdminLoggedIn(true);
+            } else {
+              setIsAdmin(false);
+              setIsAdminLoggedIn(false);
+            }
+          }
         }
       }).catch(() => {});
     });
@@ -242,11 +256,17 @@ export default function App() {
     const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
       if (isMounted) {
         if (session?.user) {
-          setIsAdmin(true);
-          setIsAdminLoggedIn(true);
+          const isPinVerified = sessionStorage.getItem('zst_admin_time_pin_verified') === 'true';
+          if (isPinVerified) {
+            setIsAdmin(true);
+            setIsAdminLoggedIn(true);
+          }
         } else {
           setIsAdmin(false);
           setIsAdminLoggedIn(false);
+          try {
+            sessionStorage.removeItem('zst_admin_time_pin_verified');
+          } catch {}
         }
       }
     });
@@ -429,6 +449,9 @@ export default function App() {
     } catch (err) {
       console.warn('[Admin Auth] Logout error:', err);
     }
+    try {
+      sessionStorage.removeItem('zst_admin_time_pin_verified');
+    } catch {}
     setIsAdmin(false);
     setIsAdminLoggedIn(false);
     setAdminDashboardOpen(false);

@@ -18,17 +18,23 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   onLogout,
   onClose
 }) => {
+  const [step, setStep] = useState<'credentials' | 'pin'>('credentials');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pinLoading, setPinLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [activeUserEmail, setActiveUserEmail] = useState<string | null>(null);
+  const [tempSessionToken, setTempSessionToken] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setError('');
       setSuccess('');
+      setStep('credentials');
+      setPin('');
       // Check for an existing authenticated Supabase session
       initializeSupabaseRuntime().then(() => {
         supabase.auth.getSession().then(({ data }) => {
@@ -73,17 +79,12 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       }
 
       if (data?.session) {
-        setAdminAuthToken(data.session.access_token);
-        setIsAdminLoggedIn(true);
+        setTempSessionToken(data.session.access_token);
         setActiveUserEmail(data.user?.email || trimmedEmail);
-        setSuccess('Authenticated successfully! Supabase session active.');
-
-        setTimeout(() => {
-          onLoginSuccess();
-          setPassword('');
-          setSuccess('');
-          onClose();
-        }, 500);
+        setStep('pin');
+        setPin('');
+        setError('');
+        setSuccess('');
       } else {
         setError('No authenticated session created. Please try again.');
       }
@@ -95,6 +96,63 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     }
   };
 
+  const handleVerifyPin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    const cleanPin = pin.trim().replace(/\D/g, '');
+    if (cleanPin.length !== 4) {
+      setError('Invalid security PIN.');
+      return;
+    }
+
+    setPinLoading(true);
+
+    try {
+      const response = await fetch('/api/admin/verify-time-pin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(tempSessionToken ? { 'Authorization': `Bearer ${tempSessionToken}` } : {})
+        },
+        body: JSON.stringify({ pin: cleanPin })
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (response.ok && data?.success) {
+        if (tempSessionToken) {
+          setAdminAuthToken(tempSessionToken);
+        }
+        setIsAdminLoggedIn(true);
+        try {
+          sessionStorage.setItem('zst_admin_time_pin_verified', 'true');
+        } catch {}
+
+        setSuccess('Security PIN verified! Opening Admin Dashboard...');
+
+        setTimeout(() => {
+          onLoginSuccess();
+          setPassword('');
+          setPin('');
+          setSuccess('');
+          setStep('credentials');
+          onClose();
+        }, 400);
+      } else {
+        setError('Invalid security PIN.');
+        setPin('');
+      }
+    } catch (err: any) {
+      console.error('[Admin PIN] Verification error:', err);
+      setError('Invalid security PIN.');
+      setPin('');
+    } finally {
+      setPinLoading(false);
+    }
+  };
+
   const handleSignOut = async () => {
     setLoading(true);
     try {
@@ -103,8 +161,12 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     } catch (err) {
       console.warn('[Admin Login] Sign out error:', err);
     }
+    try {
+      sessionStorage.removeItem('zst_admin_time_pin_verified');
+    } catch {}
     setIsAdminLoggedIn(false);
     setActiveUserEmail(null);
+    setStep('credentials');
     onLogout();
     setLoading(false);
     onClose();
@@ -160,6 +222,85 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
               <span>Exit Admin Mode (Sign Out)</span>
             </button>
+          </div>
+        ) : step === 'pin' ? (
+          <div className="space-y-4">
+            <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-center">
+              <h4 className="text-sm font-bold text-white">Enter 4-digit PIN</h4>
+              {activeUserEmail && (
+                <p className="text-[11px] text-slate-400 font-mono mt-1">
+                  Authenticated as: <span className="text-slate-300">{activeUserEmail}</span>
+                </p>
+              )}
+            </div>
+
+            <form onSubmit={handleVerifyPin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5 text-center">
+                  Security PIN
+                </label>
+                <div className="relative max-w-xs mx-auto">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={4}
+                    value={pin}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
+                      setPin(digits);
+                      setError('');
+                    }}
+                    placeholder="[ _ _ _ _ ]"
+                    autoFocus
+                    required
+                    className="w-full py-3 px-4 rounded-xl bg-slate-950 border border-slate-800 focus:border-blue-500 text-white placeholder-slate-600 text-center text-2xl font-mono tracking-[0.4em] font-bold focus:outline-none"
+                  />
+                  <Key className="w-4 h-4 text-slate-500 absolute right-3.5 top-4 pointer-events-none" />
+                </div>
+              </div>
+
+              {error && (
+                <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs flex items-start gap-2 animate-fadeIn">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {success && (
+                <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2 animate-fadeIn">
+                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{success}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={pinLoading || pin.length !== 4}
+                className="w-full py-3 px-4 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 transition-all shadow-lg shadow-blue-950 flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {pinLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <ShieldCheck className="w-4 h-4" />
+                )}
+                <span>{pinLoading ? 'Verifying...' : 'Verify'}</span>
+              </button>
+
+              <div className="text-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep('credentials');
+                    setError('');
+                    setPin('');
+                  }}
+                  className="text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  ← Back to Email / Password
+                </button>
+              </div>
+            </form>
           </div>
         ) : (
           <form onSubmit={handleLogin} className="space-y-4">

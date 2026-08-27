@@ -431,40 +431,14 @@ export function mapProductToDb(product: Product): any {
     price: numericPrice,
     sale_price: numericSalePrice,
     sale_enabled: isSaleEnabled,
-    sale_start_date: product.saleStartDate ?? product.saleConfig?.saleStartDate ?? null,
-    sale_end_date: product.saleEndDate ?? product.saleConfig?.saleEndDate ?? null,
-    sale_label: product.saleLabel ?? product.saleConfig?.saleLabel ?? null,
-    sale_message: product.saleMessage ?? product.saleConfig?.saleMessage ?? null,
-    show_countdown: Boolean(product.showSaleCountdown ?? product.saleConfig?.showCountdown ?? true),
-    show_discount_percentage: Boolean(product.showDiscountPercentage ?? product.saleConfig?.showDiscountPercentage ?? true),
-    show_savings: Boolean(product.showSavingsAmount ?? product.saleConfig?.showSavings ?? true),
-    variants_enabled: isVariantsEnabled,
-    option_name: optionName,
-    variants: cleanVariantsList,
     category_id: product.categoryId || null,
     brand_id: product.brandId || null,
     image: product.image || '',
-    main_image: product.image || '',
     gallery: product.images || [],
-    gallery_images: product.images || [],
-    videos: product.videos || [],
     features: product.features || [],
     specifications: specsWithMeta,
     stock_quantity: product.stockQuantity ?? 10,
-    badge: product.badge || null,
-    material: product.material || null,
-    warranty: product.warranty || null,
-    seo_title: product.seoTitle || null,
-    seo_description: product.seoDescription || null,
     is_featured: Boolean(product.isFeatured),
-    is_hero_featured: Boolean(product.isHeroFeatured),
-    is_new: Boolean(product.isNew),
-    is_best_seller: Boolean(product.isBestSeller),
-    is_trending: Boolean(product.isTrending),
-    is_hidden: Boolean(product.isHidden),
-    is_price_on_request: Boolean(product.isPriceOnRequest),
-    hide_price: Boolean(product.hidePrice),
-    hide_stock_badge: Boolean(product.hideStockBadge),
     rating: typeof product.rating === 'number' ? product.rating : (product.rating ? parseFloat(String(product.rating)) : 4.8),
     reviews_count: typeof product.reviewsCount === 'number' ? product.reviewsCount : (typeof product.reviews_count === 'number' ? product.reviews_count : 12),
     display_order: product.displayOrder ?? 0
@@ -654,9 +628,10 @@ export async function upsertProductInSupabase(product: Product | Product[]): Pro
       headers,
       body: JSON.stringify({ products: list })
     });
-    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
-    if (!res.ok || !result.success) {
-      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+    const result = await res.json().catch(() => null);
+    if (!res.ok || (result && result.success === false)) {
+      const errMsg = result?.error || (res.statusText ? `${res.statusText} (${res.status})` : `Server returned error ${res.status}`);
+      const err = formatSupabaseError(errMsg);
       console.error(`[Supabase API] Product upsert failed: ${err}`);
       return { success: false, error: err };
     }
@@ -677,9 +652,10 @@ export async function deleteProductFromSupabase(productId: string): Promise<{ su
       method: 'DELETE',
       headers
     });
-    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
-    if (!res.ok || !result.success) {
-      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+    const result = await res.json().catch(() => null);
+    if (!res.ok || (result && result.success === false)) {
+      const errMsg = result?.error || (res.statusText ? `${res.statusText} (${res.status})` : `Server returned error ${res.status}`);
+      const err = formatSupabaseError(errMsg);
       console.error(`[Supabase API] Product delete failed: ${err}`);
       return { success: false, error: err };
     }
@@ -758,9 +734,10 @@ export async function upsertCategoryInSupabase(category: ProductCategory | Produ
       headers,
       body: JSON.stringify({ categories: list })
     });
-    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
-    if (!res.ok || !result.success) {
-      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+    const result = await res.json().catch(() => null);
+    if (!res.ok || (result && result.success === false)) {
+      const errMsg = result?.error || (res.statusText ? `${res.statusText} (${res.status})` : `Server returned error ${res.status}`);
+      const err = formatSupabaseError(errMsg);
       console.error(`[Supabase API] Category upsert failed: ${err}`);
       return { success: false, error: err };
     }
@@ -781,9 +758,10 @@ export async function deleteCategoryFromSupabase(categoryId: string): Promise<{ 
       method: 'DELETE',
       headers
     });
-    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
-    if (!res.ok || !result.success) {
-      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+    const result = await res.json().catch(() => null);
+    if (!res.ok || (result && result.success === false)) {
+      const errMsg = result?.error || (res.statusText ? `${res.statusText} (${res.status})` : `Server returned error ${res.status}`);
+      const err = formatSupabaseError(errMsg);
       console.error(`[Supabase API] Category delete failed: ${err}`);
       return { success: false, error: err };
     }
@@ -855,9 +833,10 @@ export async function upsertBrandInSupabase(brand: ProductBrand | ProductBrand[]
       headers,
       body: JSON.stringify({ brands: list })
     });
-    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
-    if (!res.ok || !result.success) {
-      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+    const result = await res.json().catch(() => null);
+    if (!res.ok || (result && result.success === false)) {
+      const errMsg = result?.error || (res.statusText ? `${res.statusText} (${res.status})` : `Server returned error ${res.status}`);
+      const err = formatSupabaseError(errMsg);
       console.error(`[Supabase API] Brand upsert failed: ${err}`);
       return { success: false, error: err };
     }
@@ -878,9 +857,10 @@ export async function deleteBrandFromSupabase(brandId: string): Promise<{ succes
       method: 'DELETE',
       headers
     });
-    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
-    if (!res.ok || !result.success) {
-      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+    const result = await res.json().catch(() => null);
+    if (!res.ok || (result && result.success === false)) {
+      const errMsg = result?.error || (res.statusText ? `${res.statusText} (${res.status})` : `Server returned error ${res.status}`);
+      const err = formatSupabaseError(errMsg);
       console.error(`[Supabase API] Brand delete failed: ${err}`);
       return { success: false, error: err };
     }
@@ -964,9 +944,10 @@ export async function saveHeroSettingsToSupabase(settings: HeroSettings): Promis
       headers,
       body: JSON.stringify({ settings })
     });
-    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
-    if (!res.ok || !result.success) {
-      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+    const result = await res.json().catch(() => null);
+    if (!res.ok || (result && result.success === false)) {
+      const errMsg = result?.error || (res.statusText ? `${res.statusText} (${res.status})` : `Server returned error ${res.status}`);
+      const err = formatSupabaseError(errMsg);
       console.error(`[Supabase API] Hero settings save failed: ${err}`);
       return { success: false, error: err };
     }
@@ -1155,9 +1136,10 @@ export async function updateOrderStatusInSupabase(orderId: string, status: Custo
       headers,
       body: JSON.stringify({ status, note })
     });
-    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
-    if (!res.ok || !result.success) {
-      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+    const result = await res.json().catch(() => null);
+    if (!res.ok || (result && result.success === false)) {
+      const errMsg = result?.error || (res.statusText ? `${res.statusText} (${res.status})` : `Server returned error ${res.status}`);
+      const err = formatSupabaseError(errMsg);
       console.error(`[Supabase API] Order status update failed: ${err}`);
       return { success: false, error: err };
     }
@@ -1231,9 +1213,10 @@ export async function saveDeliveryCitiesToSupabase(cities: CityDeliveryInfo[]): 
       headers,
       body: JSON.stringify({ cities })
     });
-    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
-    if (!res.ok || !result.success) {
-      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+    const result = await res.json().catch(() => null);
+    if (!res.ok || (result && result.success === false)) {
+      const errMsg = result?.error || (res.statusText ? `${res.statusText} (${res.status})` : `Server returned error ${res.status}`);
+      const err = formatSupabaseError(errMsg);
       console.error(`[Supabase API] Delivery cities save failed: ${err}`);
       return { success: false, error: err };
     }
@@ -1328,9 +1311,10 @@ export async function saveSiteSettingToSupabase(key: string, value: any): Promis
       headers,
       body: JSON.stringify({ key, value })
     });
-    const result = await res.json().catch(() => ({ success: false, error: res.statusText }));
-    if (!res.ok || !result.success) {
-      const err = formatSupabaseError(result.error || `Server responded with ${res.status}`);
+    const result = await res.json().catch(() => null);
+    if (!res.ok || (result && result.success === false)) {
+      const errMsg = result?.error || (res.statusText ? `${res.statusText} (${res.status})` : `Server returned error ${res.status}`);
+      const err = formatSupabaseError(errMsg);
       console.error(`[Supabase API] Site setting save failed for key "${key}": ${err}`);
       return { success: false, error: err };
     }

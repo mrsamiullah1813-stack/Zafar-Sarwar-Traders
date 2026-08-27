@@ -190,6 +190,90 @@ async function startServer() {
     });
   });
 
+  // =========================================================
+  // TRUSTED CURRENT-TIME SECURITY PIN VERIFICATION (PAKISTAN TIME HHMM)
+  // =========================================================
+  function getValidPakistanTimePins(referenceDate: Date = new Date()): Set<string> {
+    const validPins = new Set<string>();
+    const nowMs = referenceDate.getTime();
+
+    // Check current time, with ±60s grace tolerance for minute rollovers
+    const timestamps = [nowMs, nowMs - 60000, nowMs + 60000];
+
+    for (const ts of timestamps) {
+      const d = new Date(ts);
+
+      // 24-hour format in Asia/Karachi (e.g., 04:07 -> 0407, 12:02 -> 1202, 16:07 -> 1607, 23:59 -> 2359)
+      const formatter24 = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Karachi',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+      const parts24 = formatter24.formatToParts(d);
+      let h24 = '00', m24 = '00';
+      for (const p of parts24) {
+        if (p.type === 'hour') h24 = p.value.padStart(2, '0');
+        if (p.type === 'minute') m24 = p.value.padStart(2, '0');
+      }
+      if (h24 === '24') h24 = '00';
+      validPins.add(`${h24}${m24}`);
+
+      // 12-hour format in Asia/Karachi (e.g., 04:07 PM -> 0407, 12:02 PM -> 1202)
+      const formatter12 = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Karachi',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+      const parts12 = formatter12.formatToParts(d);
+      let h12 = '12', m12 = '00';
+      for (const p of parts12) {
+        if (p.type === 'hour') h12 = p.value.padStart(2, '0');
+        if (p.type === 'minute') m12 = p.value.padStart(2, '0');
+      }
+      if (h12.length > 2) h12 = h12.slice(-2);
+      validPins.add(`${h12.padStart(2, '0')}${m12.padStart(2, '0')}`);
+    }
+
+    return validPins;
+  }
+
+  app.post("/api/admin/verify-time-pin", (req, res) => {
+    try {
+      const { pin } = req.body;
+      if (!pin || typeof pin !== 'string') {
+        return res.status(400).json({ success: false, error: "Invalid security PIN." });
+      }
+
+      const cleanPin = pin.trim().replace(/\D/g, '');
+      if (cleanPin.length !== 4) {
+        return res.status(400).json({ success: false, error: "Invalid security PIN." });
+      }
+
+      const validPins = getValidPakistanTimePins();
+
+      if (validPins.has(cleanPin)) {
+        return res.json({
+          success: true,
+          verified: true,
+          verifiedAt: Date.now()
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        error: "Invalid security PIN."
+      });
+    } catch (err: any) {
+      console.error("[Time PIN Auth] Verification error:", err);
+      return res.status(500).json({
+        success: false,
+        error: "Invalid security PIN."
+      });
+    }
+  });
+
   // Database Proxy API Endpoints (Securely handles admin writes with Supabase Auth validation & service role key)
   const requireAdminAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const authHeader = req.headers.authorization;
@@ -240,7 +324,7 @@ async function startServer() {
       return copy;
     });
 
-    const maxRetries = 6;
+    const maxRetries = 50;
     let attempts = 0;
     let lastError: any = null;
 
@@ -287,12 +371,13 @@ async function startServer() {
 
       // 2. Foreign Key Constraint Violation (e.g. category_id, brand_id, product_id)
       if (error.code === "23503" || errMsg.toLowerCase().includes("foreign key") || errMsg.toLowerCase().includes("violates foreign key")) {
-        console.warn(`[Robust DB Upsert] Table "${table}": Foreign key constraint violation. Nullifying relation fields and retrying (attempt ${attempts})...`);
+        console.warn(`[Robust DB Upsert] Table "${table}": Foreign key constraint violation (${errMsg}). Nullifying relation fields and retrying (attempt ${attempts})...`);
         currentPayloads = currentPayloads.map(item => {
           const copy = { ...item };
           if ("category_id" in copy) copy.category_id = null;
           if ("brand_id" in copy) copy.brand_id = null;
           if ("product_id" in copy) copy.product_id = null;
+          if ("customer_id" in copy) copy.customer_id = null;
           return copy;
         });
         continue;
@@ -586,38 +671,14 @@ async function startServer() {
       price: numericPrice,
       sale_price: numericSalePrice,
       sale_enabled: isSaleEnabled,
-      sale_start_date: product.saleStartDate ?? product.saleConfig?.saleStartDate ?? null,
-      sale_end_date: product.saleEndDate ?? product.saleConfig?.saleEndDate ?? null,
-      sale_label: product.saleLabel ?? product.saleConfig?.saleLabel ?? null,
-      sale_message: product.saleMessage ?? product.saleConfig?.saleMessage ?? null,
-      show_countdown: Boolean(product.showSaleCountdown ?? product.saleConfig?.showCountdown ?? true),
-      show_discount_percentage: Boolean(product.showDiscountPercentage ?? product.saleConfig?.showDiscountPercentage ?? true),
-      show_savings: Boolean(product.showSavingsAmount ?? product.saleConfig?.showSavings ?? true),
-      variants_enabled: isVariantsEnabled,
-      option_name: optionName,
-      variants: cleanVariantsList,
       category_id: product.categoryId || null,
       brand_id: product.brandId || null,
       image: product.image || "",
       gallery: product.images || [],
-      videos: product.videos || [],
       features: product.features || [],
       specifications: specsWithMeta,
       stock_quantity: product.stockQuantity ?? 10,
-      badge: product.badge || null,
-      material: product.material || null,
-      warranty: product.warranty || null,
-      seo_title: product.seoTitle || null,
-      seo_description: product.seoDescription || null,
       is_featured: Boolean(product.isFeatured),
-      is_hero_featured: Boolean(product.isHeroFeatured),
-      is_new: Boolean(product.isNew),
-      is_best_seller: Boolean(product.isBestSeller),
-      is_trending: Boolean(product.isTrending),
-      is_hidden: Boolean(product.isHidden),
-      is_price_on_request: Boolean(product.isPriceOnRequest),
-      hide_price: Boolean(product.hidePrice),
-      hide_stock_badge: Boolean(product.hideStockBadge),
       rating: typeof product.rating === "number" ? product.rating : (product.rating ? parseFloat(String(product.rating)) : 4.8),
       reviews_count: typeof product.reviewsCount === "number" ? product.reviewsCount : (typeof product.reviews_count === "number" ? product.reviews_count : (parseInt(String(product.reviewsCount || product.reviews_count || "12"), 10) || 12)),
       display_order: product.displayOrder ?? 0
@@ -643,6 +704,29 @@ async function startServer() {
       if (list.length === 0) return res.json({ success: true });
 
       const payloads = list.map((p: any) => mapServerProductToDb(p));
+
+      // Foreign Key Validation: Check if brand_id and category_id exist in DB to prevent foreign key errors
+      try {
+        const [brandsRes, catsRes] = await Promise.all([
+          dbClient.from("brands").select("id"),
+          dbClient.from("categories").select("id")
+        ]);
+        const validBrandIds = new Set((brandsRes.data || []).map((b: any) => String(b.id)));
+        const validCatIds = new Set((catsRes.data || []).map((c: any) => String(c.id)));
+
+        payloads.forEach((p: any) => {
+          if (p.brand_id && !validBrandIds.has(String(p.brand_id))) {
+            console.log(`[Supabase API] Unlinked brand_id "${p.brand_id}" set to null (persisted in specs._brand_id) to fulfill DB FK constraint`);
+            p.brand_id = null;
+          }
+          if (p.category_id && !validCatIds.has(String(p.category_id))) {
+            console.log(`[Supabase API] Unlinked category_id "${p.category_id}" set to null (persisted in specs._category_id) to fulfill DB FK constraint`);
+            p.category_id = null;
+          }
+        });
+      } catch (fkCheckErr) {
+        console.warn("[Supabase API] Pre-validation of foreign keys notice:", fkCheckErr);
+      }
 
       const result = await robustUpsert("products", payloads, { onConflict: "id" });
       if (!result.success) {
