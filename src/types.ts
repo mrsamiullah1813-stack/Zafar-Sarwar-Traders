@@ -134,6 +134,15 @@ export interface PaintShadesConfig {
   shades?: PaintShade[];
 }
 
+export interface ProductQuantityConfig {
+  quantityEnabled?: boolean; // Admin master switch per product [ON / OFF]
+  minQuantity?: number; // Minimum allowed quantity (default: 1)
+  maxQuantity?: number; // Maximum allowed quantity (optional)
+  defaultQuantity?: number; // Initial default quantity (default: 1)
+  quantityStep?: number; // Increment / decrement step (default: 1)
+  unitLabel?: string; // Optional unit name (e.g. "Pcs", "Bags", "Boxes", "Liters", "Tins", "Units", "Tons")
+}
+
 export interface Product {
   id: string;
   sku?: string;
@@ -156,6 +165,14 @@ export interface Product {
   showDiscountPercentage?: boolean;
   showSavingsAmount?: boolean;
   saleConfig?: ProductSaleConfig;
+  // Product Quantity System (Admin controlled per product)
+  quantityEnabled?: boolean;
+  minQuantity?: number;
+  maxQuantity?: number;
+  defaultQuantity?: number;
+  quantityStep?: number;
+  unitLabel?: string;
+  quantityConfig?: ProductQuantityConfig;
   // Product Variant System (Admin controlled per product)
   variantsEnabled?: boolean;
   optionName?: string; // Custom label for variant selector (e.g. "Capacity", "Size", "Color", "Length")
@@ -741,6 +758,9 @@ export interface CityDeliveryInfo {
   deliveryFee: number;
   deliveryFeeType?: 'free' | 'fixed' | 'contact' | 'custom';
   deliveryFeeCustomText?: string;
+  freeDelivery?: boolean;
+  minOrderAmount?: number;
+  additionalAddress?: string;
   isSameDayAvailable?: boolean;
   isNextDayAvailable?: boolean;
   isEnabled: boolean;
@@ -1477,6 +1497,46 @@ export interface FittingBuilderConfig {
 export type ConstructionBuilderConfig = FittingBuilderConfig;
 export type ConstructionPackageItem = FittingPackageItemInCart;
 export type FittingVariant = FittingItemVariant;
+
+// =========================================================
+// ADMIN-CONTROLLED PRODUCT PRICING TYPOGRAPHY
+// =========================================================
+
+export type PriceFontFamily = 
+  | 'Plus Jakarta Sans'
+  | 'Inter'
+  | 'Poppins'
+  | 'Montserrat'
+  | 'Roboto'
+  | 'Open Sans'
+  | 'Lato'
+  | 'Playfair Display'
+  | 'DM Sans'
+  | 'System Sans';
+
+export type PriceFontWeight = '400' | '500' | '600' | '700' | '800';
+export type PriceFontSizeScale = 'sm' | 'md' | 'lg' | 'xl';
+export type PriceLetterSpacing = 'tight' | 'normal' | 'wide';
+export type PriceStyle = 'normal' | 'bold' | 'semibold';
+
+export interface PricingTypographySettings {
+  color: string; // HEX or color code e.g. '#e5a93d'
+  fontFamily: PriceFontFamily | string;
+  fontWeight: PriceFontWeight;
+  fontSizeScale: PriceFontSizeScale;
+  priceStyle?: PriceStyle;
+  letterSpacing?: PriceLetterSpacing;
+}
+
+export const defaultPricingTypography: PricingTypographySettings = {
+  color: '#e5a93d', // Premium Gold / Amber accent
+  fontFamily: 'Plus Jakarta Sans',
+  fontWeight: '700',
+  fontSizeScale: 'md',
+  priceStyle: 'bold',
+  letterSpacing: 'normal'
+};
+
 
 
 

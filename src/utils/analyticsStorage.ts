@@ -61,7 +61,13 @@ const getBrowserName = (): 'Chrome' | 'Safari' | 'Firefox' | 'Edge' | 'Other' =>
   return 'Other';
 };
 
-// Generate seed mock analytics data over last 30 days if empty
+// Safe capacity limits for local storage to stay well under browser quota
+const MAX_PAGE_VIEWS = 200;
+const MAX_PRODUCT_VIEWS = 100;
+const MAX_CATEGORY_CLICKS = 100;
+const MAX_ACTIONS = 100;
+
+// Generate seed mock analytics data over last 14 days if empty
 const generateInitialAnalytics = (): AnalyticsData => {
   const now = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
@@ -88,13 +94,12 @@ const generateInitialAnalytics = (): AnalyticsData => {
     { id: 'paints-coatings', name: 'Paints & Finishes' }
   ];
 
-  const sampleSearches = ['Master Mixer', 'CPVC Pipe price', 'Wall closet', 'Shower column', 'Nippon weather coat', 'Plumbing rates'];
+  const sampleSearches = ['Master Mixer', 'CPVC Pipe price', 'Wall closet', 'Shower column', 'Nippon weather coat'];
 
-  // Seed 30 days of activity
-  for (let i = 29; i >= 0; i--) {
+  // Seed 14 days of lightweight activity (~35 total views)
+  for (let i = 13; i >= 0; i--) {
     const dayTimestamp = now - (i * dayMs);
-    // 30-80 views per day
-    const viewsCount = Math.floor(30 + Math.random() * 50);
+    const viewsCount = 2 + (i % 3);
 
     for (let v = 0; v < viewsCount; v++) {
       const timeOffset = Math.floor(Math.random() * dayMs);
@@ -117,78 +122,111 @@ const generateInitialAnalytics = (): AnalyticsData => {
         path: '/'
       });
 
-      // Product view (70% probability)
-      if (Math.random() > 0.3) {
-        const prod = sampleProducts[Math.floor(Math.random() * sampleProducts.length)];
+      // Product view (1 per day)
+      if (v === 0) {
+        const prod = sampleProducts[i % sampleProducts.length];
         productViews.push({
-          id: `pvprod-${i}-${v}`,
+          id: `pvprod-${i}`,
           productId: prod.id,
           productName: prod.name,
           timestamp: timestampIso
         });
       }
 
-      // Category click (40% probability)
-      if (Math.random() > 0.6) {
-        const cat = sampleCategories[Math.floor(Math.random() * sampleCategories.length)];
+      // Category click (every 2 days)
+      if (v === 1 && i % 2 === 0) {
+        const cat = sampleCategories[i % sampleCategories.length];
         categoryClicks.push({
-          id: `cat-${i}-${v}`,
+          id: `cat-${i}`,
           categoryId: cat.id,
           categoryName: cat.name,
           timestamp: timestampIso
         });
       }
 
-      // Action event (15% probability)
-      if (Math.random() > 0.85) {
+      // Action event (every 3 days)
+      if (v === 0 && i % 3 === 0) {
         const randAct = Math.random();
-        if (randAct > 0.6) {
-          actions.push({ id: `act-${i}-${v}`, type: 'whatsapp', label: 'Product Inquiry', timestamp: timestampIso });
-        } else if (randAct > 0.35) {
-          actions.push({ id: `act-${i}-${v}`, type: 'call', label: 'Showroom Phone', timestamp: timestampIso });
-        } else if (randAct > 0.2) {
-          actions.push({ id: `act-${i}-${v}`, type: 'quote', label: 'AI Materials Estimator', timestamp: timestampIso });
-        } else if (randAct > 0.1) {
-          const q = sampleSearches[Math.floor(Math.random() * sampleSearches.length)];
-          actions.push({ id: `act-${i}-${v}`, type: 'search', label: q, timestamp: timestampIso });
+        if (randAct > 0.5) {
+          actions.push({ id: `act-${i}`, type: 'whatsapp', label: 'Product Inquiry', timestamp: timestampIso });
+        } else if (randAct > 0.25) {
+          actions.push({ id: `act-${i}`, type: 'call', label: 'Showroom Phone', timestamp: timestampIso });
         } else {
-          actions.push({ id: `act-${i}-${v}`, type: 'download', label: 'Catalog PDF', timestamp: timestampIso });
+          const q = sampleSearches[i % sampleSearches.length];
+          actions.push({ id: `act-${i}`, type: 'search', label: q, timestamp: timestampIso });
         }
       }
-
     }
   }
 
   return { pageViews, productViews, categoryClicks, actions };
 };
 
+// In-memory fallback if localStorage is completely disabled or full
+let inMemoryAnalytics: AnalyticsData | null = null;
+
 export const loadAnalyticsData = (): AnalyticsData => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') {
-        return {
-          pageViews: Array.isArray(parsed.pageViews) ? parsed.pageViews : [],
-          productViews: Array.isArray(parsed.productViews) ? parsed.productViews : [],
-          categoryClicks: Array.isArray(parsed.categoryClicks) ? parsed.categoryClicks : [],
-          actions: Array.isArray(parsed.actions) ? parsed.actions : [],
-        };
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          const result: AnalyticsData = {
+            pageViews: Array.isArray(parsed.pageViews) ? parsed.pageViews.slice(-MAX_PAGE_VIEWS) : [],
+            productViews: Array.isArray(parsed.productViews) ? parsed.productViews.slice(-MAX_PRODUCT_VIEWS) : [],
+            categoryClicks: Array.isArray(parsed.categoryClicks) ? parsed.categoryClicks.slice(-MAX_CATEGORY_CLICKS) : [],
+            actions: Array.isArray(parsed.actions) ? parsed.actions.slice(-MAX_ACTIONS) : [],
+          };
+          inMemoryAnalytics = result;
+          return result;
+        }
       }
     }
-  } catch (e) {
-    console.error('Error loading analytics', e);
+  } catch {}
+  
+  if (inMemoryAnalytics) {
+    return inMemoryAnalytics;
   }
+
   const initial = generateInitialAnalytics();
+  inMemoryAnalytics = initial;
   saveAnalyticsData(initial);
   return initial;
 };
 
 export const saveAnalyticsData = (data: AnalyticsData) => {
+  // Prune arrays to safe boundaries
+  const safeData: AnalyticsData = {
+    pageViews: (data.pageViews || []).slice(-MAX_PAGE_VIEWS),
+    productViews: (data.productViews || []).slice(-MAX_PRODUCT_VIEWS),
+    categoryClicks: (data.categoryClicks || []).slice(-MAX_CATEGORY_CLICKS),
+    actions: (data.actions || []).slice(-MAX_ACTIONS),
+  };
+
+  inMemoryAnalytics = safeData;
+
+  if (typeof localStorage === 'undefined') return;
+
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (e) {
-    console.error('Error saving analytics', e);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(safeData));
+  } catch (e: any) {
+    // If quota is exceeded, aggressively prune older items and retry
+    try {
+      const compactData: AnalyticsData = {
+        pageViews: safeData.pageViews.slice(-50),
+        productViews: safeData.productViews.slice(-30),
+        categoryClicks: safeData.categoryClicks.slice(-30),
+        actions: safeData.actions.slice(-20),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(compactData));
+      inMemoryAnalytics = compactData;
+    } catch {
+      // If still failing, keep in memory without throwing or spamming console
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {}
+    }
   }
 };
 
@@ -205,12 +243,11 @@ export const trackPageView = (path: string = '/') => {
       path
     };
     data.pageViews.push(newEvent);
-    // keep latest 10,000
-    if (data.pageViews.length > 10000) data.pageViews = data.pageViews.slice(-10000);
+    if (data.pageViews.length > MAX_PAGE_VIEWS) {
+      data.pageViews = data.pageViews.slice(-MAX_PAGE_VIEWS);
+    }
     saveAnalyticsData(data);
-  } catch (e) {
-    console.error(e);
-  }
+  } catch {}
 };
 
 export const trackProductView = (productId: string, productName: string) => {
@@ -222,10 +259,11 @@ export const trackProductView = (productId: string, productName: string) => {
       productName,
       timestamp: new Date().toISOString()
     });
+    if (data.productViews.length > MAX_PRODUCT_VIEWS) {
+      data.productViews = data.productViews.slice(-MAX_PRODUCT_VIEWS);
+    }
     saveAnalyticsData(data);
-  } catch (e) {
-    console.error(e);
-  }
+  } catch {}
 };
 
 export const trackCategoryClick = (categoryId: string, categoryName: string) => {
@@ -237,10 +275,11 @@ export const trackCategoryClick = (categoryId: string, categoryName: string) => 
       categoryName,
       timestamp: new Date().toISOString()
     });
+    if (data.categoryClicks.length > MAX_CATEGORY_CLICKS) {
+      data.categoryClicks = data.categoryClicks.slice(-MAX_CATEGORY_CLICKS);
+    }
     saveAnalyticsData(data);
-  } catch (e) {
-    console.error(e);
-  }
+  } catch {}
 };
 
 export const trackAction = (type: 'whatsapp' | 'call' | 'quote' | 'search' | 'download', label?: string) => {
@@ -252,10 +291,11 @@ export const trackAction = (type: 'whatsapp' | 'call' | 'quote' | 'search' | 'do
       label,
       timestamp: new Date().toISOString()
     });
+    if (data.actions.length > MAX_ACTIONS) {
+      data.actions = data.actions.slice(-MAX_ACTIONS);
+    }
     saveAnalyticsData(data);
-  } catch (e) {
-    console.error(e);
-  }
+  } catch {}
 };
 
 export const resetAnalytics = () => {

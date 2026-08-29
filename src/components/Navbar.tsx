@@ -114,12 +114,12 @@ export const Navbar: React.FC<NavbarProps> = ({
     : defaultCategoryQuickList;
 
   return (
-    <div className="sticky top-0 z-50 bg-white border-b border-slate-200 shadow-sm transition-all">
+    <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200/90 shadow-sm transition-all">
       
       {/* Scroll Progress Indicator */}
-      <div className="fixed top-0 left-0 right-0 h-[3px] bg-slate-100 z-[100] pointer-events-none">
+      <div className="fixed top-0 left-0 right-0 h-[2.5px] bg-slate-100 z-[100] pointer-events-none">
         <div 
-          className="h-full bg-blue-600 transition-all duration-75 ease-out shadow-[0_0_10px_rgba(37,99,235,0.8)]"
+          className="h-full bg-blue-600 transition-all duration-75 ease-out shadow-[0_0_8px_rgba(37,99,235,0.6)]"
           style={{ width: `${scrollProgress}%` }}
         />
       </div>
@@ -128,24 +128,24 @@ export const Navbar: React.FC<NavbarProps> = ({
       <AnnouncementBar />
 
       {/* TOP UTILITY BAR */}
-      <div className="bg-slate-900 text-slate-300 text-[11px] py-1.5 px-4 border-b border-slate-800">
+      <div className="bg-[#0b1324] text-slate-300 text-[11px] py-1.5 px-4 border-b border-slate-800/80">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
           
           {/* Left Highlights */}
-          <div className="flex items-center gap-4 flex-wrap">
-            <span className="flex items-center gap-1 text-emerald-400 font-medium">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Genuine Products</span>
+          <div className="flex items-center gap-3.5 flex-wrap">
+            <span className="flex items-center gap-1.5 text-emerald-400 font-semibold tracking-wide">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>100% Genuine Authorized Stock</span>
             </span>
             <span className="hidden sm:inline text-slate-700">|</span>
-            <span className="hidden sm:flex items-center gap-1 text-slate-300">
+            <span className="hidden sm:flex items-center gap-1.5 text-slate-300 font-medium">
               <Shield className="w-3.5 h-3.5 text-blue-400" />
-              <span>Best Prices Guaranteed</span>
+              <span>Direct Wholesale & Trade Rates</span>
             </span>
             <span className="hidden md:inline text-slate-700">|</span>
-            <span className="hidden md:flex items-center gap-1 text-slate-300">
+            <span className="hidden md:flex items-center gap-1.5 text-slate-300 font-medium">
               <Truck className="w-3.5 h-3.5 text-amber-400" />
-              <span>Fast Delivery</span>
+              <span>Prompt Safe Delivery in Pakistan</span>
             </span>
           </div>
 
@@ -155,7 +155,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 type="button"
                 onClick={onOpenDeliveryChecker}
-                className="hover:text-amber-300 text-amber-400 font-bold transition-colors flex items-center gap-1 mr-1"
+                className="hover:text-amber-300 text-amber-400 font-bold transition-colors flex items-center gap-1.5 mr-1"
                 title="Check Delivery Availability for Your Area"
               >
                 <Truck className="w-3.5 h-3.5" />
@@ -181,7 +181,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
             <a href="#about" className="hover:text-white transition-colors hidden lg:inline">
-              Store Locator
+              Showroom Locator
             </a>
             <a href="#faq" className="hover:text-white transition-colors hidden lg:inline">
               Help Center
@@ -191,14 +191,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={onOpenAdminDashboard}
-                  className="px-2.5 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] flex items-center gap-1 shadow-sm"
+                  className="px-2.5 py-0.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] flex items-center gap-1 shadow-sm transition-all"
                 >
                   <ShieldCheck className="w-3 h-3" />
                   <span>Admin CMS</span>
                 </button>
                 <button
                   onClick={onLogoutAdmin}
-                  className="px-2 py-0.5 rounded bg-slate-800 hover:bg-rose-900 text-rose-300 font-bold text-[10px]"
+                  className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-rose-900 text-rose-300 font-bold text-[10px] transition-all"
                 >
                   Exit
                 </button>
@@ -207,7 +207,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <a
               href={telHref}
-              className="flex items-center gap-1 text-white font-bold hover:text-blue-400 transition-colors"
+              className="flex items-center gap-1.5 text-white font-bold hover:text-blue-400 transition-colors pl-2 border-l border-slate-700"
             >
               <Phone className="w-3 h-3 text-blue-400" />
               <span>{displayPhone}</span>
@@ -220,7 +220,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* MAIN HEADER */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between gap-4">
         
-        {/* Left: ZFT Logo */}
+        {/* Left: Brand Emblem & Mobile Brand Name */}
         <div className="flex items-center gap-3">
           <a
             href="#hero"
@@ -228,20 +228,30 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="flex items-center gap-3 group"
             title="ZAFAR SARWAR TRADERS"
           >
-            <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-blue-400 shadow-md group-hover:bg-blue-600 group-hover:text-white transition-all">
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-blue-400 shadow-md group-hover:bg-blue-600 group-hover:text-white transition-all">
               <Building2 className="w-6 h-6" />
+            </div>
+            
+            {/* Mobile Brand Name */}
+            <div className="md:hidden flex flex-col">
+              <span className="text-base font-black font-serif tracking-tight text-slate-900 uppercase leading-none">
+                ZAFAR SARWAR <span className="text-blue-600 font-sans font-light">TRADERS</span>
+              </span>
+              <span className="text-[9px] font-bold text-slate-500 tracking-wider uppercase mt-0.5">
+                Luxury Sanitary & Building Supplies
+              </span>
             </div>
           </a>
         </div>
 
-        {/* Center: Large Company Name & Subtitle */}
+        {/* Center: Large Brand Name & Subtitle */}
         <div className="text-center flex-1 max-w-xl hidden md:block">
-          <a href="#hero" className="block">
-            <h1 className="text-xl lg:text-2xl font-black font-serif tracking-tight text-slate-900 uppercase">
+          <a href="#hero" className="inline-block group">
+            <h1 className="text-xl lg:text-2xl font-black font-serif tracking-tight text-slate-900 uppercase group-hover:text-blue-900 transition-colors">
               ZAFAR SARWAR <span className="text-blue-600 font-sans font-light">TRADERS</span>
             </h1>
             <p className="text-[11px] font-bold text-slate-500 tracking-widest uppercase mt-0.5">
-              Sanitary & Bathroom Solutions
+              Luxury Sanitaryware & Architectural Building Materials
             </p>
           </a>
         </div>
@@ -253,7 +263,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             onClick={onSearchClick}
             className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1.5 text-xs font-semibold"
-            title="Search Products"
+            title="Search Products & Specifications"
           >
             <Search className="w-4 h-4 text-blue-600" />
             <span className="hidden sm:inline">Search</span>
@@ -267,7 +277,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               title="Track Order Status"
             >
               <Truck className="w-4 h-4 text-amber-600" />
-              <span className="hidden md:inline">Track Order</span>
+              <span className="hidden md:inline">Track</span>
             </button>
           )}
 
@@ -329,7 +339,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* WhatsApp Direct Order Button */}
           <button
             onClick={handleWhatsAppClick}
-            className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/20 flex items-center gap-1.5 transition-all active:scale-95 shrink-0"
+            className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/15 flex items-center gap-1.5 transition-all active:scale-95 shrink-0"
           >
             <MessageSquare className="w-4 h-4" />
             <span className="hidden lg:inline">WhatsApp Order</span>
@@ -338,7 +348,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Mobile Menu Toggle */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2.5 rounded-xl bg-slate-100 text-slate-700 md:hidden"
+            className="p-2.5 rounded-xl bg-slate-100 text-slate-700 md:hidden hover:bg-slate-200 transition-colors"
+            aria-label="Toggle navigation menu"
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>

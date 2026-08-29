@@ -455,7 +455,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                   <div>
                     <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Showroom Price</span>
                     {currentProduct.price ? (
-                      <span className="text-xl sm:text-2xl font-black text-cyan-300 font-mono">
+                      <span className="text-xl sm:text-2xl font-black text-cyan-300 font-mono product-price-typography">
                         Rs. {!isNaN(Number(currentProduct.price)) && Number(currentProduct.price) > 0 ? Number(currentProduct.price).toLocaleString() : currentProduct.price}
                       </span>
                     ) : (

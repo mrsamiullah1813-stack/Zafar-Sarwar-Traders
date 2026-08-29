@@ -4,7 +4,7 @@ import { BusinessConfig } from '../types';
 
 interface BusinessConfigModalProps {
   config: BusinessConfig;
-  onSave: (updated: BusinessConfig) => void;
+  onSave: (updated: BusinessConfig) => Promise<{ success: boolean; error?: string }> | void;
   onClose: () => void;
 }
 
@@ -15,15 +15,27 @@ export const BusinessConfigModal: React.FC<BusinessConfigModalProps> = ({
 }) => {
   const [formData, setFormData] = useState<BusinessConfig>({ ...config });
   const [saved, setSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  React.useEffect(() => {
+    if (config) {
+      setFormData({ ...config });
+    }
+  }, [config]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
-    setSaved(true);
-    setTimeout(() => {
-      setSaved(false);
-      onClose();
-    }, 1000);
+    setIsSaving(true);
+    try {
+      await onSave(formData);
+      setSaved(true);
+      setTimeout(() => {
+        setSaved(false);
+        onClose();
+      }, 1000);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

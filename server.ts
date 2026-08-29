@@ -908,34 +908,41 @@ async function startServer() {
   // SITE SETTINGS DB Proxy (Supports both key/value rows AND column-based rows)
 
   app.get("/api/db/site-settings/:key", async (req, res) => {
-    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { key } = req.params;
-      // 1. Try key-value table
-      const { data: kvData, error: kvErr } = await dbClient.from("site_settings").select("value").eq("key", key).maybeSingle();
-      if (!kvErr && kvData && kvData.value !== undefined) {
-        return res.json({ success: true, data: kvData.value });
+      if (dbClient) {
+        // 1. Try key-value table
+        const { data: kvData, error: kvErr } = await dbClient.from("site_settings").select("value").eq("key", key).maybeSingle();
+        if (!kvErr && kvData && kvData.value !== undefined && kvData.value !== null) {
+          return res.json({ success: true, data: kvData.value });
+        }
+
+        // 2. Try single row config with named column
+        const k = key.toLowerCase();
+        let colName = null;
+        if (k.includes("announcement")) colName = "announcements";
+        else if (k.includes("theme")) colName = "theme_settings";
+        else if (k.includes("ai") || k.includes("assistant")) colName = "ai_assistant";
+        else if (k.includes("contact")) colName = "contact_info";
+        else if (k.includes("stat")) colName = "stats";
+        else if (k.includes("delivery")) colName = "delivery_settings";
+        else if (k.includes("checkout")) colName = "checkout_settings";
+        else if (k.includes("planner") || k.includes("designer")) colName = "planner_config";
+        else if (k.includes("config") || k.includes("business")) colName = "business_config";
+        else if (k.includes("gallery")) colName = "gallery";
+        else if (k.includes("pricing") || k.includes("typography")) colName = "pricing_typography";
+
+        if (colName) {
+          const { data: colData } = await dbClient.from("site_settings").select(colName).eq("id", "config").maybeSingle();
+          if (colData && (colData as any)[colName] !== undefined && (colData as any)[colName] !== null) {
+            return res.json({ success: true, data: (colData as any)[colName] });
+          }
+        }
       }
 
-      // 2. Try single row config with named column
-      const k = key.toLowerCase();
-      let colName = null;
-      if (k.includes("announcement")) colName = "announcements";
-      else if (k.includes("theme")) colName = "theme_settings";
-      else if (k.includes("ai") || k.includes("assistant")) colName = "ai_assistant";
-      else if (k.includes("contact")) colName = "contact_info";
-      else if (k.includes("stat")) colName = "stats";
-      else if (k.includes("delivery")) colName = "delivery_settings";
-      else if (k.includes("checkout")) colName = "checkout_settings";
-      else if (k.includes("planner") || k.includes("designer")) colName = "planner_config";
-      else if (k.includes("config") || k.includes("business")) colName = "business_config";
-      else if (k.includes("gallery")) colName = "gallery";
-
-      if (colName) {
-        const { data: colData } = await dbClient.from("site_settings").select(colName).eq("id", "config").maybeSingle();
-        if (colData && (colData as any)[colName] !== undefined) {
-          return res.json({ success: true, data: (colData as any)[colName] });
-        }
+      // Check cmsDataStore fallback if present
+      if (cmsDataStore && cmsDataStore[key] !== undefined && cmsDataStore[key] !== null) {
+        return res.json({ success: true, data: cmsDataStore[key] });
       }
 
       return res.json({ success: true, data: null });
@@ -945,10 +952,17 @@ async function startServer() {
   });
 
   app.post("/api/db/site-settings/upsert", requireAdminAuth, async (req, res) => {
-    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { key, value } = req.body;
       if (!key) return res.status(400).json({ success: false, error: "Key is required" });
+
+      // Always save to server-side memory & disk store as immediate durable guarantee
+      cmsDataStore[key] = value;
+      await persistDataStoreToDisk();
+
+      if (!dbClient) {
+        return res.json({ success: true, notice: "Saved locally (Supabase client not initialized)" });
+      }
 
       // 1. Try key/value schema
       const { error: kvError } = await dbClient.from("site_settings").upsert({
@@ -958,6 +972,7 @@ async function startServer() {
       }, { onConflict: "key" });
 
       if (!kvError) {
+        console.log(`[Supabase Proxy] Successfully upserted site_settings key="${key}"`);
         return res.json({ success: true });
       }
 
@@ -974,16 +989,23 @@ async function startServer() {
       else if (k.includes("planner") || k.includes("designer")) colName = "planner_config";
       else if (k.includes("config") || k.includes("business")) colName = "business_config";
       else if (k.includes("gallery")) colName = "gallery";
+      else if (k.includes("pricing") || k.includes("typography")) colName = "pricing_typography";
 
       if (colName) {
         const payload = { id: "config", [colName]: value, updated_at: new Date().toISOString() };
         const { error: colError } = await dbClient.from("site_settings").upsert(payload, { onConflict: "id" });
-        if (colError) return res.status(500).json({ success: false, error: colError.message });
+        if (colError) {
+          console.error(`[Supabase Proxy] Error upserting column ${colName}:`, colError.message);
+          return res.status(500).json({ success: false, error: colError.message || kvError.message });
+        }
+        console.log(`[Supabase Proxy] Successfully upserted site_settings column="${colName}"`);
         return res.json({ success: true });
       }
 
+      console.error(`[Supabase Proxy] Error upserting site_settings key="${key}":`, kvError.message);
       return res.status(500).json({ success: false, error: kvError.message });
     } catch (err: any) {
+      console.error(`[Supabase Proxy] Exception in site-settings upsert:`, err);
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
   });

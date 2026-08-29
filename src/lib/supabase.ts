@@ -118,15 +118,12 @@ export function getSafeHost(url: string): string {
   }
 }
 
-const safeGlobalFetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-  if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
-    return window.fetch(input, init);
-  }
-  return fetch(input, init);
-};
-
 function createSupabaseInstance(url: string, key: string, isReal: boolean): SupabaseClient {
   const strictBaseUrl = normalizeSupabaseUrl(url);
+  const safeFetch = typeof window !== 'undefined' && window.fetch 
+    ? (input: any, init?: any) => window.fetch(input, init)
+    : (typeof fetch !== 'undefined' ? (input: any, init?: any) => fetch(input, init) : undefined);
+
   try {
     return createClient(strictBaseUrl, key, {
       auth: {
@@ -135,7 +132,7 @@ function createSupabaseInstance(url: string, key: string, isReal: boolean): Supa
         detectSessionInUrl: isReal,
       },
       global: {
-        fetch: safeGlobalFetch,
+        fetch: safeFetch,
       },
     });
   } catch (e) {
@@ -147,7 +144,7 @@ function createSupabaseInstance(url: string, key: string, isReal: boolean): Supa
         detectSessionInUrl: false,
       },
       global: {
-        fetch: safeGlobalFetch,
+        fetch: safeFetch,
       },
     });
   }

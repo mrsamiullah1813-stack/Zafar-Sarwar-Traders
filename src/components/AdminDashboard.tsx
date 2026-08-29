@@ -57,7 +57,8 @@ import {
   Shield,
   PhoneCall,
   Clock,
-  Wrench
+  Wrench,
+  Type
 } from 'lucide-react';
 import { AdminPlannerManager } from './AdminPlannerManager';
 import { AdminEstimatorManager } from './AdminEstimatorManager';
@@ -67,6 +68,7 @@ import { AdminHeroManager } from './AdminHeroManager';
 import { AdminConstructionBuilderManager } from './AdminConstructionBuilderManager';
 import { Megaphone, Palette, HardHat } from 'lucide-react';
 import { AdminThemeManager } from './AdminThemeManager';
+import { AdminPricingAppearanceManager } from './AdminPricingAppearanceManager';
 import { AdminSmartToolsManager } from './AdminSmartToolsManager';
 import { Product, ProductCategory, ProductVideo, BusinessConfig, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, ThemeSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig } from '../types';
 import { getAdminPin, setAdminPin, loadPlannerConfig, savePlannerConfig, loadBuildMaterialEstimatorConfig, saveBuildMaterialEstimatorConfig, loadAiAssistantConfig, saveAiAssistantConfig, loadThemeSettings, saveThemeSettings, loadHeroSettings, saveHeroSettings, loadSmartToolsSettings, saveSmartToolsSettings, loadFittingBuilderConfig, saveFittingBuilderConfig, deleteProductFromStorage, saveStoredProducts, saveStoredProductSingle, deleteCategoryFromStorage, saveStoredCategories, saveStoredCategorySingle, deleteBrandFromStorage, saveStoredBrands, saveStoredBrandSingle } from '../utils/storage';
@@ -85,9 +87,9 @@ interface AdminDashboardProps {
   onSaveProducts: (products: Product[]) => Promise<{ success: boolean; error?: string }> | void;
   onSaveCategories: (categories: ProductCategory[]) => Promise<{ success: boolean; error?: string }> | void;
   onSaveBrands: (brands: ProductBrand[]) => Promise<{ success: boolean; error?: string }> | void;
-  onSaveStats: (stats: StatCounter[]) => void;
-  onSaveContacts?: (contacts: ContactPerson[]) => void;
-  onSaveConfig: (config: BusinessConfig) => void;
+  onSaveStats: (stats: StatCounter[]) => Promise<{ success: boolean; error?: string }> | void;
+  onSaveContacts?: (contacts: ContactPerson[]) => Promise<{ success: boolean; error?: string }> | void;
+  onSaveConfig: (config: BusinessConfig) => Promise<{ success: boolean; error?: string }> | void;
   onSaveGallery: (gallery: GalleryItem[]) => void;
   onSaveHeroSettings?: (hs: HeroSettings) => void;
   onSaveSmartToolsSettings?: (st: SmartToolsSettings) => void;
@@ -120,7 +122,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onLogout,
   onClose
 }) => {
-  const [activeTab, setActiveTab] = useState<'analytics' | 'hero' | 'announcements' | 'orders' | 'customers' | 'delivery' | 'products' | 'categories' | 'brands' | 'contacts' | 'statistics' | 'banners_seo' | 'gallery' | 'smart_tools' | 'construction_builder' | 'planner' | 'estimator' | 'ai_assistant' | 'themes'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'hero' | 'announcements' | 'orders' | 'customers' | 'delivery' | 'products' | 'categories' | 'brands' | 'contacts' | 'statistics' | 'banners_seo' | 'pricing_appearance' | 'gallery' | 'smart_tools' | 'construction_builder' | 'planner' | 'estimator' | 'ai_assistant' | 'themes'>('analytics');
   const [plannerConfig, setPlannerConfig] = useState<AiDesignerConfig>(loadPlannerConfig());
   const [estimatorConfig, setEstimatorConfig] = useState<BuildMaterialEstimatorConfig>(loadBuildMaterialEstimatorConfig());
   const [fittingConfigState, setFittingConfigState] = useState<FittingBuilderConfig>(fittingBuilderConfig || loadFittingBuilderConfig());
@@ -176,6 +178,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [configForm, setConfigForm] = useState<BusinessConfig>({ ...config });
   const [newPin, setNewPin] = useState(getAdminPin());
   const [configSuccessMsg, setConfigSuccessMsg] = useState('');
+
+  // Keep configForm synchronized when parent config updates
+  useEffect(() => {
+    if (config) {
+      setConfigForm({ ...config });
+    }
+  }, [config]);
 
   // Gallery item add state
   const [newGalleryTitle, setNewGalleryTitle] = useState('');
@@ -344,47 +353,70 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // Contact Persons Handlers
-  const handleSaveContact = (contactToSave: ContactPerson) => {
+  const handleSaveContact = async (contactToSave: ContactPerson) => {
     const exists = contacts.some(c => c.id === contactToSave.id);
     let updated: ContactPerson[];
     if (exists) {
       updated = contacts.map(c => c.id === contactToSave.id ? contactToSave : c);
-      showToast(`Contact "${contactToSave.fullName}" updated!`);
     } else {
       updated = [...contacts, contactToSave];
-      showToast(`New contact "${contactToSave.fullName}" added!`);
     }
-    if (onSaveContacts) onSaveContacts(updated);
+    if (onSaveContacts) {
+      const res = await onSaveContacts(updated);
+      if (res && res.success === false) {
+        showToast(`Save failed: ${res.error || 'Database error'}`);
+        return;
+      }
+    }
+    showToast(exists ? `Contact "${contactToSave.fullName}" updated!` : `New contact "${contactToSave.fullName}" added!`);
     setIsContactModalOpen(false);
     setEditingContact(null);
   };
 
-  const handleDeleteContact = (id: string) => {
+  const handleDeleteContact = async (id: string) => {
     if (confirm('Delete this contact person permanently?')) {
       const updated = contacts.filter(c => c.id !== id);
-      if (onSaveContacts) onSaveContacts(updated);
+      if (onSaveContacts) {
+        const res = await onSaveContacts(updated);
+        if (res && res.success === false) {
+          showToast(`Delete failed: ${res.error || 'Database error'}`);
+          return;
+        }
+      }
       showToast('Contact person removed.');
       setIsContactModalOpen(false);
       setEditingContact(null);
     }
   };
 
-  const handleToggleContactHidden = (contact: ContactPerson) => {
+  const handleToggleContactHidden = async (contact: ContactPerson) => {
     const updated = contacts.map(c => c.id === contact.id ? { ...c, isHidden: !c.isHidden } : c);
-    if (onSaveContacts) onSaveContacts(updated);
+    if (onSaveContacts) {
+      const res = await onSaveContacts(updated);
+      if (res && res.success === false) {
+        showToast(`Update failed: ${res.error || 'Database error'}`);
+        return;
+      }
+    }
     showToast(`Contact "${contact.fullName}" ${!contact.isHidden ? 'Hidden' : 'Visible'}.`);
   };
 
-  const handleSetPrimaryContact = (contactId: string) => {
+  const handleSetPrimaryContact = async (contactId: string) => {
     const updated = contacts.map(c => ({
       ...c,
       isPrimary: c.id === contactId
     }));
-    if (onSaveContacts) onSaveContacts(updated);
+    if (onSaveContacts) {
+      const res = await onSaveContacts(updated);
+      if (res && res.success === false) {
+        showToast(`Update failed: ${res.error || 'Database error'}`);
+        return;
+      }
+    }
     showToast('Primary contact updated.');
   };
 
-  const handleMoveContact = (index: number, direction: 'up' | 'down') => {
+  const handleMoveContact = async (index: number, direction: 'up' | 'down') => {
     const newContacts = [...contacts];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= newContacts.length) return;
@@ -392,42 +424,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     newContacts[index] = newContacts[targetIndex];
     newContacts[targetIndex] = temp;
     const reindexed = newContacts.map((c, i) => ({ ...c, displayOrder: i + 1 }));
-    if (onSaveContacts) onSaveContacts(reindexed);
+    if (onSaveContacts) {
+      const res = await onSaveContacts(reindexed);
+      if (res && res.success === false) {
+        showToast(`Update failed: ${res.error || 'Database error'}`);
+        return;
+      }
+    }
     showToast('Contact personnel order updated.');
   };
 
   // Stat Counter Handlers
-  const handleSaveStat = (statToSave: StatCounter) => {
+  const handleSaveStat = async (statToSave: StatCounter) => {
     const exists = stats.some(s => s.id === statToSave.id);
     let updated: StatCounter[];
     if (exists) {
       updated = stats.map(s => s.id === statToSave.id ? statToSave : s);
-      showToast(`Stat counter "${statToSave.title}" updated!`);
     } else {
       updated = [...stats, statToSave];
-      showToast(`New stat counter "${statToSave.title}" created!`);
     }
-    onSaveStats(updated);
+    const res = await onSaveStats(updated);
+    if (res && res.success === false) {
+      showToast(`Save failed: ${res.error || 'Database error'}`);
+      return;
+    }
+    showToast(exists ? `Stat counter "${statToSave.title}" updated!` : `New stat counter "${statToSave.title}" created!`);
     setIsStatModalOpen(false);
     setEditingStat(null);
   };
 
-  const handleDeleteStat = (statId: string) => {
+  const handleDeleteStat = async (statId: string) => {
     if (confirm('Delete this statistic counter permanently?')) {
       const updated = stats.filter(s => s.id !== statId);
-      onSaveStats(updated);
+      const res = await onSaveStats(updated);
+      if (res && res.success === false) {
+        showToast(`Delete failed: ${res.error || 'Database error'}`);
+        return;
+      }
       showToast('Statistic counter removed.');
     }
   };
 
-  const handleMoveStat = (index: number, direction: 'up' | 'down') => {
+  const handleMoveStat = async (index: number, direction: 'up' | 'down') => {
     const newStats = [...stats];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= newStats.length) return;
     const temp = newStats[index];
     newStats[index] = newStats[targetIndex];
     newStats[targetIndex] = temp;
-    onSaveStats(newStats);
+    const res = await onSaveStats(newStats);
+    if (res && res.success === false) {
+      showToast(`Update failed: ${res.error || 'Database error'}`);
+      return;
+    }
   };
 
   // Category Permanent Delete Confirm Handler
@@ -587,14 +636,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // Config & Banners Save
-  const handleSaveConfigForm = (e: React.FormEvent) => {
+  const handleSaveConfigForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveConfig(configForm);
-    if (newPin) {
-      setAdminPin(newPin);
+    try {
+      const res = await onSaveConfig(configForm);
+      if (res && res.success === false) {
+        showToast(`Save failed: ${res.error || 'Database error saving settings'}`);
+        return;
+      }
+      if (newPin) {
+        setAdminPin(newPin);
+      }
+      setConfigSuccessMsg('Store settings, Banners & Phone/WhatsApp successfully saved!');
+      showToast('Store settings & WhatsApp lines saved!');
+      setTimeout(() => setConfigSuccessMsg(''), 4000);
+    } catch (err: any) {
+      showToast(`Save failed: ${err?.message || String(err)}`);
     }
-    setConfigSuccessMsg('Store settings, Banners & SEO successfully updated!');
-    setTimeout(() => setConfigSuccessMsg(''), 3000);
   };
 
   // Gallery Add
@@ -867,6 +925,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             >
               <Globe className="w-4 h-4" />
               <span>Banners, Contact & SEO</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('pricing_appearance')}
+              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all ${
+                activeTab === 'pricing_appearance'
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-950'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Type className="w-4 h-4 text-amber-400" />
+                <span>Pricing Appearance</span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-amber-950 text-[10px] text-amber-300 font-mono font-bold">
+                NEW
+              </span>
             </button>
 
             <button
@@ -2619,6 +2694,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               onSaveThemeSettings={(updated) => {
                 setThemeSettings(updated);
                 saveThemeSettings(updated);
+              }}
+            />
+          )}
+
+          {/* TAB: PRICING APPEARANCE & TYPOGRAPHY */}
+          {activeTab === 'pricing_appearance' && (
+            <AdminPricingAppearanceManager
+              onSaved={() => {
+                showToast('Product pricing typography saved and updated across showroom!');
               }}
             />
           )}

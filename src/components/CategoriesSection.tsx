@@ -159,20 +159,20 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.4, delay: idx * 0.02 }}
                 onClick={() => onSelectCategory(cat.id)}
-                className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-blue-500/50 transition-all cursor-pointer flex flex-col justify-between overflow-hidden"
+                className="group bg-white rounded-2xl border border-slate-200/85 shadow-sm hover:shadow-xl hover:border-blue-500/60 hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between overflow-hidden"
               >
-                <div className="relative h-44 w-full overflow-hidden bg-slate-100">
+                <div className="relative h-48 w-full overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200/60">
                   <img
                     src={cat.image || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80'}
                     alt={`${cat.name} - Luxury Sanitaryware & Building Materials | Zafar Sarwar Traders Pakistan`}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   {cat.badge && (
-                    <div className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-blue-600 text-white text-[10px] font-bold uppercase tracking-wider shadow">
+                    <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-blue-600 text-white text-[10px] font-bold uppercase tracking-wider shadow-sm">
                       {cat.badge}
                     </div>
                   )}
-                  <div className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-slate-900/80 backdrop-blur-sm text-white text-[10px] font-medium">
+                  <div className="absolute top-3 right-3 px-2.5 py-1 rounded-md bg-slate-900/85 backdrop-blur-sm text-white text-[10px] font-medium font-mono">
                     {cat.itemCount}+ Items
                   </div>
                 </div>
@@ -180,10 +180,10 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
                 <div className="p-5 flex-1 flex flex-col justify-between space-y-3">
                   <div>
                     <div className="flex items-center justify-between gap-2">
-                      <h3 className="font-bold text-slate-900 text-sm group-hover:text-blue-600 transition-colors">
+                      <h3 className="font-bold text-slate-900 text-base group-hover:text-blue-600 transition-colors">
                         {cat.name}
                       </h3>
-                      <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition-colors" />
+                      <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                     </div>
                     <p className="mt-1.5 text-slate-500 text-xs line-clamp-2 leading-relaxed">
                       {cat.description}

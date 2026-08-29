@@ -1,4 +1,4 @@
-import { BusinessConfig, Product, ProductCategory, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, CartItem, CustomerOrder, CheckoutSettings, DeliverySettings, CityDeliveryInfo, ThemeOption, ThemeSettings, AnnouncementBarSettings, AnnouncementItem, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig } from '../types';
+import { BusinessConfig, Product, ProductCategory, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, CartItem, CustomerOrder, CheckoutSettings, DeliverySettings, CityDeliveryInfo, ThemeOption, ThemeSettings, AnnouncementBarSettings, AnnouncementItem, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig, PricingTypographySettings, defaultPricingTypography } from '../types';
 import { initialBusinessConfig, productCategories, featuredProducts, galleryItems, productBrands, defaultStatCounters } from '../data/storeData';
 import { defaultBathroomPlannerConfig } from '../data/defaultPlannerConfig';
 import { defaultBuildMaterialEstimatorConfig } from '../data/defaultEstimatorConfig';
@@ -57,6 +57,7 @@ const STORAGE_KEYS = {
   HERO_SETTINGS: 'zst_hero_settings_v1',
   SMART_TOOLS: 'zst_smart_tools_settings_v1',
   FITTING_BUILDER: 'zst_fitting_builder_config_v1',
+  PRICING_TYPOGRAPHY: 'zst_pricing_typography_v1',
 };
 
 export const defaultHeroSettings: HeroSettings = {
@@ -1234,6 +1235,95 @@ export const saveFittingBuilderConfig = async (config: FittingBuilderConfig): Pr
   }
 };
 
+export const applyPricingTypographyToRoot = (settings: PricingTypographySettings) => {
+  if (typeof document === 'undefined') return;
+  try {
+    const root = document.documentElement;
+    const safe: PricingTypographySettings = { ...defaultPricingTypography, ...(settings || {}) };
+
+    // CSS variables for product price typography
+    root.style.setProperty('--product-price-color', safe.color || '#e5a93d');
+    root.style.setProperty('--product-price-weight', safe.fontWeight || '700');
+
+    const fontVal = (safe.fontFamily || 'Plus Jakarta Sans').trim();
+    if (fontVal === 'System Sans' || fontVal === 'Default') {
+      root.style.setProperty('--product-price-font', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif');
+    } else {
+      root.style.setProperty('--product-price-font', `"${fontVal}", sans-serif`);
+      
+      // Dynamically load Google Font if not a system font
+      const googleFontFamilies = ['Inter', 'Poppins', 'Montserrat', 'Roboto', 'Open Sans', 'Lato', 'Playfair Display', 'DM Sans', 'Plus Jakarta Sans'];
+      if (googleFontFamilies.includes(fontVal)) {
+        const fontId = 'google-font-price-typography';
+        let linkEl = document.getElementById(fontId) as HTMLLinkElement | null;
+        const fontParam = encodeURIComponent(fontVal);
+        const href = `https://fonts.googleapis.com/css2?family=${fontParam}:wght@400;500;600;700;800&display=swap`;
+        if (!linkEl) {
+          linkEl = document.createElement('link');
+          linkEl.id = fontId;
+          linkEl.rel = 'stylesheet';
+          document.head.appendChild(linkEl);
+        }
+        if (linkEl.href !== href) {
+          linkEl.href = href;
+        }
+      }
+    }
+
+    const scaleMap: Record<string, string> = {
+      sm: '0.9',
+      md: '1.0',
+      lg: '1.15',
+      xl: '1.3'
+    };
+    root.style.setProperty('--product-price-scale', scaleMap[safe.fontSizeScale] || '1.0');
+
+    const spacingMap: Record<string, string> = {
+      tight: '-0.025em',
+      normal: '0em',
+      wide: '0.05em'
+    };
+    root.style.setProperty('--product-price-letter-spacing', spacingMap[safe.letterSpacing || 'normal'] || '0em');
+    root.style.setProperty('--product-price-style', safe.priceStyle === 'semibold' ? 'normal' : (safe.priceStyle || 'normal'));
+  } catch (e) {
+    console.warn('Error applying pricing typography to root', e);
+  }
+};
+
+export const loadPricingTypographySettings = (): PricingTypographySettings => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.PRICING_TYPOGRAPHY);
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === 'object' && parsed.color) {
+        const config = { ...defaultPricingTypography, ...parsed };
+        applyPricingTypographyToRoot(config);
+        return config;
+      }
+    }
+  } catch (e) {
+    console.error('Error loading pricing typography settings', e);
+  }
+  applyPricingTypographyToRoot(defaultPricingTypography);
+  return defaultPricingTypography;
+};
+
+export const savePricingTypographySettings = async (settings: PricingTypographySettings): Promise<{ success: boolean; error?: string }> => {
+  try {
+    if (isSupabaseConfigured) {
+      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.PRICING_TYPOGRAPHY, settings);
+      if (!res.success) return { success: false, error: res.error };
+    }
+    safeSetLocalStorage(STORAGE_KEYS.PRICING_TYPOGRAPHY, settings);
+    saveToServerCMS(STORAGE_KEYS.PRICING_TYPOGRAPHY, settings);
+    applyPricingTypographyToRoot(settings);
+    return { success: true };
+  } catch (e: any) {
+    console.error('Error saving pricing typography settings', e);
+    return { success: false, error: e?.message || String(e) };
+  }
+};
+
 export const syncWithServerCMS = async (callbacks: {
   setConfig?: (c: BusinessConfig) => void;
   setProducts?: (p: Product[]) => void;
@@ -1253,6 +1343,7 @@ export const syncWithServerCMS = async (callbacks: {
   setAnnouncementSettings?: (as: AnnouncementBarSettings) => void;
   setHeroSettings?: (hs: HeroSettings) => void;
   setSmartToolsSettings?: (st: SmartToolsSettings) => void;
+  setPricingTypography?: (pt: PricingTypographySettings) => void;
   customerId?: string;
 }) => {
   await initializeSupabaseRuntime();
@@ -1326,16 +1417,18 @@ export const syncWithServerCMS = async (callbacks: {
 
     // 7. Fetch Site Settings (Business Config, Announcement, Theme, Checkout, Delivery, Stats, Contacts, Gallery, Planner, AI Assistant)
     const configDb = await fetchSiteSettingFromSupabase<BusinessConfig>(STORAGE_KEYS.CONFIG);
-    if (configDb && typeof configDb === 'object' && Object.keys(configDb).length > 0 && ('companyName' in configDb || 'tagline' in configDb)) {
-      if (callbacks.setConfig) callbacks.setConfig(configDb);
-      safeSetLocalStorage(STORAGE_KEYS.CONFIG, configDb);
+    if (configDb && typeof configDb === 'object' && Object.keys(configDb).length > 0 && (('name' in configDb) || ('phone' in configDb) || ('whatsapp' in configDb) || ('address' in configDb))) {
+      const mergedConfig = { ...loadStoredConfig(), ...configDb };
+      if (callbacks.setConfig) callbacks.setConfig(mergedConfig);
+      safeSetLocalStorage(STORAGE_KEYS.CONFIG, mergedConfig);
+      console.log(`[Sync] Business config loaded into React state: ${mergedConfig.name} | Phone: ${mergedConfig.phone} | WhatsApp: ${mergedConfig.whatsapp}`);
     } else {
       const fallbackConfig = loadStoredConfig();
       if (callbacks.setConfig) callbacks.setConfig(fallbackConfig);
     }
 
     const announcementDb = await fetchSiteSettingFromSupabase<AnnouncementBarSettings>(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS);
-    if (announcementDb && typeof announcementDb === 'object' && ('text' in announcementDb || 'enabled' in announcementDb)) {
+    if (announcementDb && typeof announcementDb === 'object' && ('enabled' in announcementDb || 'message' in announcementDb || 'items' in announcementDb)) {
       if (callbacks.setAnnouncementSettings) callbacks.setAnnouncementSettings(announcementDb);
       safeSetLocalStorage(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, announcementDb);
     } else {
@@ -1353,7 +1446,7 @@ export const syncWithServerCMS = async (callbacks: {
     }
 
     const checkoutDb = await fetchSiteSettingFromSupabase<CheckoutSettings>(STORAGE_KEYS.CHECKOUT_SETTINGS);
-    if (checkoutDb && typeof checkoutDb === 'object' && Object.keys(checkoutDb).length > 0 && ('enableCOD' in checkoutDb || 'currency' in checkoutDb)) {
+    if (checkoutDb && typeof checkoutDb === 'object' && Object.keys(checkoutDb).length > 0 && ('deliveryFee' in checkoutDb || 'freeDeliveryThreshold' in checkoutDb || 'whatsappNumberOverride' in checkoutDb || 'enableTaxes' in checkoutDb)) {
       if (callbacks.setCheckoutSettings) callbacks.setCheckoutSettings(checkoutDb);
       safeSetLocalStorage(STORAGE_KEYS.CHECKOUT_SETTINGS, checkoutDb);
     } else {
@@ -1380,6 +1473,7 @@ export const syncWithServerCMS = async (callbacks: {
     if (Array.isArray(contactsDb) && contactsDb.length > 0) {
       if (callbacks.setContacts) callbacks.setContacts(contactsDb);
       safeSetLocalStorage(STORAGE_KEYS.CONTACTS, contactsDb);
+      console.log(`[Sync] Contacts loaded into React state: ${contactsDb.length}`);
     } else {
       const fallbackContacts = loadStoredContacts();
       if (callbacks.setContacts) callbacks.setContacts(fallbackContacts);
@@ -1395,7 +1489,7 @@ export const syncWithServerCMS = async (callbacks: {
     }
 
     const plannerDb = await fetchSiteSettingFromSupabase<AiDesignerConfig>(STORAGE_KEYS.PLANNER);
-    if (plannerDb && typeof plannerDb === 'object' && Array.isArray((plannerDb as any).rules)) {
+    if (plannerDb && typeof plannerDb === 'object' && (Array.isArray((plannerDb as any).roomTypes) || Array.isArray((plannerDb as any).rules))) {
       if (callbacks.setPlannerConfig) callbacks.setPlannerConfig(plannerDb);
       safeSetLocalStorage(STORAGE_KEYS.PLANNER, plannerDb);
     } else {
@@ -1442,6 +1536,18 @@ export const syncWithServerCMS = async (callbacks: {
       if (callbacks.setSmartToolsSettings) callbacks.setSmartToolsSettings(fallbackTools);
     }
 
+    const pricingTypoDb = await fetchSiteSettingFromSupabase<PricingTypographySettings>(STORAGE_KEYS.PRICING_TYPOGRAPHY);
+    if (pricingTypoDb && typeof pricingTypoDb === 'object' && pricingTypoDb.color) {
+      if (callbacks.setPricingTypography) callbacks.setPricingTypography(pricingTypoDb);
+      safeSetLocalStorage(STORAGE_KEYS.PRICING_TYPOGRAPHY, pricingTypoDb);
+      applyPricingTypographyToRoot(pricingTypoDb);
+      console.log(`[Sync] Pricing typography loaded into React state: color=${pricingTypoDb.color}, font=${pricingTypoDb.fontFamily}`);
+    } else {
+      const fallbackPricingTypo = loadPricingTypographySettings();
+      if (callbacks.setPricingTypography) callbacks.setPricingTypography(fallbackPricingTypo);
+      applyPricingTypographyToRoot(fallbackPricingTypo);
+    }
+
     console.log('✅ [Database & Backend Sync] Synchronization complete!');
     return;
   } catch (err) {
@@ -1468,6 +1574,11 @@ export const syncWithServerCMS = async (callbacks: {
     if (callbacks.setSmartToolsSettings) callbacks.setSmartToolsSettings(loadSmartToolsSettings());
     if (callbacks.setEstimatorConfig) callbacks.setEstimatorConfig(loadBuildMaterialEstimatorConfig());
     if (callbacks.setFittingBuilderConfig) callbacks.setFittingBuilderConfig(loadFittingBuilderConfig());
+    if (callbacks.setPricingTypography) {
+      const fallbackPricing = loadPricingTypographySettings();
+      callbacks.setPricingTypography(fallbackPricing);
+      applyPricingTypographyToRoot(fallbackPricing);
+    }
   } catch (e) {
     console.warn('Local storage sync fallback error:', e);
   }

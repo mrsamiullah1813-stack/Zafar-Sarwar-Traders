@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Check, Trash2, Video, Image as ImageIcon, Sparkles, Tag, ShieldCheck, Layers, Star, Truck, Clock, MapPin, Info, DollarSign, MessageSquare, AlertCircle, Flame, Percent, Calendar, Timer, Boxes, Plus, Copy, ArrowUp, ArrowDown, Settings2, Sliders, CheckCircle2, Eye, Palette } from 'lucide-react';
-import { Product, ProductVideo, ProductCategory, ProductBrand, ProductDeliveryConfig, ProductSaleConfig, ProductVariant, ProductVariantsConfig, PaintShade, PaintShadesConfig } from '../types';
+import { Product, ProductVideo, ProductCategory, ProductBrand, ProductDeliveryConfig, ProductSaleConfig, ProductVariant, ProductVariantsConfig, PaintShade, PaintShadesConfig, ProductQuantityConfig } from '../types';
 import { VideoUploader } from './VideoUploader';
 import { MultiImageUploader } from './MultiImageUploader';
 import { AdminPaintShadesManager } from './AdminPaintShadesManager';
@@ -95,6 +95,15 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
   const [variantsList, setVariantsList] = useState<ProductVariant[]>([]);
   const [activeVariantTab, setActiveVariantTab] = useState<'editor' | 'preview'>('editor');
 
+  // Quantity & Bulk Order states (Admin controlled per product)
+  const [quantityEnabled, setQuantityEnabled] = useState<boolean>(false);
+  const [minQuantity, setMinQuantity] = useState<number>(1);
+  const [maxQuantity, setMaxQuantity] = useState<number | undefined>(undefined);
+  const [defaultQuantity, setDefaultQuantity] = useState<number>(1);
+  const [quantityStep, setQuantityStep] = useState<number>(1);
+  const [unitLabel, setUnitLabel] = useState<string>('Pcs');
+  const [previewQty, setPreviewQty] = useState<number>(1);
+
   // Paint-Specific Shade / Color System states (Only for Paint products)
   const [shadesEnabled, setShadesEnabled] = useState<boolean>(false);
   const [shadesTitle, setShadesTitle] = useState<string>('Choose Shade');
@@ -145,6 +154,20 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       setOptionName(product.optionName || product.variantsConfig?.optionName || 'Capacity');
       const loadedVariants = product.variantsList || product.variantsConfig?.variants || [];
       setVariantsList(Array.isArray(loadedVariants) ? loadedVariants : []);
+
+      // Populate quantity states
+      const isProductQtyOn = Boolean(product.quantityEnabled || product.quantityConfig?.quantityEnabled);
+      setQuantityEnabled(isProductQtyOn);
+      const initialMinQty = Number(product.minQuantity ?? product.quantityConfig?.minQuantity ?? 1);
+      setMinQuantity(initialMinQty > 0 ? initialMinQty : 1);
+      const initialMaxQty = product.maxQuantity ?? product.quantityConfig?.maxQuantity;
+      setMaxQuantity(typeof initialMaxQty === 'number' && initialMaxQty > 0 ? initialMaxQty : undefined);
+      const initialDefQty = Number(product.defaultQuantity ?? product.quantityConfig?.defaultQuantity ?? 1);
+      setDefaultQuantity(initialDefQty > 0 ? initialDefQty : 1);
+      setPreviewQty(initialDefQty > 0 ? initialDefQty : 1);
+      const initialStep = Number(product.quantityStep ?? product.quantityConfig?.quantityStep ?? 1);
+      setQuantityStep(initialStep > 0 ? initialStep : 1);
+      setUnitLabel(product.unitLabel || product.quantityConfig?.unitLabel || 'Pcs');
 
       // Populate paint shades states
       const isProductShadesOn = Boolean(product.shadesEnabled || product.paintShadesConfig?.shadesEnabled);
@@ -203,6 +226,13 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       setVariantsEnabled(false);
       setOptionName('Capacity');
       setVariantsList([]);
+      setQuantityEnabled(false);
+      setMinQuantity(1);
+      setMaxQuantity(undefined);
+      setDefaultQuantity(1);
+      setQuantityStep(1);
+      setUnitLabel('Pcs');
+      setPreviewQty(1);
       setShadesEnabled(false);
       setShadesTitle('Select Paint Shade / Color');
       setShadesList([]);
@@ -493,6 +523,15 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       shades: activeCleanShades
     } : undefined;
 
+    const quantityConfigObj: ProductQuantityConfig | undefined = quantityEnabled ? {
+      quantityEnabled: true,
+      minQuantity: minQuantity > 0 ? minQuantity : 1,
+      maxQuantity: maxQuantity && maxQuantity > 0 ? maxQuantity : undefined,
+      defaultQuantity: defaultQuantity > 0 ? defaultQuantity : 1,
+      quantityStep: quantityStep > 0 ? quantityStep : 1,
+      unitLabel: unitLabel.trim() || 'Pcs'
+    } : undefined;
+
     const finalProduct: Product = {
       id: formData.id || `prod-${Date.now()}`,
       name: formData.name,
@@ -513,6 +552,15 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       showDiscountPercentage: showDiscountPercentage,
       showSavingsAmount: showSavingsAmount,
       saleConfig: saleConfigObj,
+      // Quantity configuration
+      quantityEnabled: Boolean(quantityEnabled),
+      minQuantity: quantityEnabled ? (minQuantity > 0 ? minQuantity : 1) : undefined,
+      maxQuantity: (quantityEnabled && maxQuantity && maxQuantity > 0) ? maxQuantity : undefined,
+      defaultQuantity: quantityEnabled ? (defaultQuantity > 0 ? defaultQuantity : 1) : undefined,
+      quantityStep: quantityEnabled ? (quantityStep > 0 ? quantityStep : 1) : undefined,
+      unitLabel: quantityEnabled ? (unitLabel.trim() || 'Pcs') : undefined,
+      quantityConfig: quantityConfigObj,
+      // Variant configuration
       variantsEnabled: Boolean(variantsEnabled),
       optionName: optionName.trim() || 'Size',
       variantsList: variantsEnabled ? activeCleanVariants : undefined,
@@ -1516,6 +1564,280 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
                     </div>
                   </div>
                 )}
+
+              </div>
+            )}
+          </div>
+
+          {/* 🔢 PRODUCT QUANTITY & WHOLESALE ORDERING SETTINGS (ADMIN-CONTROLLED PER PRODUCT) */}
+          <div className={`p-4 sm:p-5 rounded-2xl border transition-all duration-300 space-y-4 ${
+            quantityEnabled 
+              ? 'bg-gradient-to-b from-blue-950/40 via-slate-900 to-slate-950 border-blue-500/50 shadow-xl shadow-blue-950/20' 
+              : 'bg-slate-950/70 border-slate-800'
+          }`}>
+            {/* Master Quantity Toggle Header */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className={`p-2 rounded-xl border transition-colors ${
+                  quantityEnabled 
+                    ? 'bg-blue-600 text-white border-blue-400 shadow-md shadow-blue-600/30' 
+                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                }`}>
+                  <Sliders className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white uppercase tracking-wider">
+                      Quantity Selector & Dynamic Total
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      quantityEnabled 
+                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40' 
+                        : 'bg-slate-800 text-slate-400 border border-slate-700'
+                    }`}>
+                      {quantityEnabled ? `ENABLED (Min: ${minQuantity}, Step: ${quantityStep}, Unit: ${unitLabel || 'Pcs'})` : 'DISABLED / OFF'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    {quantityEnabled 
+                      ? 'Customers can select quantity (+ / -) with real-time price recalculation (Total = Unit Price × Quantity) on website and WhatsApp.' 
+                      : 'Fixed 1-unit order. Enable below to let customers choose quantities, bulk orders, or custom pack counts.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Master Switch */}
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={quantityEnabled}
+                  onChange={(e) => {
+                    const nextVal = e.target.checked;
+                    setQuantityEnabled(nextVal);
+                    if (nextVal && (!minQuantity || minQuantity < 1)) {
+                      setMinQuantity(1);
+                    }
+                  }}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            {/* Quantity Parameters & Interactive Preview */}
+            {quantityEnabled && (
+              <div className="pt-3 border-t border-blue-500/20 space-y-4 animate-fadeIn">
+                
+                {/* Quantity Parameters Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Minimum Quantity *
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={minQuantity}
+                      onChange={(e) => {
+                        const val = Math.max(1, parseInt(e.target.value) || 1);
+                        setMinQuantity(val);
+                        if (previewQty < val) setPreviewQty(val);
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-0.5 block">Lowest allowed</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Maximum Quantity
+                    </label>
+                    <input
+                      type="number"
+                      min={minQuantity}
+                      placeholder="Unlimited"
+                      value={maxQuantity !== undefined ? maxQuantity : ''}
+                      onChange={(e) => {
+                        const raw = e.target.value.trim();
+                        if (raw === '') {
+                          setMaxQuantity(undefined);
+                        } else {
+                          const val = Math.max(minQuantity, parseInt(raw) || minQuantity);
+                          setMaxQuantity(val);
+                          if (previewQty > val) setPreviewQty(val);
+                        }
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-0.5 block">Blank = No limit</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Default Initial Quantity
+                    </label>
+                    <input
+                      type="number"
+                      min={minQuantity}
+                      max={maxQuantity}
+                      value={defaultQuantity}
+                      onChange={(e) => {
+                        const val = Math.max(minQuantity, parseInt(e.target.value) || minQuantity);
+                        setDefaultQuantity(val);
+                        setPreviewQty(val);
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-0.5 block">Pre-filled count</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Step Increment (±)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={quantityStep}
+                      onChange={(e) => {
+                        const val = Math.max(1, parseInt(e.target.value) || 1);
+                        setQuantityStep(val);
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-0.5 block">e.g. 1, 5, 10, 50</span>
+                  </div>
+                </div>
+
+                {/* Unit / Metric Label */}
+                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-slate-200">
+                      Unit / Packaging Label
+                    </label>
+                    <span className="text-[10px] text-slate-500">
+                      Displayed next to the quantity counter
+                    </span>
+                  </div>
+
+                  <input
+                    type="text"
+                    value={unitLabel}
+                    onChange={(e) => setUnitLabel(e.target.value)}
+                    placeholder="e.g. Pcs, Bags, Boxes, Liters, Tins, Tons, Units"
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 font-medium"
+                  />
+
+                  {/* Preset Unit Buttons */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase mr-1">Unit Presets:</span>
+                    {['Pcs', 'Bags', 'Boxes', 'Liters', 'Tins', 'Tons', 'Units', 'Sets', 'Meters', 'Feet', 'Sq Ft', 'Cartons'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setUnitLabel(preset)}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border transition-all ${
+                          unitLabel === preset
+                            ? 'bg-blue-600 text-white border-blue-400'
+                            : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Interactive Live Storefront Preview */}
+                <div className="p-4 rounded-xl bg-slate-900/90 border border-blue-500/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
+                      <span className="text-[11px] font-bold text-blue-300 uppercase tracking-wider">
+                        Live Customer Storefront & WhatsApp Preview
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-400">
+                      Formula: Total = Unit Price × Quantity
+                    </span>
+                  </div>
+
+                  {(() => {
+                    let unitPriceNum = 0;
+                    let unitPriceFormatted = 'Call for Price';
+                    if (variantsEnabled && variantsList.length > 0) {
+                      const defVar = variantsList.find(v => v.isDefault) || variantsList[0];
+                      const reg = parseNumericPrice(defVar.price);
+                      const sale = parseNumericPrice(defVar.salePrice);
+                      const isSale = Boolean(defVar.saleEnabled && reg > 0 && sale > 0 && sale < reg);
+                      unitPriceNum = isSale ? sale : reg;
+                      unitPriceFormatted = unitPriceNum > 0 ? formatPakistaniPrice(unitPriceNum) : 'Call for Price';
+                    } else {
+                      const reg = parseNumericPrice(formData.price);
+                      const sale = parseNumericPrice(salePrice);
+                      const isSale = Boolean(saleEnabled && reg > 0 && sale > 0 && sale < reg);
+                      unitPriceNum = isSale ? sale : reg;
+                      unitPriceFormatted = unitPriceNum > 0 ? formatPakistaniPrice(unitPriceNum) : (formData.price || 'Call for Price');
+                    }
+
+                    const effectiveQty = Math.max(minQuantity, previewQty);
+                    const totalNum = unitPriceNum * effectiveQty;
+                    const formattedTotal = totalNum > 0 ? formatPakistaniPrice(totalNum) : 'Price on Request';
+
+                    return (
+                      <div className="space-y-3">
+                        <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+                          {/* Quantity Stepper */}
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-semibold text-slate-300">Quantity:</span>
+                            <div className="flex items-center bg-slate-900 border border-slate-700 rounded-xl p-1 shadow-inner">
+                              <button
+                                type="button"
+                                onClick={() => setPreviewQty(prev => Math.max(minQuantity, prev - quantityStep))}
+                                disabled={effectiveQty <= minQuantity}
+                                className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              >
+                                <span className="font-bold text-sm">−</span>
+                              </button>
+                              <div className="px-4 py-1 text-center min-w-[50px]">
+                                <span className="font-bold text-sm text-white font-mono">{effectiveQty}</span>
+                                {unitLabel && <span className="text-[10px] text-slate-400 ml-1">{unitLabel}</span>}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setPreviewQty(prev => maxQuantity ? Math.min(maxQuantity, prev + quantityStep) : prev + quantityStep)}
+                                disabled={Boolean(maxQuantity && effectiveQty >= maxQuantity)}
+                                className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              >
+                                <span className="font-bold text-sm">+</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Calculated Pricing Display */}
+                          <div className="flex items-center gap-4 text-right">
+                            <div>
+                              <span className="text-[10px] text-slate-400 uppercase font-bold block">Unit Price</span>
+                              <span className="text-xs font-bold text-slate-200 font-mono">{unitPriceFormatted}</span>
+                            </div>
+                            <div className="pl-4 border-l border-slate-800">
+                              <span className="text-[10px] text-blue-400 uppercase font-bold block">Calculated Total</span>
+                              <span className="text-base font-extrabold text-blue-400 font-mono">{formattedTotal}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* WhatsApp Message Preview Snippet */}
+                        <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 text-[11px] text-slate-300 font-mono flex items-start gap-2">
+                          <span className="text-emerald-400 font-bold shrink-0">WhatsApp Order:</span>
+                          <span className="text-slate-400 line-clamp-1">
+                            • Product: {formData.name || 'Product'} | Quantity: {effectiveQty} {unitLabel || 'Pcs'} | Unit: {unitPriceFormatted} | Total: {formattedTotal}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
 
               </div>
             )}

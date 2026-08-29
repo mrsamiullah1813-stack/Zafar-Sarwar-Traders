@@ -24,21 +24,27 @@ import {
   Flame,
   Percent,
   Timer,
-  Boxes
+  Boxes,
+  AlertCircle,
+  Play
 } from 'lucide-react';
 import { Product, BusinessConfig, ProductVariant, PaintShade } from '../types';
 import { VideoPlayer } from './VideoPlayer';
-import { ProductDeliveryEstimator } from './ProductDeliveryEstimator';
+import { ProductDeliveryEstimator, DeliveryDetailsPayload } from './ProductDeliveryEstimator';
 import { ProductSaleBadge } from './ProductSaleBadge';
 import { SaleCountdownTimer } from './SaleCountdownTimer';
 import { PaintShadeSelector } from './PaintShadeSelector';
+import { ProductMediaViewer, compileProductMediaList } from './ProductMediaViewer';
 import { 
   getProductPricingDetails, 
   getVariantPricingDetails, 
   getActiveProductPrice,
   getActiveVariants, 
   hasActiveVariants,
-  formatPakistaniPrice 
+  formatPakistaniPrice,
+  getProductQuantityConfig,
+  calculateDynamicOrderTotal,
+  buildProductWhatsAppOrderUrl
 } from '../utils/pricingUtils';
 import { getActivePaintShades, hasActivePaintShades } from '../utils/paintShadeUtils';
 
@@ -76,7 +82,9 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
 }) => {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [selectedVideoIndex, setSelectedVideoIndex] = useState(0);
-  const [isFullscreenZoom, setIsFullscreenZoom] = useState(false);
+  const [isMediaViewerOpen, setIsMediaViewerOpen] = useState(false);
+  const [mediaViewerInitialIndex, setMediaViewerInitialIndex] = useState(0);
+  const [customActiveImage, setCustomActiveImage] = useState<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [selectedColor, setSelectedColor] = useState<string>('');
@@ -99,8 +107,14 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
         const def = activeVars.find(v => v.isDefault) || activeVars[0];
         setSelectedVariantObj(def);
         setSelectedVariant(def.name);
+        if (def.image && def.image.trim() !== '') {
+          setCustomActiveImage(def.image);
+        } else {
+          setCustomActiveImage(product.image);
+        }
       } else {
         setSelectedVariantObj(null);
+        setCustomActiveImage(product.image);
       }
 
       // Initialize active paint shades if configured
@@ -111,7 +125,8 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
         setSelectedShade(null);
       }
 
-      setQuantity(1);
+      const qtyConfig = getProductQuantityConfig(product);
+      setQuantity(qtyConfig.defaultQty || qtyConfig.min || 1);
       setSelectedImageIndex(0);
     }
   }, [product]);
@@ -126,44 +141,92 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
   const activePaintShadesList = getActivePaintShades(product);
   const shadesSectionTitle = product.shadesTitle || product.paintShadesConfig?.shadesTitle || 'Select Paint Shade / Color';
 
+  // Product Quantity Configuration (Admin-controlled per product)
+  const quantityConfig = getProductQuantityConfig(product);
+  const isQuantitySelectorEnabled = quantityConfig.isEnabled;
+  const effectiveMinQty = quantityConfig.min;
+  const effectiveMaxQty = quantityConfig.max;
+  const effectiveStep = quantityConfig.step;
+  const effectiveUnit = quantityConfig.unit || 'Pcs';
+
   // Dynamic Pricing: Single source of truth. If variant is active/selected, variant controls price
   const pricing = getActiveProductPrice(product, selectedVariantObj || selectedVariant);
   const unitPriceNumeric = pricing.effectivePriceNumeric;
-  const lineTotalNumeric = unitPriceNumeric > 0 ? unitPriceNumeric * quantity : 0;
-  const lineTotalString = lineTotalNumeric > 0 ? formatPakistaniPrice(lineTotalNumeric) : pricing.effectivePriceString;
+  const dynamicPricing = calculateDynamicOrderTotal(unitPriceNumeric, quantity);
+  const lineTotalNumeric = dynamicPricing.totalNumeric;
+  const lineTotalString = dynamicPricing.formattedTotal;
 
-  // Compile list of all images available for gallery
-  const galleryImages = [
+  // Compile full gallery with variant photos and shade reference images
+  const variantImages = activeVariantsList
+    .filter(v => Boolean(v.image && v.image.trim() !== ''))
+    .map(v => ({ url: v.image!, label: v.name, sku: v.sku, variantId: v.id }));
+
+  const shadeImages = (activePaintShadesList || [])
+    .filter(s => Boolean((s.referenceImage || s.image) && (s.referenceImage || s.image)!.trim() !== ''))
+    .map(s => ({ url: (s.referenceImage || s.image)!, label: `Shade ${s.code}` }));
+
+  const galleryImages: string[] = [
     product.image,
-    ...(product.images && Array.isArray(product.images) ? product.images.filter(img => img !== product.image) : [])
-  ];
+    ...(product.images && Array.isArray(product.images) ? product.images.filter(img => img && img !== product.image) : []),
+    ...variantImages.map(v => v.url).filter(u => u !== product.image && !(product.images || []).includes(u)),
+    ...shadeImages.map(s => s.url).filter(u => u !== product.image && !(product.images || []).includes(u))
+  ].filter(Boolean);
 
-  const currentImage = galleryImages[selectedImageIndex] || product.image;
+  const currentImage = customActiveImage || galleryImages[selectedImageIndex] || product.image;
 
   const rawPhone = config?.whatsapp || config?.phone || '923108002863';
   const targetWhatsAppNumber = rawPhone.replace(/[^0-9]/g, '');
   const displayPhone = config?.whatsapp || config?.phone || '+92 310 8002863';
 
-  // Pre-filled WhatsApp message format with selected variant price, quantity and automatically calculated subtotal
+  // Delivery details state synced from ProductDeliveryEstimator
+  const [deliveryDetails, setDeliveryDetails] = useState<DeliveryDetailsPayload>({
+    city: '',
+    isCustomCity: false,
+    address: '',
+    deliveryFeeAmount: 0,
+    deliveryFeeType: 'free',
+    deliveryFeeDisplay: 'Free Delivery',
+    estimatedDays: '1–2 Days',
+    isValid: false
+  });
+  const [orderValidationError, setOrderValidationError] = useState<string | null>(null);
+
+  // Calculate final order total including delivery fee if fixed
+  const finalOrderTotalNumeric = (lineTotalNumeric > 0 ? lineTotalNumeric : 0) + (deliveryDetails.deliveryFeeType === 'fixed' ? deliveryDetails.deliveryFeeAmount : 0);
+  const finalOrderTotalString = finalOrderTotalNumeric > 0 ? formatPakistaniPrice(finalOrderTotalNumeric) : lineTotalString;
+
+  // Pre-filled WhatsApp message format with all actual customer selections, quantity, unit price, delivery destination, and total price
   const handleWhatsAppOrder = () => {
-    let priceText = pricing.effectivePriceString;
-    if (pricing.isSaleActive && pricing.discountPercentage > 0) {
-      priceText = `${pricing.formattedSalePrice} (Special Sale: ${pricing.discountPercentage}% OFF — Regular: ${pricing.formattedRegularPrice}${pricing.savingsAmount > 0 ? `, Save: Rs. ${pricing.savingsAmount.toLocaleString('en-PK')}` : ''})`;
+    if (!deliveryDetails.city || deliveryDetails.city.trim() === '') {
+      setOrderValidationError('Please select your delivery city.');
+      return;
     }
-
-    let variantSection = '';
-    if (selectedVariantObj) {
-      variantSection = `\nSelected ${optionLabel}: ${selectedVariantObj.name}${selectedVariantObj.sku ? ` (SKU: ${selectedVariantObj.sku})` : ''}\nVariant Unit Price: ${pricing.effectivePriceString}\n`;
+    if (!deliveryDetails.address || deliveryDetails.address.trim() === '') {
+      setOrderValidationError('Please enter your complete delivery address.');
+      return;
     }
+    setOrderValidationError(null);
 
-    let shadeSection = '';
-    if (isPaintShadesActive && selectedShade) {
-      shadeSection = `\nSelected Shade: ${selectedShade.name} (Code: ${selectedShade.code})\n`;
-    }
-
-    const message = `Hello ${config?.name || 'Zafar Sarwar Traders'},\n\nI would like to order this product:\n\nProduct Name: ${product.name}\nCategory: ${product.category || 'Sanitaryware'}${variantSection}${shadeSection}Unit Price: ${priceText}\nQuantity: ${quantity}\nTotal / Subtotal: ${lineTotalString}\n\nPlease provide availability and delivery confirmation.`;
-    const encoded = encodeURIComponent(message);
-    window.open(`https://wa.me/${targetWhatsAppNumber}?text=${encoded}`, '_blank');
+    const result = buildProductWhatsAppOrderUrl({
+      businessName: config?.name || 'Zafar Sarwar Traders',
+      whatsappNumber: targetWhatsAppNumber,
+      product,
+      quantity,
+      selectedVariantObj: selectedVariantObj || null,
+      selectedVariantName: selectedVariant || undefined,
+      selectedOptionLabel: optionLabel,
+      selectedShade: isPaintShadesActive && selectedShade ? { name: selectedShade.name, code: selectedShade.code } : null,
+      selectedColor: selectedColor || undefined,
+      selectedSize: selectedSize || undefined,
+      selectedMaterial: selectedQuality || undefined,
+      unitPricing: pricing,
+      deliveryCity: deliveryDetails.city,
+      deliveryAddress: deliveryDetails.address,
+      deliveryFee: deliveryDetails.deliveryFeeType === 'fixed' ? deliveryDetails.deliveryFeeAmount : deliveryDetails.deliveryFeeDisplay,
+      finalTotal: finalOrderTotalNumeric > 0 ? finalOrderTotalNumeric : undefined,
+      isCustomCity: deliveryDetails.isCustomCity
+    });
+    window.open(result.url, '_blank');
   };
 
   const hasVideos = product.videos && product.videos.length > 0;
@@ -276,7 +339,13 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
             <div className="lg:col-span-6 space-y-3">
               
               {/* Main Image Box */}
-              <div className="relative rounded-2xl bg-slate-950 border border-slate-800/90 overflow-hidden group h-72 sm:h-96 flex items-center justify-center">
+              <div 
+                onClick={() => {
+                  setMediaViewerInitialIndex(selectedImageIndex);
+                  setIsMediaViewerOpen(true);
+                }}
+                className="relative rounded-2xl bg-slate-950 border border-slate-800/90 overflow-hidden group h-72 sm:h-96 flex items-center justify-center cursor-pointer shadow-xl"
+              >
                 <img
                   src={currentImage}
                   alt={`${product.name} - Detailed Specification | Zafar Sarwar Traders Luxury Sanitaryware Pakistan`}
@@ -285,33 +354,59 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-50 pointer-events-none" />
 
+                {/* Variant badge on image if showing a variant photo */}
+                {selectedVariantObj?.image && currentImage === selectedVariantObj.image && (
+                  <div className="absolute top-3 left-3 px-3 py-1 rounded-xl bg-indigo-950/90 border border-indigo-500/50 text-indigo-300 font-bold text-xs shadow-xl backdrop-blur-md flex items-center gap-1.5 z-10">
+                    <Boxes className="w-3.5 h-3.5" />
+                    <span>{selectedVariantObj.name}</span>
+                  </div>
+                )}
+
                 {/* Price Tag if available */}
-                {product.price && (
+                {product.price && (!selectedVariantObj?.image || currentImage !== selectedVariantObj.image) && (
                   <div className="absolute bottom-3 left-3 px-3.5 py-1.5 rounded-xl bg-slate-900/90 border border-slate-700 text-emerald-400 font-bold text-sm shadow-xl backdrop-blur-md">
                     {product.price}
                   </div>
                 )}
 
-                {/* Gallery Zoom & Navigation overlay */}
+                {/* Gallery Zoom & Fullscreen Lightbox Action */}
                 <button
-                  onClick={() => setIsFullscreenZoom(true)}
-                  className="absolute top-3 right-3 p-2.5 rounded-xl bg-slate-900/90 border border-slate-700/80 text-blue-300 opacity-80 hover:opacity-100 hover:bg-slate-800 transition-all shadow-xl backdrop-blur-md"
-                  title="Fullscreen Image Zoom"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMediaViewerInitialIndex(selectedImageIndex);
+                    setIsMediaViewerOpen(true);
+                  }}
+                  className="absolute top-3 right-3 px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700/80 text-blue-300 hover:text-white hover:bg-blue-600 transition-all shadow-xl backdrop-blur-md flex items-center gap-1.5 text-xs font-bold z-10"
+                  title="Open Full-Screen Showroom Lightbox (Zoom & Gestures)"
                 >
-                  <ZoomIn className="w-4 h-4" />
+                  <Maximize2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Showroom View</span>
                 </button>
 
                 {galleryImages.length > 1 && (
                   <>
                     <button
-                      onClick={() => setSelectedImageIndex((prev) => (prev > 0 ? prev - 1 : galleryImages.length - 1))}
-                      className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-slate-950/80 border border-slate-800 text-white hover:bg-blue-600 transition-all"
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const nextIdx = selectedImageIndex > 0 ? selectedImageIndex - 1 : galleryImages.length - 1;
+                        setSelectedImageIndex(nextIdx);
+                        setCustomActiveImage(galleryImages[nextIdx]);
+                      }}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-slate-950/80 border border-slate-800 text-white hover:bg-blue-600 transition-all z-10"
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => setSelectedImageIndex((prev) => (prev < galleryImages.length - 1 ? prev + 1 : 0))}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-slate-950/80 border border-slate-800 text-white hover:bg-blue-600 transition-all"
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const nextIdx = selectedImageIndex < galleryImages.length - 1 ? selectedImageIndex + 1 : 0;
+                        setSelectedImageIndex(nextIdx);
+                        setCustomActiveImage(galleryImages[nextIdx]);
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-slate-950/80 border border-slate-800 text-white hover:bg-blue-600 transition-all z-10"
                     >
                       <ChevronRight className="w-4 h-4" />
                     </button>
@@ -321,20 +416,41 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
 
               {/* Thumbnail Strip */}
               {galleryImages.length > 1 && (
-                <div className="flex items-center gap-2 overflow-x-auto pb-2">
-                  {galleryImages.map((img, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setSelectedImageIndex(idx)}
-                      className={`relative w-16 h-16 rounded-xl overflow-hidden border-2 transition-all shrink-0 ${
-                        selectedImageIndex === idx
-                          ? 'border-blue-500 scale-105 shadow-md shadow-blue-950'
-                          : 'border-slate-800 opacity-60 hover:opacity-100'
-                      }`}
-                    >
-                      <img src={img} alt="" className="w-full h-full object-cover" />
-                    </button>
-                  ))}
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar">
+                  {galleryImages.map((img, idx) => {
+                    const isSelected = currentImage === img;
+                    const matchedVariant = variantImages.find(v => v.url === img);
+
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setSelectedImageIndex(idx);
+                          setCustomActiveImage(img);
+                          if (matchedVariant) {
+                            const vObj = activeVariantsList.find(v => v.id === matchedVariant.variantId || v.name === matchedVariant.label);
+                            if (vObj) {
+                              setSelectedVariantObj(vObj);
+                              setSelectedVariant(vObj.name);
+                            }
+                          }
+                        }}
+                        className={`relative w-16 h-16 rounded-xl overflow-hidden border-2 transition-all shrink-0 ${
+                          isSelected
+                            ? 'border-blue-500 scale-105 shadow-md shadow-blue-950 ring-2 ring-blue-500/30'
+                            : 'border-slate-800 opacity-60 hover:opacity-100'
+                        }`}
+                      >
+                        <img src={img} alt="" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                        {matchedVariant && (
+                          <span className="absolute bottom-0 inset-x-0 bg-indigo-600/90 text-white text-[8px] font-bold text-center truncate px-0.5">
+                            {matchedVariant.label}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -387,6 +503,11 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                           onClick={() => {
                             setSelectedVariantObj(v);
                             setSelectedVariant(v.name);
+                            if (v.image && v.image.trim() !== '') {
+                              setCustomActiveImage(v.image);
+                              const idx = galleryImages.indexOf(v.image);
+                              if (idx !== -1) setSelectedImageIndex(idx);
+                            }
                           }}
                           className={`p-2.5 rounded-xl border text-left transition-all relative flex flex-col justify-between ${
                             isSelected
@@ -431,41 +552,61 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                   </div>
 
                   {/* CUSTOMER QUANTITY SELECTOR & INSTANT DYNAMIC TOTAL INSIDE VARIANT SECTION */}
-                  <div className="mt-3 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 p-2.5 rounded-xl">
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-[11px] font-bold text-slate-300">Quantity:</span>
-                      <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800">
+                  <div className="mt-3 pt-3 border-t border-indigo-500/20 flex flex-wrap items-center justify-between gap-3 bg-slate-900/80 p-3 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-bold text-slate-200">Quantity:</span>
+                      <div className="flex items-center bg-slate-950 rounded-xl p-1 border border-slate-800">
                         <button
                           type="button"
-                          onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                          className="w-6 h-6 rounded flex items-center justify-center bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                          onClick={() => setQuantity(q => Math.max(effectiveMinQty, q - effectiveStep))}
+                          disabled={quantity <= effectiveMinQty}
+                          className="w-7 h-7 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed text-slate-200 hover:text-white flex items-center justify-center transition-colors cursor-pointer active:scale-95"
+                          title={`Decrease by ${effectiveStep}`}
                         >
-                          <Minus className="w-3 h-3" />
+                          <Minus className="w-3.5 h-3.5" />
                         </button>
-                        <input
-                          type="number"
-                          min={1}
-                          max={999}
-                          value={quantity}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value, 10);
-                            setQuantity(isNaN(val) || val < 1 ? 1 : val);
-                          }}
-                          className="w-10 text-center text-xs font-bold text-white bg-transparent border-0 focus:outline-none font-mono"
-                        />
+                        <div className="flex items-center px-1">
+                          <input
+                            type="number"
+                            min={effectiveMinQty}
+                            max={effectiveMaxQty}
+                            step={effectiveStep}
+                            value={quantity}
+                            onChange={(e) => {
+                              const raw = parseInt(e.target.value, 10);
+                              if (isNaN(raw)) {
+                                setQuantity(effectiveMinQty);
+                              } else {
+                                let clamped = Math.max(effectiveMinQty, raw);
+                                if (effectiveMaxQty && clamped > effectiveMaxQty) {
+                                  clamped = effectiveMaxQty;
+                                }
+                                setQuantity(clamped);
+                              }
+                            }}
+                            className="w-12 text-center text-sm font-extrabold text-white bg-transparent border-0 focus:outline-none font-mono"
+                          />
+                          {effectiveUnit && (
+                            <span className="text-[10px] font-bold text-indigo-300 uppercase pr-1">
+                              {effectiveUnit}
+                            </span>
+                          )}
+                        </div>
                         <button
                           type="button"
-                          onClick={() => setQuantity(q => q + 1)}
-                          className="w-6 h-6 rounded flex items-center justify-center bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                          onClick={() => setQuantity(q => effectiveMaxQty ? Math.min(effectiveMaxQty, q + effectiveStep) : q + effectiveStep)}
+                          disabled={Boolean(effectiveMaxQty && quantity >= effectiveMaxQty)}
+                          className="w-7 h-7 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed text-slate-200 hover:text-white flex items-center justify-center transition-colors cursor-pointer active:scale-95"
+                          title={`Increase by ${effectiveStep}`}
                         >
-                          <Plus className="w-3 h-3" />
+                          <Plus className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
 
                     <div className="text-right">
                       <span className="text-[10px] text-slate-400 font-semibold block">Calculated Total:</span>
-                      <span className="text-sm font-extrabold text-emerald-400 font-mono">
+                      <span className="text-sm sm:text-base font-extrabold text-emerald-400 font-mono">
                         {lineTotalString}
                       </span>
                     </div>
@@ -478,7 +619,15 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                 <PaintShadeSelector
                   shades={activePaintShadesList}
                   selectedShade={selectedShade}
-                  onSelectShade={(shade) => setSelectedShade(shade)}
+                  onSelectShade={(shade) => {
+                    setSelectedShade(shade);
+                    const shadeImg = shade.referenceImage || shade.image;
+                    if (shadeImg && shadeImg.trim() !== '') {
+                      setCustomActiveImage(shadeImg);
+                      const idx = galleryImages.indexOf(shadeImg);
+                      if (idx !== -1) setSelectedImageIndex(idx);
+                    }
+                  }}
                   title={shadesSectionTitle}
                 />
               )}
@@ -580,6 +729,78 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* DEDICATED QUANTITY SELECTION CARD (FOR NON-VARIANT PRODUCTS) */}
+              {!isVariantsActive && (
+                <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/90 border border-slate-800 flex flex-wrap items-center justify-between gap-3 shadow-md">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-blue-950 text-blue-400 border border-blue-800/60">
+                      <Boxes className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-white uppercase tracking-wider block">Quantity</span>
+                      <span className="text-[10px] text-slate-400">Unit: {effectiveUnit}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center bg-slate-950 rounded-xl p-1 border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setQuantity(q => Math.max(effectiveMinQty, q - effectiveStep))}
+                        disabled={quantity <= effectiveMinQty}
+                        className="w-7 h-7 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed text-slate-200 hover:text-white flex items-center justify-center transition-colors cursor-pointer active:scale-95"
+                        title={`Decrease by ${effectiveStep}`}
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="flex items-center px-1">
+                        <input
+                          type="number"
+                          min={effectiveMinQty}
+                          max={effectiveMaxQty}
+                          step={effectiveStep}
+                          value={quantity}
+                          onChange={(e) => {
+                            const raw = parseInt(e.target.value, 10);
+                            if (isNaN(raw)) {
+                              setQuantity(effectiveMinQty);
+                            } else {
+                              let clamped = Math.max(effectiveMinQty, raw);
+                              if (effectiveMaxQty && clamped > effectiveMaxQty) {
+                                clamped = effectiveMaxQty;
+                              }
+                              setQuantity(clamped);
+                            }
+                          }}
+                          className="w-12 text-center text-sm font-extrabold text-white bg-transparent border-0 focus:outline-none font-mono"
+                        />
+                        {effectiveUnit && (
+                          <span className="text-[10px] font-bold text-blue-400/80 uppercase pr-1">
+                            {effectiveUnit}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setQuantity(q => effectiveMaxQty ? Math.min(effectiveMaxQty, q + effectiveStep) : q + effectiveStep)}
+                        disabled={Boolean(effectiveMaxQty && quantity >= effectiveMaxQty)}
+                        className="w-7 h-7 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed text-slate-200 hover:text-white flex items-center justify-center transition-colors cursor-pointer active:scale-95"
+                        title={`Increase by ${effectiveStep}`}
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="pl-2.5 border-l border-slate-800 text-right min-w-[90px]">
+                      <span className="text-[10px] text-slate-400 font-semibold block">Total Price:</span>
+                      <span className="text-sm sm:text-base font-extrabold text-emerald-400 font-mono">
+                        {lineTotalString}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* MATERIALS & BRAND */}
               {displayMaterials && displayMaterials.length > 0 && (
@@ -687,7 +908,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                       {selectedVariantObj ? `${selectedVariantObj.name} Price` : 'Estimated Price / Wholesale Rate'}
                     </span>
-                    <span className="text-xl sm:text-2xl font-extrabold text-emerald-400 font-serif">
+                    <span className="text-xl sm:text-2xl font-extrabold text-emerald-400 font-serif product-price-typography">
                       {product.hidePrice
                         ? 'Call for Price'
                         : (product.isPriceOnRequest
@@ -708,7 +929,10 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
               )}
 
               {/* DYNAMIC SMART DELIVERY ESTIMATION SYSTEM */}
-              <ProductDeliveryEstimator product={product} />
+              <ProductDeliveryEstimator 
+                product={product} 
+                onDeliveryDetailsChange={setDeliveryDetails}
+              />
 
             </div>
 
@@ -746,56 +970,173 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
               )}
             </div>
 
-            {hasVideos && currentVideo ? (
-              <div className="space-y-3">
-                <VideoPlayer video={currentVideo} />
-                <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-                  <span className="font-semibold text-slate-200">{currentVideo.title}</span>
-                  <span className="text-[11px] text-blue-400 uppercase font-mono">{currentVideo.type} HD Player</span>
+              {hasVideos && currentVideo ? (
+                <div className="space-y-3">
+                  <VideoPlayer video={currentVideo} />
+                  <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                    <span className="font-semibold text-slate-200">{currentVideo.title}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const compiled = compileProductMediaList(product, selectedVariantObj, selectedShade);
+                        const vIdx = compiled.findIndex(m => m.type === 'video' && m.videoData?.id === currentVideo.id);
+                        setMediaViewerInitialIndex(vIdx >= 0 ? vIdx : 0);
+                        setIsMediaViewerOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-950/80 border border-blue-800/60 text-blue-300 hover:bg-blue-600 hover:text-white transition-all text-[11px] font-bold"
+                      title="Watch video in full-screen Showroom Viewer"
+                    >
+                      <Maximize2 className="w-3 h-3" />
+                      <span>Full Showroom Player</span>
+                    </button>
+                  </div>
                 </div>
+              ) : (
+                <div className="p-6 text-center bg-slate-900/60 border border-slate-800/60 rounded-2xl space-y-1">
+                  <Video className="w-7 h-7 text-slate-600 mx-auto" />
+                  <p className="text-xs text-slate-400 font-medium">No demonstration video attached yet.</p>
+                  {isAdmin && (
+                    <p className="text-[11px] text-blue-400">
+                      Admin can edit this product to add YouTube/MP4 video links.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* COMPACT ORDER SUMMARY CARD */}
+          <div className="p-4 sm:p-5 rounded-3xl bg-slate-950/90 border border-slate-800 space-y-3 shadow-inner">
+            <div className="flex items-center justify-between border-b border-slate-900 pb-2.5">
+              <span className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                Order Summary
+              </span>
+              <span className="text-[11px] text-slate-400 font-medium">
+                Review & Order on WhatsApp
+              </span>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between items-center text-slate-300">
+                <span className="text-slate-400">Product:</span>
+                <span className="font-semibold text-white truncate max-w-[65%] text-right">{product.name}</span>
               </div>
-            ) : (
-              <div className="p-6 text-center bg-slate-900/60 border border-slate-800/60 rounded-2xl space-y-1">
-                <Video className="w-7 h-7 text-slate-600 mx-auto" />
-                <p className="text-xs text-slate-400 font-medium">No demonstration video attached yet.</p>
-                {isAdmin && (
-                  <p className="text-[11px] text-blue-400">
-                    Admin can edit this product to add YouTube/MP4 video links.
-                  </p>
-                )}
+
+              {(selectedVariantObj?.name || selectedVariant) && (
+                <div className="flex justify-between items-center text-slate-300">
+                  <span className="text-slate-400">{optionLabel}:</span>
+                  <span className="font-semibold text-amber-400">{selectedVariantObj?.name || selectedVariant}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center text-slate-300">
+                <span className="text-slate-400">Quantity:</span>
+                <span className="font-mono font-bold text-white">{quantity} {effectiveUnit}</span>
+              </div>
+
+              <div className="flex justify-between items-center text-slate-300">
+                <span className="text-slate-400">Unit Price:</span>
+                <span className="font-mono text-slate-200">{pricing.effectivePriceString}</span>
+              </div>
+
+              <div className="flex justify-between items-center text-slate-300">
+                <span className="text-slate-400">Product Total:</span>
+                <span className="font-mono font-bold text-white">{lineTotalString}</span>
+              </div>
+
+              <div className="flex justify-between items-center text-slate-300">
+                <span className="text-slate-400">Delivery City:</span>
+                <span className="font-semibold text-emerald-400">
+                  {deliveryDetails.city ? `${deliveryDetails.city}${deliveryDetails.isCustomCity ? ' (Custom)' : ''}` : 'Not Selected'}
+                </span>
+              </div>
+
+              {deliveryDetails.city && (
+                <div className="flex justify-between items-center text-slate-300">
+                  <span className="text-slate-400">Delivery Fee:</span>
+                  <span className={`font-semibold ${deliveryDetails.deliveryFeeType === 'free' ? 'text-emerald-400' : 'text-slate-200'}`}>
+                    {deliveryDetails.deliveryFeeDisplay}
+                  </span>
+                </div>
+              )}
+
+              {deliveryDetails.address && (
+                <div className="flex justify-between items-start text-slate-300 text-[11px] pt-0.5">
+                  <span className="text-slate-400 shrink-0">Address:</span>
+                  <span className="text-slate-300 text-right truncate max-w-[65%]" title={deliveryDetails.address}>
+                    {deliveryDetails.address}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2.5 border-t border-slate-800 flex items-center justify-between">
+              <span className="text-xs font-bold text-white uppercase tracking-wider">Final Order Total</span>
+              <span className="text-base font-extrabold text-emerald-400 font-mono">
+                {finalOrderTotalString}
+              </span>
+            </div>
+
+            {orderValidationError && (
+              <div className="p-2.5 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{orderValidationError}</span>
               </div>
             )}
           </div>
 
           {/* QUANTITY & ADD TO CART / WHATSAPP ACTION BUTTONS */}
-          <div className="pt-2 space-y-3">
+          <div className="pt-1 space-y-3">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              {/* Quantity selector & Dynamic Line Total */}
-              <div className="flex items-center justify-between sm:justify-start gap-3 bg-slate-950 p-2.5 rounded-2xl border border-slate-800 shrink-0">
-                <span className="text-xs font-bold text-slate-400 pl-1">Qty:</span>
-                <div className="flex items-center gap-1.5">
+              {/* Mandatory Quantity selector & Dynamic Line Total */}
+              <div className="flex items-center justify-between sm:justify-start gap-3 bg-slate-950 p-2.5 rounded-2xl border border-blue-500/30 shrink-0 shadow-inner">
+                <div className="flex items-center gap-1.5 pl-1">
+                  <Boxes className="w-3.5 h-3.5 text-blue-400" />
+                  <span className="text-xs font-bold text-slate-300">Quantity:</span>
+                </div>
+                <div className="flex items-center gap-1.5 bg-slate-900/90 rounded-xl p-1 border border-slate-800">
                   <button
                     type="button"
-                    onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                    className="p-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                    onClick={() => setQuantity(q => Math.max(effectiveMinQty, q - effectiveStep))}
+                    disabled={quantity <= effectiveMinQty}
+                    className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-200 hover:text-white flex items-center justify-center transition-colors cursor-pointer active:scale-95"
+                    title={`Decrease by ${effectiveStep}`}
                   >
                     <Minus className="w-3.5 h-3.5" />
                   </button>
-                  <input
-                    type="number"
-                    min={1}
-                    max={999}
-                    value={quantity}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      setQuantity(isNaN(val) || val < 1 ? 1 : val);
-                    }}
-                    className="w-10 text-center text-sm font-extrabold text-white bg-transparent border-0 focus:outline-none font-mono"
-                  />
+                  <div className="flex items-center px-1">
+                    <input
+                      type="number"
+                      min={effectiveMinQty}
+                      max={effectiveMaxQty}
+                      step={effectiveStep}
+                      value={quantity}
+                      onChange={(e) => {
+                        const raw = parseInt(e.target.value, 10);
+                        if (isNaN(raw)) {
+                          setQuantity(effectiveMinQty);
+                        } else {
+                          let clamped = Math.max(effectiveMinQty, raw);
+                          if (effectiveMaxQty && clamped > effectiveMaxQty) {
+                            clamped = effectiveMaxQty;
+                          }
+                          setQuantity(clamped);
+                        }
+                      }}
+                      className="w-12 text-center text-sm font-extrabold text-white bg-transparent border-0 focus:outline-none font-mono"
+                    />
+                    {effectiveUnit && (
+                      <span className="text-[10px] font-bold text-blue-300/80 uppercase pr-1">
+                        {effectiveUnit}
+                      </span>
+                    )}
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setQuantity(q => q + 1)}
-                    className="p-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                    onClick={() => setQuantity(q => effectiveMaxQty ? Math.min(effectiveMaxQty, q + effectiveStep) : q + effectiveStep)}
+                    disabled={Boolean(effectiveMaxQty && quantity >= effectiveMaxQty)}
+                    className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-200 hover:text-white flex items-center justify-center transition-colors cursor-pointer active:scale-95"
+                    title={`Increase by ${effectiveStep}`}
                   >
                     <Plus className="w-3.5 h-3.5" />
                   </button>
@@ -840,7 +1181,10 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
               className="w-full py-3.5 px-6 rounded-2xl text-xs sm:text-sm font-bold text-white bg-slate-900 hover:bg-emerald-700 transition-all duration-300 shadow-xl flex items-center justify-center gap-2.5 border border-slate-800 hover:border-emerald-500"
             >
               <MessageSquare className="w-4 h-4 text-emerald-400" />
-              <span>Order via WhatsApp Directly ({displayPhone})</span>
+              <span>
+                Order via WhatsApp Directly ({displayPhone})
+                {quantity > 1 ? ` • ${quantity} ${effectiveUnit}` : ''}
+              </span>
             </button>
           </div>
 
@@ -893,23 +1237,25 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
 
       </div>
 
-      {/* FULLSCREEN LIGHTBOX ZOOM MODAL */}
-      {isFullscreenZoom && (
-        <div className="fixed inset-0 z-60 bg-slate-950/98 flex items-center justify-center p-4">
-          <button
-            onClick={() => setIsFullscreenZoom(false)}
-            className="absolute top-6 right-6 p-3 rounded-full bg-slate-900 border border-slate-700 text-white hover:bg-slate-800"
-          >
-            <X className="w-6 h-6" />
-          </button>
-          <img
-            src={currentImage}
-            alt={product.name}
-            referrerPolicy="no-referrer"
-            className="max-w-full max-h-[88vh] object-contain rounded-2xl shadow-2xl"
-          />
-        </div>
-      )}
+      {/* PREMIUM FULLSCREEN SHOWROOM PRODUCT MEDIA VIEWER */}
+      <ProductMediaViewer
+        isOpen={isMediaViewerOpen}
+        product={product}
+        selectedVariantObj={selectedVariantObj}
+        selectedShade={selectedShade}
+        initialMediaIndex={mediaViewerInitialIndex}
+        initialMediaUrl={currentImage}
+        onClose={() => setIsMediaViewerOpen(false)}
+        onSelectVariant={(variant) => {
+          setSelectedVariantObj(variant);
+          setSelectedVariant(variant.name);
+          if (variant.image && variant.image.trim() !== '') {
+            setCustomActiveImage(variant.image);
+            const idx = galleryImages.indexOf(variant.image);
+            if (idx !== -1) setSelectedImageIndex(idx);
+          }
+        }}
+      />
     </div>
   );
 };

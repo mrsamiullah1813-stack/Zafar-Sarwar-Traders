@@ -634,3 +634,202 @@ export function getActiveProductPrice(
   };
 }
 
+/**
+ * Returns structured quantity settings for a given product.
+ * Quantity selection is a mandatory feature for EVERY product (existing and future).
+ */
+export function getProductQuantityConfig(product?: Partial<Product> | null) {
+  if (!product) {
+    return {
+      isEnabled: true,
+      min: 1,
+      max: 9999,
+      defaultQty: 1,
+      step: 1,
+      unit: 'Pcs'
+    };
+  }
+
+  // Quantity selection is globally mandatory for all products
+  const isEnabled = true;
+
+  const min = Math.max(1, Number(product.minQuantity ?? product.quantityConfig?.minQuantity ?? 1));
+  const rawMax = product.maxQuantity ?? product.quantityConfig?.maxQuantity;
+  const max = typeof rawMax === 'number' && rawMax > 0 ? Math.max(min, rawMax) : 9999;
+  const rawDef = product.defaultQuantity ?? product.quantityConfig?.defaultQuantity;
+  const defaultQty = typeof rawDef === 'number' && rawDef >= min ? Math.min(rawDef, max) : min;
+  const step = Math.max(1, Number(product.quantityStep ?? product.quantityConfig?.quantityStep ?? 1));
+  const unit = product.unitLabel || product.quantityConfig?.unitLabel || 'Pcs';
+
+  return {
+    isEnabled,
+    min,
+    max,
+    defaultQty,
+    step,
+    unit
+  };
+}
+
+/**
+ * Calculates dynamic line total: Total = Unit Price * Quantity
+ */
+export function calculateDynamicOrderTotal(unitPriceNumeric: number, quantity: number): {
+  totalNumeric: number;
+  formattedTotal: string;
+} {
+  const safeQty = Math.max(1, isNaN(quantity) ? 1 : quantity);
+  const safeUnit = Math.max(0, isNaN(unitPriceNumeric) ? 0 : unitPriceNumeric);
+  const totalNumeric = safeUnit * safeQty;
+  const formattedTotal = totalNumeric > 0 ? formatPakistaniPrice(totalNumeric) : 'Price on Request';
+
+  return {
+    totalNumeric,
+    formattedTotal
+  };
+}
+
+export interface BuildWhatsAppOrderParams {
+  businessName?: string;
+  whatsappNumber?: string;
+  product: Product;
+  selectedVariantObj?: ProductVariant | null;
+  selectedVariantName?: string;
+  selectedOptionLabel?: string;
+  selectedColor?: string;
+  selectedSize?: string;
+  selectedMaterial?: string;
+  selectedShade?: { name: string; code?: string } | null;
+  quantity?: number;
+  unitPricing?: ActivePricingResult;
+  customerNote?: string;
+  deliveryCity?: string;
+  deliveryAddress?: string;
+  deliveryFee?: number | string;
+  finalTotal?: string | number;
+  isCustomCity?: boolean;
+}
+
+/**
+ * Generates a clean, beautifully formatted WhatsApp Order Message and URL
+ */
+export function buildProductWhatsAppOrderUrl(params: BuildWhatsAppOrderParams): {
+  message: string;
+  url: string;
+  cleanPhone: string;
+} {
+  const {
+    businessName = 'Zafar Sarwar Traders',
+    whatsappNumber = '923108002863',
+    product,
+    selectedVariantObj,
+    selectedVariantName,
+    selectedOptionLabel = 'Size / Option',
+    selectedColor,
+    selectedSize,
+    selectedMaterial,
+    selectedShade,
+    quantity = 1,
+    unitPricing,
+    customerNote,
+    deliveryCity,
+    deliveryAddress,
+    deliveryFee,
+    finalTotal,
+    isCustomCity
+  } = params;
+
+  const cleanPhone = (whatsappNumber || '923108002863').replace(/[^0-9]/g, '') || '923108002863';
+  const pricing = unitPricing || getActiveProductPrice(product, selectedVariantObj || selectedVariantName);
+  const qtySettings = getProductQuantityConfig(product);
+  const safeQty = Math.max(1, quantity);
+
+  // Unit Price Text
+  let unitPriceText = pricing.effectivePriceString;
+  if (pricing.isSaleActive && pricing.discountPercentage > 0) {
+    unitPriceText = `${pricing.formattedSalePrice} (Special Sale: ${pricing.discountPercentage}% OFF — Reg: ${pricing.formattedRegularPrice}${pricing.savingsAmount > 0 ? `, Save: Rs. ${pricing.savingsAmount.toLocaleString('en-PK')}` : ''})`;
+  }
+
+  // Line Total Calculation
+  const unitNumeric = pricing.effectivePriceNumeric;
+  const { totalNumeric, formattedTotal } = calculateDynamicOrderTotal(unitNumeric, safeQty);
+
+  // Build structured message sections
+  let variantLine = '';
+  if (selectedVariantObj) {
+    variantLine = `\n• Selected ${selectedOptionLabel}: ${selectedVariantObj.name}${selectedVariantObj.sku ? ` (SKU: ${selectedVariantObj.sku})` : ''}`;
+  } else if (selectedVariantName && selectedVariantName.trim() !== '') {
+    variantLine = `\n• Selected ${selectedOptionLabel}: ${selectedVariantName}`;
+  }
+
+  let shadeLine = '';
+  if (selectedShade) {
+    shadeLine = `\n• Selected Paint Shade: ${selectedShade.name}${selectedShade.code ? ` (Code: ${selectedShade.code})` : ''}`;
+  }
+
+  let colorLine = '';
+  if (selectedColor && selectedColor.trim() !== '') {
+    colorLine = `\n• Selected Finish / Color: ${selectedColor}`;
+  }
+
+  let sizeLine = '';
+  if (selectedSize && selectedSize.trim() !== '') {
+    if (!selectedVariantObj || (selectedVariantObj.name !== selectedSize && !variantLine.includes(selectedSize))) {
+      sizeLine = `\n• Selected Size: ${selectedSize}`;
+    }
+  }
+
+  let materialLine = '';
+  if (selectedMaterial && selectedMaterial.trim() !== '') {
+    materialLine = `\n• Material Grade: ${selectedMaterial}`;
+  }
+
+  const skuLine = (selectedVariantObj?.sku || product.sku) ? `\n• SKU / Code: ${selectedVariantObj?.sku || product.sku}` : '';
+  const brandLine = product.brand ? `\n• Brand: ${product.brand}` : '';
+  const categoryLine = product.category ? `\n• Category: ${product.category}` : '';
+
+  const quantityDisplay = qtySettings.isEnabled && qtySettings.unit
+    ? `${safeQty} ${qtySettings.unit}`
+    : `${safeQty}`;
+
+  // Delivery details formatting
+  let deliverySection = '';
+  if (deliveryCity || deliveryAddress) {
+    const feeText = typeof deliveryFee === 'number'
+      ? (deliveryFee === 0 ? 'FREE Delivery' : `Rs. ${deliveryFee.toLocaleString('en-PK')}`)
+      : (deliveryFee || (isCustomCity ? 'To be confirmed on WhatsApp' : 'Standard'));
+    
+    let deliveryLines = `\n\n🚚 *DELIVERY & SHIPPING DESTINATION*:\n━━━━━━━━━━━━━━━━━━`;
+    if (deliveryCity) {
+      deliveryLines += `\n• Delivery City: *${deliveryCity}${isCustomCity ? ' (Custom Location)' : ''}*`;
+    }
+    if (deliveryAddress) {
+      deliveryLines += `\n• Delivery Address: *${deliveryAddress}*`;
+    }
+    if (deliveryFee !== undefined && deliveryFee !== null) {
+      deliveryLines += `\n• Delivery Charges: *${feeText}*`;
+    }
+    deliverySection = deliveryLines;
+  }
+
+  let noteLine = '';
+  if (customerNote && customerNote.trim() !== '') {
+    noteLine = `\n\n📝 *CUSTOMER NOTE*:\n${customerNote.trim()}`;
+  }
+
+  const calculatedTotalDisplay = finalTotal !== undefined && finalTotal !== null
+    ? (typeof finalTotal === 'number' ? formatPakistaniPrice(finalTotal) : finalTotal)
+    : (totalNumeric > 0 ? formattedTotal : pricing.effectivePriceString);
+
+  const message = `Hello ${businessName}! 👋\n\nI would like to place an order from your website catalog:\n\n📦 *PRODUCT ORDER DETAILS*:\n━━━━━━━━━━━━━━━━━━\n• Product: *${product.name}*${brandLine}${categoryLine}${skuLine}${variantLine}${shadeLine}${colorLine}${sizeLine}${materialLine}\n\n📊 *PRICING & QUANTITY*:\n• Quantity: *${quantityDisplay}*\n• Unit Price: *${unitPriceText}*\n• Product Total: *${totalNumeric > 0 ? formattedTotal : pricing.effectivePriceString}*${deliverySection}\n\n💰 *ORDER TOTAL*: *${calculatedTotalDisplay}*\n━━━━━━━━━━━━━━━━━━${noteLine}\n\nPlease confirm availability, delivery timeframe, and dispatch schedule. Thank you!`;
+
+  const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+
+  return {
+    message,
+    url,
+    cleanPhone
+  };
+}
+
+

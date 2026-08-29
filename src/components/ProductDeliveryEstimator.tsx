@@ -3,88 +3,87 @@ import {
   Truck, 
   MapPin, 
   Clock, 
-  Calendar, 
-  MessageSquare, 
-  ShieldCheck, 
   CheckCircle2, 
-  AlertTriangle,
-  XCircle,
-  ChevronDown,
-  Info,
-  ExternalLink,
-  Building2,
-  Search,
+  ChevronDown, 
+  Search, 
+  X, 
+  Plus, 
+  Info, 
   Sparkles,
-  DollarSign,
-  PhoneCall,
-  Check
+  ArrowRight,
+  Edit3
 } from 'lucide-react';
 import { DeliverySettings, CityDeliveryInfo, Product, ProductDeliveryConfig } from '../types';
 import { loadDeliverySettings } from '../utils/storage';
 
+export interface DeliveryDetailsPayload {
+  city: string;
+  isCustomCity: boolean;
+  address: string;
+  deliveryFeeAmount: number;
+  deliveryFeeType: 'free' | 'fixed' | 'contact' | 'custom';
+  deliveryFeeDisplay: string;
+  estimatedDays: string;
+  isValid: boolean;
+}
+
 interface ProductDeliveryEstimatorProps {
   product: Product;
   customDeliverySettings?: DeliverySettings;
+  onDeliveryDetailsChange?: (details: DeliveryDetailsPayload) => void;
 }
 
 export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> = ({ 
   product, 
-  customDeliverySettings 
+  customDeliverySettings,
+  onDeliveryDetailsChange
 }) => {
-  const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>(
+  const [deliverySettings] = useState<DeliverySettings>(
     () => customDeliverySettings || loadDeliverySettings()
   );
 
-  useEffect(() => {
-    if (customDeliverySettings) {
-      setDeliverySettings(customDeliverySettings);
-    }
-  }, [customDeliverySettings]);
+  // Active cities from settings
+  const activeCities = useMemo(() => {
+    return (deliverySettings.cities || [])
+      .filter(c => c && c.isEnabled !== false)
+      .sort((a, b) => (a.displayOrder || 99) - (b.displayOrder || 99));
+  }, [deliverySettings.cities]);
 
   // Product Delivery Override
   const prodConfig: ProductDeliveryConfig | undefined = product.deliveryConfig;
   const isHiddenForProduct = Boolean(prodConfig?.hideDeliveryInfo);
 
-  // If global delivery is disabled or hidden for this product, return null
-  if (!deliverySettings.isEnabled || isHiddenForProduct) {
-    return null;
-  }
-
-  // Active cities only
-  const activeCities = useMemo(() => {
-    return (deliverySettings.cities || []).filter(c => c && c.isEnabled !== false);
-  }, [deliverySettings.cities]);
-
-  // City Search & Selection State
+  // Modal / Dropdown state
+  const [isCityModalOpen, setIsCityModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Selection state
   const [selectedCityId, setSelectedCityId] = useState<string>(() => {
     if (deliverySettings.defaultSelectedCityId && activeCities.some(c => c.id === deliverySettings.defaultSelectedCityId)) {
       return deliverySettings.defaultSelectedCityId;
     }
-    return activeCities[0]?.id || 'city-chiniot';
+    return activeCities[0]?.id || '';
   });
 
-  // Custom city & address form fields
+  // Custom city inputs
+  const [isCustomMode, setIsCustomMode] = useState(false);
   const [customCityName, setCustomCityName] = useState('');
   const [customAddress, setCustomAddress] = useState('');
-  const [postalCode, setPostalCode] = useState('');
-  const [landmark, setLandmark] = useState('');
-  const [showAddressForm, setShowAddressForm] = useState(false);
-  const [searchFeedback, setSearchFeedback] = useState<string | null>(null);
+  const [customLandmark, setCustomLandmark] = useState('');
 
-  const customCityOptionValue = 'CUSTOM_CITY_OPTION';
-  const isCustomSelected = selectedCityId === customCityOptionValue || selectedCityId === 'Other';
+  // Standard address input
+  const [standardAddress, setStandardAddress] = useState('');
 
-  // Find currently selected city
+  // Find currently selected predefined city
   const selectedCity = useMemo(() => {
-    return activeCities.find(c => c.id === selectedCityId || c.cityName.toLowerCase() === selectedCityId.toLowerCase());
-  }, [activeCities, selectedCityId]);
+    if (isCustomMode) return null;
+    return activeCities.find(c => c.id === selectedCityId) || null;
+  }, [activeCities, selectedCityId, isCustomMode]);
 
-  // Smart Search Matching across City Name, Area/Town, and Coverage Sub-areas
-  const searchResults = useMemo(() => {
+  // Filtered cities based on search
+  const filteredCities = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return [];
-
+    if (!q) return activeCities;
     return activeCities.filter(c => {
       const nameMatch = c.cityName.toLowerCase().includes(q);
       const areaMatch = c.areaTown ? c.areaTown.toLowerCase().includes(q) : false;
@@ -96,604 +95,428 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
     });
   }, [activeCities, searchQuery]);
 
-  // Handle Search Input Change & Autocomplete
-  const handleSearchChange = (val: string) => {
-    setSearchQuery(val);
-    setSearchFeedback(null);
-    const trimmed = val.trim().toLowerCase();
-    if (!trimmed) return;
-
-    const exactOrFirst = activeCities.find(c => {
-      if (c.cityName.toLowerCase() === trimmed) return true;
-      if (c.areaTown && c.areaTown.toLowerCase().includes(trimmed)) return true;
-      if (Array.isArray(c.coverageAreas) && c.coverageAreas.some(a => a.toLowerCase().includes(trimmed))) return true;
-      return c.cityName.toLowerCase().includes(trimmed);
-    });
-
-    if (exactOrFirst) {
-      setSelectedCityId(exactOrFirst.id);
-    }
-  };
-
-  const handleSelectSearchResult = (city: CityDeliveryInfo) => {
-    setSelectedCityId(city.id);
-    setSearchQuery('');
-    setSearchFeedback(`Selected ${city.cityName}${city.areaTown ? ` (${city.areaTown})` : ''}`);
-  };
-
-  // Compute Displayed Time & Fee (Product Override vs City / Global Settings)
-  const deliveryTimeDisplay = useMemo(() => {
+  // Derive estimated days
+  const estimatedDays = useMemo(() => {
     if (prodConfig && (prodConfig.deliveryType === 'standard' || prodConfig.deliveryType === 'both')) {
       const min = prodConfig.minDeliveryTime ?? 2;
       const max = prodConfig.maxDeliveryTime ?? 4;
       const unit = prodConfig.deliveryTimeUnit || 'Days';
-      const label = prodConfig.customDeliveryTimeLabel || 'Estimated Delivery:';
-      const timeStr = min === max ? `${min} ${unit}` : `${min}–${max} ${unit}`;
-      return { label, value: timeStr, isCustom: true };
+      return min === max ? `${min} ${unit}` : `${min}–${max} ${unit}`;
     }
-
-    if (selectedCity && !isCustomSelected) {
-      return {
-        label: 'Estimated Delivery:',
-        value: selectedCity.estimatedDays || '2–3 Working Days',
-        isCustom: false
-      };
+    if (isCustomMode) {
+      return '2–4 Working Days';
     }
-
-    return {
-      label: 'Estimated Delivery:',
-      value: deliverySettings.defaultEstimatedDays || '2–4 Working Days',
-      isCustom: false
-    };
-  }, [prodConfig, selectedCity, isCustomSelected, deliverySettings]);
-
-  const customTextMessage = useMemo(() => {
-    if (prodConfig && (prodConfig.deliveryType === 'custom' || prodConfig.deliveryType === 'both') && prodConfig.customDeliveryMessage) {
-      return {
-        label: prodConfig.customMessageLabel || 'Delivery Info:',
-        text: prodConfig.customDeliveryMessage
-      };
+    if (selectedCity) {
+      return selectedCity.estimatedDays || '1–2 Working Days';
     }
-    if (deliverySettings.globalCustomDeliveryMessage && (!prodConfig || prodConfig.deliveryType === 'inherit')) {
-      return {
-        label: 'Delivery Info:',
-        text: deliverySettings.globalCustomDeliveryMessage
-      };
-    }
-    return null;
-  }, [prodConfig, deliverySettings]);
+    return deliverySettings.defaultEstimatedDays || '2–4 Working Days';
+  }, [prodConfig, isCustomMode, selectedCity, deliverySettings]);
 
-  const deliveryFeeDisplay = useMemo(() => {
+  // Derive delivery fee info
+  const deliveryFeeInfo = useMemo(() => {
     // 1. Product specific fee override
     if (prodConfig && prodConfig.deliveryFeeType && prodConfig.deliveryFeeType !== 'inherit') {
-      const label = prodConfig.deliveryFeeLabel || 'Delivery Fee:';
       if (prodConfig.deliveryFeeType === 'free') {
-        return { label, value: 'Free Delivery', type: 'free', badgeColor: 'text-emerald-400 font-bold' };
+        return { amount: 0, type: 'free' as const, display: 'Free Delivery' };
       }
       if (prodConfig.deliveryFeeType === 'fixed') {
         const amt = prodConfig.deliveryFeeAmount ?? 0;
-        return { label, value: amt === 0 ? 'Free Delivery' : `PKR ${amt.toLocaleString()}`, type: 'fixed', badgeColor: 'text-emerald-400 font-bold' };
+        return { amount: amt, type: 'fixed' as const, display: amt === 0 ? 'Free Delivery' : `Rs. ${amt.toLocaleString('en-PK')}` };
       }
       if (prodConfig.deliveryFeeType === 'contact') {
-        return { label, value: 'Contact Us for Charges', type: 'contact', badgeColor: 'text-amber-400 font-bold' };
+        return { amount: 0, type: 'contact' as const, display: 'Contact for Charges' };
       }
       if (prodConfig.deliveryFeeType === 'custom') {
-        return { label, value: prodConfig.deliveryFeeCustomText || 'Calculated based on location', type: 'custom', badgeColor: 'text-blue-400 font-bold' };
+        return { amount: 0, type: 'custom' as const, display: prodConfig.deliveryFeeCustomText || 'Calculated by location' };
       }
     }
 
-    // 2. City specific fee
-    if (selectedCity && !isCustomSelected) {
-      if (selectedCity.deliveryFeeType === 'free' || selectedCity.deliveryFee === 0) {
-        return { label: 'Delivery Fee:', value: 'Free Local Delivery', type: 'free', badgeColor: 'text-emerald-400 font-bold' };
+    // 2. Custom city selection
+    if (isCustomMode) {
+      return { amount: 0, type: 'contact' as const, display: 'Confirmed on WhatsApp' };
+    }
+
+    // 3. Predefined city
+    if (selectedCity) {
+      if (selectedCity.freeDelivery || selectedCity.deliveryFeeType === 'free' || selectedCity.deliveryFee === 0) {
+        return { amount: 0, type: 'free' as const, display: 'Free Delivery' };
       }
       if (selectedCity.deliveryFeeType === 'contact') {
-        return { label: 'Delivery Fee:', value: 'Contact Us', type: 'contact', badgeColor: 'text-amber-400 font-bold' };
+        return { amount: 0, type: 'contact' as const, display: 'Contact for Charges' };
       }
       if (selectedCity.deliveryFeeType === 'custom' && selectedCity.deliveryFeeCustomText) {
-        return { label: 'Delivery Fee:', value: selectedCity.deliveryFeeCustomText, type: 'custom', badgeColor: 'text-blue-400 font-bold' };
+        return { amount: 0, type: 'custom' as const, display: selectedCity.deliveryFeeCustomText };
       }
-      return { label: 'Delivery Fee:', value: `PKR ${(selectedCity.deliveryFee ?? 0).toLocaleString()}`, type: 'fixed', badgeColor: 'text-emerald-400 font-bold' };
+      const fee = selectedCity.deliveryFee || 0;
+      return { amount: fee, type: 'fixed' as const, display: fee === 0 ? 'Free Delivery' : `Rs. ${fee.toLocaleString('en-PK')}` };
     }
 
-    // 3. Custom city or global default
-    if (isCustomSelected) {
-      return { label: 'Delivery Fee:', value: 'Confirmed via WhatsApp', type: 'contact', badgeColor: 'text-amber-400 font-bold' };
-    }
+    return { amount: 0, type: 'free' as const, display: 'Free Delivery' };
+  }, [prodConfig, isCustomMode, selectedCity]);
 
-    return { label: 'Delivery Fee:', value: 'Contact Us', type: 'contact', badgeColor: 'text-slate-300' };
-  }, [prodConfig, selectedCity, isCustomSelected]);
+  // Current active city name
+  const currentCityName = isCustomMode ? customCityName.trim() : (selectedCity?.cityName || '');
+  
+  // Current active address
+  const currentAddress = isCustomMode 
+    ? [customAddress.trim(), customLandmark.trim() ? `(Landmark: ${customLandmark.trim()})` : ''].filter(Boolean).join(' ')
+    : standardAddress.trim();
 
-  // Current City Availability Status
-  const cityStatus = useMemo(() => {
-    if (isCustomSelected) {
-      return 'custom';
+  // Notify parent component on state changes
+  useEffect(() => {
+    if (onDeliveryDetailsChange) {
+      onDeliveryDetailsChange({
+        city: currentCityName,
+        isCustomCity: isCustomMode,
+        address: currentAddress,
+        deliveryFeeAmount: deliveryFeeInfo.amount,
+        deliveryFeeType: deliveryFeeInfo.type,
+        deliveryFeeDisplay: deliveryFeeInfo.display,
+        estimatedDays,
+        isValid: Boolean(currentCityName && currentAddress)
+      });
     }
-    if (!selectedCity) {
-      return 'not_found';
-    }
-    if (selectedCity.status === 'unavailable' || selectedCity.isEnabled === false) {
-      return 'unavailable';
-    }
-    if (selectedCity.status === 'contact_to_confirm') {
-      return 'contact_to_confirm';
-    }
-    return 'available';
-  }, [isCustomSelected, selectedCity]);
+  }, [currentCityName, isCustomMode, currentAddress, deliveryFeeInfo, estimatedDays, onDeliveryDetailsChange]);
 
-  // WhatsApp Order & Delivery Confirmation
-  const handleConfirmWhatsapp = () => {
-    const rawNumber = (deliverySettings.whatsappSupportNumber || '+923108002863').replace(/[^0-9]/g, '');
-    const displayCity = isCustomSelected 
-      ? (customCityName.trim() || 'Custom City') 
-      : (selectedCity ? selectedCity.cityName : 'My City');
-    
-    const displayArea = isCustomSelected
-      ? ''
-      : (selectedCity?.areaTown ? ` (${selectedCity.areaTown})` : '');
+  if (!deliverySettings.isEnabled || isHiddenForProduct) {
+    return null;
+  }
 
-    const priceStr = product.salePrice || product.price || 'Call for Price';
-    
-    let message = `Assalam-o-Alaikum Zafar Sarwar Traders,\n\n`;
-    message += `I want to check delivery availability & place an order for:\n`;
-    message += `📦 Product: ${product.name}\n`;
-    message += `💰 Rate: ${priceStr}\n\n`;
-    
-    message += `📍 Destination Location:\n`;
-    message += `• City / Area: ${displayCity}${displayArea}\n`;
-    if (customAddress.trim()) message += `• Complete Address: ${customAddress.trim()}\n`;
-    if (postalCode.trim()) message += `• Postal Code: ${postalCode.trim()}\n`;
-    if (landmark.trim()) message += `• Landmark: ${landmark.trim()}\n`;
+  const handleSelectCity = (city: CityDeliveryInfo) => {
+    setSelectedCityId(city.id);
+    setIsCustomMode(false);
+    setIsCityModalOpen(false);
+    setSearchQuery('');
+  };
 
-    message += `\n🚚 Delivery Estimate:\n`;
-    if (deliveryTimeDisplay.value) {
-      message += `• ${deliveryTimeDisplay.label} ${deliveryTimeDisplay.value}\n`;
-    }
-    if (deliveryFeeDisplay.value) {
-      message += `• ${deliveryFeeDisplay.label} ${deliveryFeeDisplay.value}\n`;
-    }
-    if (customTextMessage?.text) {
-      message += `• Note: ${customTextMessage.text}\n`;
-    }
-
-    message += `\nPlease confirm availability, total charges, and delivery schedule. Thank you!`;
-
-    const encoded = encodeURIComponent(message);
-    window.open(`https://wa.me/${rawNumber}?text=${encoded}`, '_blank');
+  const handleContinueWithCustomCity = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customCityName.trim()) return;
+    setIsCustomMode(true);
+    setIsCityModalOpen(false);
+    setSearchQuery('');
   };
 
   return (
-    <div className="bg-slate-900/95 border border-slate-800 rounded-3xl p-5 sm:p-6 space-y-4 shadow-2xl relative overflow-hidden">
-      {/* Decorative Accent Glow */}
-      <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/5 rounded-full blur-2xl pointer-events-none" />
-
-      {/* Header Banner */}
-      <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-800 relative z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0 shadow-sm">
-            <Truck className="w-5 h-5" />
+    <div className="p-4 sm:p-5 rounded-3xl bg-slate-950/70 border border-slate-800 space-y-4">
+      {/* Title & Badge Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
+            <Truck className="w-4 h-4" />
           </div>
           <div>
-            <h4 className="font-serif font-bold text-white text-base flex items-center gap-2">
-              Delivery Information & Checker
+            <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+              Delivery Information
             </h4>
-            <p className="text-[11px] text-amber-400/90 font-medium flex items-center gap-1 mt-0.5">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>{deliverySettings.acrossPakistanHeadline || 'Express Delivery Available Across Pakistan'}</span>
+            <p className="text-[11px] text-slate-400">
+              Select your city for exact delivery charges & timeframe
             </p>
           </div>
         </div>
 
-        {deliverySettings.deliveryPartner && (
-          <span className="hidden sm:inline-block px-2.5 py-1 rounded-xl bg-slate-950 text-slate-300 text-[10px] font-mono border border-slate-800">
-            {deliverySettings.deliveryPartner}
+        {selectedCity && !isCustomMode && (
+          <span className="px-2.5 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+            <span>Delivery Available</span>
           </span>
         )}
       </div>
 
-      {/* Product-Specific Custom Delivery Callout (if active on product) */}
-      {prodConfig && (prodConfig.deliveryType === 'custom' || prodConfig.deliveryType === 'both') && customTextMessage && (
-        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5">
-          <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-          <div className="text-xs text-slate-200">
-            <span className="font-bold text-amber-300 mr-1.5">{customTextMessage.label}</span>
-            <span className="leading-relaxed">{customTextMessage.text}</span>
-          </div>
-        </div>
-      )}
-
-      {/* SMART DELIVERY AVAILABILITY CHECKER */}
-      <div className="space-y-3 pt-1">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-            <MapPin className="w-3.5 h-3.5 text-amber-400" />
-            <span>Check Delivery Availability in Your City / Area:</span>
-          </label>
-          <span className="text-[10px] text-slate-400 hidden sm:inline-block">50+ Pakistan Cities & Tehsils</span>
-        </div>
-
-        {/* Live Search & Autocomplete Input */}
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder="Type your city or area (e.g. Chiniot, Chenab Nagar, Bhowana, Lahore, DHA...)"
-            className="w-full bg-slate-950 border border-slate-700 text-white rounded-xl pl-10 pr-10 py-2.5 text-xs placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors shadow-inner"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-3 text-slate-400 hover:text-white text-xs font-bold"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-
-        {/* Search Autocomplete Suggestions Dropdown */}
-        {searchQuery.trim().length > 0 && (
-          <div className="p-2 rounded-xl bg-slate-950 border border-amber-500/30 max-h-48 overflow-y-auto space-y-1 shadow-2xl animate-fadeIn">
-            {searchResults.length > 0 ? (
-              searchResults.map(city => (
-                <button
-                  key={city.id}
-                  type="button"
-                  onClick={() => handleSelectSearchResult(city)}
-                  className="w-full text-left p-2 rounded-lg hover:bg-slate-900 flex items-center justify-between gap-2 text-xs transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-white">{city.cityName}</span>
-                    {city.areaTown && (
-                      <span className="text-[10px] text-slate-400">({city.areaTown})</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-amber-400 font-mono font-medium">{city.estimatedDays}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-bold border border-emerald-500/30">
-                      {city.deliveryFee === 0 ? 'FREE' : `PKR ${city.deliveryFee}`}
-                    </span>
-                  </div>
-                </button>
-              ))
-            ) : (
-              <div className="p-2.5 text-center text-xs text-slate-400">
-                <p>"{searchQuery}" is not in our standard zone list.</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedCityId(customCityOptionValue);
-                    setCustomCityName(searchQuery);
-                    setSearchQuery('');
-                  }}
-                  className="mt-1.5 px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition-colors inline-block"
-                >
-                  ➕ Check as Custom Location
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {searchFeedback && (
-          <p className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
-            <Check className="w-3.5 h-3.5" />
-            <span>{searchFeedback}</span>
-          </p>
-        )}
-
-        {/* Quick City Suggestion Chips (Top Delivery Hubs) */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1">Quick:</span>
-          {activeCities.slice(0, 8).map(city => {
-            const isSelected = selectedCityId === city.id;
-            return (
-              <button
-                key={city.id}
-                type="button"
-                onClick={() => {
-                  setSelectedCityId(city.id);
-                  setSearchQuery('');
-                  setSearchFeedback(null);
-                }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-all border shrink-0 ${
-                  isSelected
-                    ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-md shadow-amber-500/20'
-                    : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
-                }`}
-              >
-                📍 {city.cityName}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* City Select Dropdown for complete full list */}
-        <div className="relative">
-          <select
-            value={selectedCityId}
-            onChange={(e) => {
-              setSelectedCityId(e.target.value);
-              setSearchFeedback(null);
-            }}
-            className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-3.5 py-2.5 pr-10 text-xs font-semibold appearance-none focus:outline-none focus:border-amber-500 transition-colors cursor-pointer"
-          >
-            {activeCities.map(city => (
-              <option key={city.id} value={city.id}>
-                📍 {city.cityName} {city.areaTown ? `— ${city.areaTown}` : ''} ({city.estimatedDays} | {city.deliveryFee === 0 ? 'FREE' : `PKR ${city.deliveryFee}`})
-              </option>
-            ))}
-            {deliverySettings.enableCustomCity !== false && (
-              <option value={customCityOptionValue}>
-                {deliverySettings.customCityLabel || '➕ Custom City / Other Location'}
-              </option>
-            )}
-          </select>
-          <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3.5 top-3 pointer-events-none" />
-        </div>
-      </div>
-
-      {/* DELIVERY AVAILABILITY STATUS CARDS */}
-
-      {/* CASE 1: PREDEFINED CITY AVAILABLE */}
-      {cityStatus === 'available' && selectedCity && (
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 border border-emerald-500/30 space-y-3 shadow-lg">
-          <div className="flex items-start justify-between gap-2">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span className="text-xs font-bold text-emerald-400 uppercase tracking-wide">
-                  Delivery Available to {selectedCity.cityName}
-                </span>
-              </div>
-              {selectedCity.areaTown && (
-                <p className="text-[11px] text-slate-400 pl-6">
-                  Coverage: {selectedCity.areaTown}
-                </p>
-              )}
-            </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              {selectedCity.isSameDayAvailable && (
-                <span className="px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
-                  ⚡ Same Day
-                </span>
-              )}
-              {selectedCity.isNextDayAvailable && (
-                <span className="px-2 py-0.5 rounded-lg bg-blue-500/10 text-blue-300 border border-blue-500/30 text-[10px] font-bold">
-                  🚀 Next Day
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-800/80">
-            <div>
-              <span className="text-[10px] text-slate-400 font-medium block">
-                {deliveryTimeDisplay.label}
-              </span>
-              <span className="text-sm font-bold text-amber-400 flex items-center gap-1.5 mt-0.5 font-serif">
-                <Clock className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>{deliveryTimeDisplay.value}</span>
-              </span>
-            </div>
-
-            <div>
-              <span className="text-[10px] text-slate-400 font-medium block">
-                {deliveryFeeDisplay.label}
-              </span>
-              <span className={`text-sm mt-0.5 block ${deliveryFeeDisplay.badgeColor}`}>
-                {deliveryFeeDisplay.value}
-              </span>
-            </div>
-          </div>
-
-          {selectedCity.notes && (
-            <div className="text-[11px] text-slate-400 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 flex items-start gap-2">
-              <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
-              <span>{selectedCity.notes}</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* CASE 2: CONTACT TO CONFIRM */}
-      {cityStatus === 'contact_to_confirm' && selectedCity && (
-        <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-500/40 space-y-3 shadow-lg">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-            <span className="text-xs font-bold text-amber-300">
-              Delivery to {selectedCity.cityName} Requires Confirmation
+      {/* 1. CUSTOMER-FACING DELIVERY CITY SELECTOR BUTTON */}
+      <div className="space-y-1.5">
+        <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+          <span>Delivery City</span>
+          {currentCityName && (
+            <span className="text-[10px] text-amber-400 font-semibold cursor-pointer hover:underline" onClick={() => setIsCityModalOpen(true)}>
+              Change City
             </span>
-          </div>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            {selectedCity.notes || 'Please contact our logistics team on WhatsApp to confirm delivery route, freight timings, and cargo handling for this area.'}
-          </p>
-        </div>
-      )}
-
-      {/* CASE 3: UNAVAILABLE */}
-      {cityStatus === 'unavailable' && selectedCity && (
-        <div className="p-4 rounded-2xl bg-rose-950/30 border border-rose-500/40 space-y-3 shadow-lg">
-          <div className="flex items-center gap-2">
-            <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
-            <span className="text-xs font-bold text-rose-300">
-              Standard Courier Delivery Not Currently Listed for {selectedCity.cityName}
-            </span>
-          </div>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            Our standard door-to-door courier route is not scheduled for this area. However, we can arrange dedicated private freight or showroom truck dispatch on special request.
-          </p>
-        </div>
-      )}
-
-      {/* CASE 4: CUSTOM CITY / UNLISTED LOCATION */}
-      {isCustomSelected && (
-        <div className="p-4 rounded-2xl bg-slate-950 border border-amber-500/40 space-y-3 animate-fadeIn">
-          <div className="flex items-start gap-2.5">
-            <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs font-bold text-amber-200">
-                {deliverySettings.customCityNotice || 'Delivery time for custom location will be confirmed by our team.'}
-              </p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                Enter your city and details below to send an instant location inquiry via WhatsApp.
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-2.5 pt-1">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-300 mb-1">City / Area Name *</label>
-              <input
-                type="text"
-                placeholder="e.g. Kasur, Swat, Daska, Rahim Yar Khan, Mirpur..."
-                value={customCityName}
-                onChange={(e) => setCustomCityName(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-amber-400"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-slate-300 mb-1">Full Delivery Address (Optional)</label>
-              <input
-                type="text"
-                placeholder="House/Shop No, Street, Mohallah, Town"
-                value={customAddress}
-                onChange={(e) => setCustomAddress(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-amber-400"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[10px] text-slate-400 mb-1">Postal Code (Optional)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 54000"
-                  value={postalCode}
-                  onChange={(e) => setPostalCode(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 text-white text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-amber-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] text-slate-400 mb-1">Landmark (Optional)</label>
-                <input
-                  type="text"
-                  placeholder="Near main hospital / chowk"
-                  value={landmark}
-                  onChange={(e) => setLandmark(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 text-white text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-amber-400"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Optional Address Expansion for Predefined Cities */}
-      {!isCustomSelected && (
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={() => setShowAddressForm(!showAddressForm)}
-            className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold underline flex items-center gap-1 transition-colors"
-          >
-            <span>{showAddressForm ? '− Hide full address fields' : '➕ Add complete delivery address for WhatsApp confirmation'}</span>
-          </button>
-
-          {showAddressForm && (
-            <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5 text-xs animate-fadeIn">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-300 mb-1">Complete Delivery Address</label>
-                <input
-                  type="text"
-                  placeholder="House/Shop No, Street, Sector/Block"
-                  value={customAddress}
-                  onChange={(e) => setCustomAddress(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 text-white rounded-xl px-3 py-1.5 text-xs outline-none focus:border-amber-400"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[10px] text-slate-400 mb-0.5">Postal Code</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 54000"
-                    value={postalCode}
-                    onChange={(e) => setPostalCode(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 text-white rounded-lg px-2.5 py-1 text-xs outline-none focus:border-amber-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] text-slate-400 mb-0.5">Landmark / Notes</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Near main bazaar"
-                    value={landmark}
-                    onChange={(e) => setLandmark(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 text-white rounded-lg px-2.5 py-1 text-xs outline-none focus:border-amber-400"
-                  />
-                </div>
-              </div>
-            </div>
           )}
-        </div>
-      )}
+        </label>
 
-      {/* Operational Highlights Grid (Cut-off & Working Hours) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs pt-1">
-        <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-1">
-          <div className="flex items-center gap-1.5 text-amber-400 font-bold">
-            <Clock className="w-3.5 h-3.5" />
-            <span>Order Cut-off: {deliverySettings.orderCutoffTime || '05:00 PM'}</span>
-          </div>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            Orders placed before <strong className="text-slate-200">{deliverySettings.orderCutoffTime || '05:00 PM'}</strong> are processed the same working day.
-          </p>
-        </div>
-
-        <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-1">
-          <div className="flex items-center gap-1.5 text-blue-400 font-bold">
-            <Calendar className="w-3.5 h-3.5" />
-            <span>Showroom Working Hours</span>
-          </div>
-          <p className="text-[11px] text-slate-300 font-medium">
-            🕒 {deliverySettings.storeOpeningTime || '09:00 AM'} - {deliverySettings.storeClosingTime || '09:00 PM'} ({deliverySettings.workingDays || 'Mon - Sat'})
-          </p>
-        </div>
-      </div>
-
-      {/* Customer Delivery Notes (Bullet points) */}
-      {deliverySettings.deliveryNotes && deliverySettings.deliveryNotes.length > 0 && (
-        <div className="p-3 rounded-2xl bg-slate-950/50 border border-slate-800/60 space-y-1 text-[11px] text-slate-400">
-          {deliverySettings.deliveryNotes.slice(0, 3).map((note, idx) => (
-            <div key={idx} className="flex items-start gap-1.5">
-              <span className="text-amber-400 shrink-0">•</span>
-              <span>{note.replace(/^✓\s*/, '')}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ONE-CLICK WHATSAPP CONFIRMATION BUTTON */}
-      <div className="pt-2">
         <button
           type="button"
-          onClick={handleConfirmWhatsapp}
-          className="w-full py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-emerald-950/60 transition-all transform hover:-translate-y-0.5 active:translate-y-0"
+          onClick={() => setIsCityModalOpen(true)}
+          className="w-full bg-slate-900 hover:bg-slate-850 border border-slate-700/80 hover:border-amber-500/60 text-white rounded-2xl p-3.5 flex items-center justify-between transition-all group shadow-sm text-left"
         >
-          <MessageSquare className="w-4 h-4 fill-white shrink-0" />
-          <span>
-            Confirm Delivery on WhatsApp ({isCustomSelected ? (customCityName || 'Custom City') : (selectedCity ? selectedCity.cityName : 'Your City')})
-          </span>
-          <ExternalLink className="w-3.5 h-3.5 opacity-80 shrink-0" />
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-slate-800 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
+              <MapPin className="w-4 h-4" />
+            </div>
+            <div>
+              {currentCityName ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-white">
+                    {currentCityName}
+                  </span>
+                  <span className="text-emerald-400 text-xs font-bold">✓</span>
+                  {isCustomMode && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800/50 font-medium">
+                      Custom Location
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <span className="text-sm font-medium text-slate-400">
+                  Select Delivery City
+                </span>
+              )}
+              <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+                <span>{estimatedDays}</span>
+                <span>•</span>
+                <span className={deliveryFeeInfo.type === 'free' ? 'text-emerald-400 font-bold' : 'text-slate-300 font-medium'}>
+                  {deliveryFeeInfo.display}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 text-xs text-amber-400 font-semibold group-hover:translate-x-0.5 transition-transform">
+            <span>{currentCityName ? 'Change' : 'Select'}</span>
+            <ChevronDown className="w-4 h-4" />
+          </div>
         </button>
       </div>
+
+      {/* 2. SELECTED CITY INFORMATION BADGES */}
+      {currentCityName && (
+        <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="flex items-center gap-2 text-slate-300">
+              <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>Time: <strong className="text-white">{estimatedDays}</strong></span>
+            </div>
+            <div className="flex items-center gap-2 text-slate-300">
+              <Truck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>Charges: <strong className={deliveryFeeInfo.type === 'free' ? 'text-emerald-400' : 'text-white'}>{deliveryFeeInfo.display}</strong></span>
+            </div>
+          </div>
+
+          {selectedCity?.notes && (
+            <p className="text-[11px] text-slate-400 flex items-start gap-1.5 pt-1 border-t border-slate-800/60">
+              <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+              <span>{selectedCity.notes}</span>
+            </p>
+          )}
+
+          {isCustomMode && (
+            <p className="text-[11px] text-blue-300 flex items-start gap-1.5 pt-1 border-t border-slate-800/60">
+              <Sparkles className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+              <span>Our team will confirm exact cargo dispatch rates for {currentCityName} on WhatsApp.</span>
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* 3. SIMPLIFIED DELIVERY ADDRESS INPUT (ONE FIELD) */}
+      {currentCityName && !isCustomMode && (
+        <div className="space-y-1.5">
+          <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+            <span>Delivery Address</span>
+            <span className="text-[10px] text-slate-500 font-normal">Complete address</span>
+          </label>
+          <div className="relative">
+            <input
+              type="text"
+              value={standardAddress}
+              onChange={(e) => setStandardAddress(e.target.value)}
+              placeholder="Enter your complete delivery address (House / Shop #, Street, Area / Mohalla, Landmark)"
+              className="w-full bg-slate-900 border border-slate-700/80 focus:border-amber-500 rounded-2xl px-4 py-3 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none transition-colors"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* CITY SELECTION MODAL / PANEL */}
+      {/* ======================================================== */}
+      {isCityModalOpen && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-scaleIn">
+            
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center">
+                  <MapPin className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white font-serif">
+                    Select Delivery City
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Choose your destination from available delivery zones
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCityModalOpen(false)}
+                className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Fast Case-Insensitive Search Input */}
+            <div className="p-3.5 border-b border-slate-800 bg-slate-950/40">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="🔎 Search city (e.g. Chiniot, Faisalabad, Lahore, Jhang)..."
+                  className="w-full bg-slate-900 border border-slate-800 focus:border-amber-500 rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none transition-colors"
+                  autoFocus
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-white text-xs"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* City List Scroll Area */}
+            <div className="p-3 space-y-1.5 overflow-y-auto flex-1 max-h-[50vh]">
+              {filteredCities.length > 0 ? (
+                filteredCities.map((city) => {
+                  const isSelected = !isCustomMode && selectedCityId === city.id;
+                  const isFree = city.freeDelivery || city.deliveryFeeType === 'free' || city.deliveryFee === 0;
+
+                  return (
+                    <button
+                      key={city.id}
+                      type="button"
+                      onClick={() => handleSelectCity(city)}
+                      className={`w-full text-left p-3 rounded-2xl transition-all border flex items-center justify-between group ${
+                        isSelected
+                          ? 'bg-amber-500/10 border-amber-500 text-white shadow-md'
+                          : 'bg-slate-950/60 hover:bg-slate-800/80 border-slate-800/80 text-slate-200 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                          isSelected ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-800 text-slate-400 group-hover:text-amber-400'
+                        }`}>
+                          <MapPin className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs sm:text-sm font-bold text-white group-hover:text-amber-300 transition-colors">
+                              {city.cityName}
+                            </span>
+                            {isSelected && (
+                              <span className="text-emerald-400 font-bold text-xs">✓ Selected</span>
+                            )}
+                          </div>
+                          {city.areaTown && (
+                            <p className="text-[11px] text-slate-400">
+                              {city.areaTown}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider block ${
+                          isFree
+                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
+                            : 'bg-slate-800 text-slate-300 border border-slate-700'
+                        }`}>
+                          {isFree ? 'FREE Delivery' : `Rs. ${city.deliveryFee}`}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono mt-0.5 block">
+                          {city.estimatedDays}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="p-6 text-center text-slate-400 space-y-2">
+                  <p className="text-xs">No matching city found for "{searchQuery}".</p>
+                  <p className="text-[11px] text-slate-500">You can add your custom city location below!</p>
+                </div>
+              )}
+
+              {/* 3. CUSTOM CITY SECTION ("+ Add Custom City") */}
+              <div className="pt-3 border-t border-slate-800 mt-2">
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-950 to-slate-900 border border-blue-500/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-blue-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Plus className="w-4 h-4 text-blue-400" />
+                      <span>+ Add Custom City (Unlisted Location)</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400">Across Pakistan</span>
+                  </div>
+
+                  <form onSubmit={handleContinueWithCustomCity} className="space-y-2.5">
+                    <div>
+                      <input
+                        type="text"
+                        value={customCityName}
+                        onChange={(e) => setCustomCityName(e.target.value)}
+                        placeholder="Enter City Name (e.g. Okara, Mianwali, Gujrat...)"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-400"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <input
+                        type="text"
+                        value={customAddress}
+                        onChange={(e) => setCustomAddress(e.target.value)}
+                        placeholder="Enter Complete Delivery Address"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-400"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <input
+                        type="text"
+                        value={customLandmark}
+                        onChange={(e) => setCustomLandmark(e.target.value)}
+                        placeholder="Optional Nearby Landmark"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-400"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={!customCityName.trim()}
+                      className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold text-xs transition-colors flex items-center justify-center gap-2"
+                    >
+                      <span>Continue with Custom City</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3.5 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+              <span>{activeCities.length} Standard Delivery Zones</span>
+              <button
+                type="button"
+                onClick={() => setIsCityModalOpen(false)}
+                className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 };

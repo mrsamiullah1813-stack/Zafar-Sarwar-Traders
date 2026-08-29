@@ -243,6 +243,29 @@ export function mapDbProductToProduct(row: any): Product {
     showDiscountPercentage: Boolean(row.show_discount_percentage ?? rawSpecs._show_discount_percentage ?? true),
     showSavingsAmount: Boolean(row.show_savings_amount ?? rawSpecs._show_savings_amount ?? (row.show_savings ?? rawSpecs._show_savings ?? true)),
     saleConfig: rawSpecs._sale_config || undefined,
+    // Quantity Configuration
+    quantityEnabled: Boolean(row.quantity_enabled ?? rawSpecs._quantity_enabled ?? rawSpecs._quantity_config?.quantityEnabled ?? false),
+    minQuantity: typeof (row.min_quantity ?? rawSpecs._min_quantity ?? rawSpecs._quantity_config?.minQuantity) === 'number'
+      ? Number(row.min_quantity ?? rawSpecs._min_quantity ?? rawSpecs._quantity_config?.minQuantity)
+      : undefined,
+    maxQuantity: typeof (row.max_quantity ?? rawSpecs._max_quantity ?? rawSpecs._quantity_config?.maxQuantity) === 'number'
+      ? Number(row.max_quantity ?? rawSpecs._max_quantity ?? rawSpecs._quantity_config?.maxQuantity)
+      : undefined,
+    defaultQuantity: typeof (row.default_quantity ?? rawSpecs._default_quantity ?? rawSpecs._quantity_config?.defaultQuantity) === 'number'
+      ? Number(row.default_quantity ?? rawSpecs._default_quantity ?? rawSpecs._quantity_config?.defaultQuantity)
+      : undefined,
+    quantityStep: typeof (row.quantity_step ?? rawSpecs._quantity_step ?? rawSpecs._quantity_config?.quantityStep) === 'number'
+      ? Number(row.quantity_step ?? rawSpecs._quantity_step ?? rawSpecs._quantity_config?.quantityStep)
+      : undefined,
+    unitLabel: row.unit_label || rawSpecs._unit_label || rawSpecs._quantity_config?.unitLabel || undefined,
+    quantityConfig: rawSpecs._quantity_config || (Boolean(row.quantity_enabled ?? rawSpecs._quantity_enabled) ? {
+      quantityEnabled: Boolean(row.quantity_enabled ?? rawSpecs._quantity_enabled),
+      minQuantity: Number(row.min_quantity ?? rawSpecs._min_quantity ?? 1),
+      maxQuantity: typeof (row.max_quantity ?? rawSpecs._max_quantity) === 'number' ? Number(row.max_quantity ?? rawSpecs._max_quantity) : undefined,
+      defaultQuantity: Number(row.default_quantity ?? rawSpecs._default_quantity ?? 1),
+      quantityStep: Number(row.quantity_step ?? rawSpecs._quantity_step ?? 1),
+      unitLabel: row.unit_label || rawSpecs._unit_label || 'Pcs'
+    } : undefined),
     // Variants
     variantsEnabled: isVariantsEnabled,
     optionName: optionName,
@@ -350,10 +373,27 @@ export function mapProductToDb(product: Product): any {
     priceAdjustment: Number(s.priceAdjustment ?? 0)
   }));
 
+  const isQuantityEnabled = Boolean(product.quantityEnabled === true || product.quantityConfig?.quantityEnabled === true);
+  const quantityConfigObj = isQuantityEnabled ? {
+    quantityEnabled: true,
+    minQuantity: Number(product.minQuantity ?? product.quantityConfig?.minQuantity ?? 1),
+    maxQuantity: typeof (product.maxQuantity ?? product.quantityConfig?.maxQuantity) === 'number' ? Number(product.maxQuantity ?? product.quantityConfig?.maxQuantity) : undefined,
+    defaultQuantity: Number(product.defaultQuantity ?? product.quantityConfig?.defaultQuantity ?? 1),
+    quantityStep: Number(product.quantityStep ?? product.quantityConfig?.quantityStep ?? 1),
+    unitLabel: product.unitLabel || product.quantityConfig?.unitLabel || 'Pcs'
+  } : null;
+
   const specsWithMeta = {
     ...(product.specs || {}),
     _raw_price: product.price ?? null,
     _raw_sale_price: product.salePrice ?? null,
+    _quantity_enabled: isQuantityEnabled,
+    _min_quantity: product.minQuantity ?? product.quantityConfig?.minQuantity ?? 1,
+    _max_quantity: product.maxQuantity ?? product.quantityConfig?.maxQuantity ?? null,
+    _default_quantity: product.defaultQuantity ?? product.quantityConfig?.defaultQuantity ?? 1,
+    _quantity_step: product.quantityStep ?? product.quantityConfig?.quantityStep ?? 1,
+    _unit_label: product.unitLabel || product.quantityConfig?.unitLabel || 'Pcs',
+    _quantity_config: quantityConfigObj,
     _sale_enabled: isSaleEnabled,
     _sale_price: product.salePrice ?? product.saleConfig?.salePrice ?? null,
     _sale_start_date: product.saleStartDate ?? product.saleConfig?.saleStartDate ?? null,
@@ -553,6 +593,9 @@ export function mapDbDeliveryCity(r: any, idx: number): CityDeliveryInfo {
     deliveryFee: Number(r.delivery_fee ?? 0),
     deliveryFeeType: r.delivery_fee_type || r.deliveryFeeType || (Number(r.delivery_fee ?? 0) === 0 ? 'free' : 'fixed'),
     deliveryFeeCustomText: r.delivery_fee_custom_text || r.deliveryFeeCustomText || undefined,
+    freeDelivery: Boolean(r.free_delivery ?? r.freeDelivery ?? (Number(r.delivery_fee ?? 0) === 0)),
+    minOrderAmount: typeof (r.min_order_amount ?? r.minOrderAmount) === 'number' ? Number(r.min_order_amount ?? r.minOrderAmount) : undefined,
+    additionalAddress: r.additional_address || r.additionalAddress || undefined,
     estimatedDays: r.estimated_days || r.estimatedDays || '2-4 Days',
     isEnabled: Boolean(r.enabled ?? true),
     isSameDayAvailable: Boolean(r.same_day_available ?? r.isSameDayAvailable),
@@ -1202,6 +1245,30 @@ export async function upsertDeliveryCityInSupabase(city: CityDeliveryInfo): Prom
   return saveDeliveryCitiesToSupabase([city]);
 }
 
+export async function deleteDeliveryCityFromSupabase(cityId: string): Promise<{ success: boolean; error?: string }> {
+  await initializeSupabaseRuntime();
+  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
+
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/db/delivery-cities/${encodeURIComponent(cityId)}`, {
+      method: 'DELETE',
+      headers
+    });
+    const result = await res.json().catch(() => null);
+    if (!res.ok || (result && result.success === false)) {
+      const errMsg = result?.error || (res.statusText ? `${res.statusText} (${res.status})` : `Server returned error ${res.status}`);
+      const err = formatSupabaseError(errMsg);
+      console.error(`[Supabase API] Delivery city delete failed: ${err}`);
+      return { success: false, error: err };
+    }
+    console.log(`[Supabase API] Deleted delivery city ID: ${cityId}`);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
+  }
+}
+
 export async function saveDeliveryCitiesToSupabase(cities: CityDeliveryInfo[]): Promise<{ success: boolean; error?: string }> {
   await initializeSupabaseRuntime();
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
@@ -1243,6 +1310,7 @@ function getSiteSettingColumnName(key: string): string | null {
   if (k.includes('planner') || k.includes('designer')) return 'planner_config';
   if (k.includes('config') || k.includes('business')) return 'business_config';
   if (k.includes('gallery')) return 'gallery';
+  if (k.includes('pricing') || k.includes('typography')) return 'pricing_typography';
   return null;
 }
 

@@ -21,7 +21,7 @@ import {
 import { Product, BusinessConfig, ProductCategory } from '../types';
 import { ProductSaleBadge } from './ProductSaleBadge';
 import { SaleCountdownTimer } from './SaleCountdownTimer';
-import { getProductPricingDetails, getProductVariantDisplaySummary, hasActiveVariants, getActiveProductPrice } from '../utils/pricingUtils';
+import { getProductPricingDetails, getProductVariantDisplaySummary, hasActiveVariants, getActiveProductPrice, buildProductWhatsAppOrderUrl } from '../utils/pricingUtils';
 
 interface FeaturedProductsProps {
   products: Product[];
@@ -130,17 +130,13 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
 
   const handleWhatsAppProduct = (e: React.MouseEvent, product: Product) => {
     e.stopPropagation();
-    const pricing = getActiveProductPrice(product);
-    let priceText = pricing.effectivePriceString;
-    if (pricing.isSaleActive && pricing.discountPercentage > 0) {
-      priceText = `${pricing.formattedSalePrice} (SALE ${pricing.discountPercentage}% OFF — Regular: ${pricing.formattedRegularPrice}${pricing.savingsAmount > 0 ? `, Save: Rs. ${pricing.savingsAmount.toLocaleString('en-PK')}` : ''})`;
-    }
-    let variantNote = '';
-    if (pricing.isVariantPricingActive && pricing.activeVariant) {
-      variantNote = `\nDefault Option: ${pricing.activeVariant.name}`;
-    }
-    const message = `Hello ${config?.name || 'Zafar Sarwar Traders'},\n\nI would like to order this item:\nProduct Name: ${product.name}${variantNote}\nSKU: ${pricing.activeVariant?.sku || product.sku || 'N/A'}\nPrice: ${priceText}\n\nPlease confirm availability and delivery timeframe.`;
-    window.open(`https://wa.me/${targetWhatsAppNumber}?text=${encodeURIComponent(message)}`, '_blank');
+    const result = buildProductWhatsAppOrderUrl({
+      businessName: config?.name || 'Zafar Sarwar Traders',
+      whatsappNumber: targetWhatsAppNumber,
+      product,
+      quantity: 1
+    });
+    window.open(result.url, '_blank');
   };
 
   return (
@@ -257,7 +253,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
         )}
 
         {/* Product Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-7">
           <AnimatePresence mode="popLayout">
             {filteredProducts.map((product, idx) => {
               const isWishlisted = wishlistIds.includes(product.id);
@@ -275,11 +271,11 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                   exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ duration: 0.35, delay: idx * 0.02 }}
                   onClick={() => onQuickView(product)}
-                  className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-blue-500/50 transition-all cursor-pointer flex flex-col justify-between overflow-hidden relative"
+                  className="group bg-white rounded-2xl border border-slate-200/85 shadow-sm hover:shadow-xl hover:border-blue-500/60 hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between overflow-hidden relative"
                 >
                   
                   {/* Image Box */}
-                  <div className="relative h-56 w-full bg-slate-50 overflow-hidden flex items-center justify-center p-2">
+                  <div className="relative h-60 w-full bg-gradient-to-b from-slate-50 to-slate-100/60 overflow-hidden flex items-center justify-center p-3">
                     <img
                       src={product.image || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80'}
                       alt={`${product.name} - Luxury Sanitaryware & Bathroom Fittings Pakistan | Zafar Sarwar Traders`}
@@ -289,41 +285,41 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                           target.src = 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80';
                         }
                       }}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      className="w-full h-full object-contain mix-blend-multiply group-hover:scale-105 transition-transform duration-500"
                     />
 
                     {/* Top Badges */}
-                    <div className="absolute top-2.5 left-2.5 flex flex-col gap-1 z-10 items-start">
+                    <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10 items-start">
                       {/* Product Sale Badge if Sale is Active */}
                       <ProductSaleBadge product={product} />
 
                       {/* Variant Badge if active */}
                       {isVariantEnabled && variantSummary && variantSummary.variantCount > 1 && (
-                        <span className="px-2 py-0.5 rounded-lg bg-indigo-600/90 backdrop-blur-sm text-white font-bold text-[10px] shadow flex items-center gap-1">
-                          <Boxes className="w-3 h-3" />
+                        <span className="px-2 py-0.5 rounded-md bg-slate-900/90 backdrop-blur-sm text-white font-bold text-[10px] shadow-sm flex items-center gap-1">
+                          <Boxes className="w-3 h-3 text-cyan-400" />
                           <span>{variantSummary.variantCount} {product.optionName || 'Sizes'}</span>
                         </span>
                       )}
 
                       {product.isNew && (
-                        <span className="px-2 py-0.5 rounded bg-blue-600 text-white font-bold text-[10px] shadow">
+                        <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white font-bold text-[10px] shadow-sm">
                           NEW
                         </span>
                       )}
                       {product.isBestSeller && (
-                        <span className="px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-black text-[10px] shadow">
+                        <span className="px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 font-black text-[10px] shadow-sm">
                           BESTSELLER
                         </span>
                       )}
                       {product.badge && !product.isNew && !product.isBestSeller && (
-                        <span className="px-2 py-0.5 rounded bg-slate-900 text-white font-bold text-[10px] shadow">
+                        <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white font-bold text-[10px] shadow-sm">
                           {product.badge}
                         </span>
                       )}
                     </div>
 
                     {/* Wishlist & Compare Quick Floating Buttons */}
-                    <div className="absolute top-2.5 right-2.5 z-10 flex flex-col gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
                       {onToggleWishlist && (
                         <button
                           type="button"
@@ -334,7 +330,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                           className={`p-2 rounded-xl border backdrop-blur-md transition-colors ${
                             isWishlisted 
                               ? 'bg-rose-500 text-white border-rose-400' 
-                              : 'bg-white/90 text-slate-600 border-slate-200 hover:text-rose-600 hover:bg-white'
+                              : 'bg-white/95 text-slate-600 border-slate-200/90 hover:text-rose-600 hover:bg-white shadow-sm'
                           }`}
                           title={isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
                         >
@@ -352,7 +348,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                           className={`p-2 rounded-xl border backdrop-blur-md transition-colors ${
                             isCompared 
                               ? 'bg-amber-500 text-slate-950 border-amber-400' 
-                              : 'bg-white/90 text-slate-600 border-slate-200 hover:text-amber-600 hover:bg-white'
+                              : 'bg-white/95 text-slate-600 border-slate-200/90 hover:text-amber-600 hover:bg-white shadow-sm'
                           }`}
                           title={isCompared ? 'Remove from Compare' : 'Add to Compare'}
                         >
@@ -363,13 +359,13 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
 
                     {/* Admin Edit / Delete Floating Buttons */}
                     {isAdmin && onEditProduct && (
-                      <div className="absolute bottom-2.5 left-2.5 z-20 flex items-center gap-1">
+                      <div className="absolute bottom-3 left-3 z-20 flex items-center gap-1.5">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             onEditProduct(product);
                           }}
-                          className="p-1.5 rounded-lg bg-blue-600 text-white shadow hover:bg-blue-500"
+                          className="p-1.5 rounded-lg bg-blue-600 text-white shadow hover:bg-blue-500 transition-colors"
                         >
                           <Edit className="w-3 h-3" />
                         </button>
@@ -379,7 +375,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                               e.stopPropagation();
                               if (confirm('Are you sure you want to delete this product?')) onDeleteProduct(product.id);
                             }}
-                            className="p-1.5 rounded-lg bg-rose-600 text-white shadow hover:bg-rose-500"
+                            className="p-1.5 rounded-lg bg-rose-600 text-white shadow hover:bg-rose-500 transition-colors"
                             title="Delete Product"
                           >
                             <Trash2 className="w-3 h-3" />
@@ -391,10 +387,10 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                   </div>
 
                   {/* Body Info */}
-                  <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                  <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
                     <div>
                       <div className="flex items-center justify-between text-[11px] font-semibold text-blue-600 uppercase tracking-wider mb-1">
-                        <span>{product.brand || product.category}</span>
+                        <span className="truncate max-w-[140px]">{product.brand || product.category}</span>
                         <div className="flex items-center gap-1 text-amber-500">
                           <Star className="w-3 h-3 fill-amber-400" />
                           <span className="text-slate-700 font-mono text-[10px] font-bold">
@@ -412,7 +408,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                         {product.name}
                       </h3>
 
-                      <p className="mt-1 text-slate-500 text-xs line-clamp-2 font-normal">
+                      <p className="mt-1 text-slate-500 text-xs line-clamp-2 font-normal leading-relaxed">
                         {product.description}
                       </p>
 
@@ -421,7 +417,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                         {pricing.isSaleActive ? (
                           <div className="space-y-1">
                             <div className="flex items-baseline gap-2 flex-wrap">
-                              <span className="text-base font-extrabold text-rose-600 font-mono">
+                              <span className="text-base font-black text-rose-600 font-mono">
                                 {pricing.formattedSalePrice}
                               </span>
                               {pricing.showRegularPriceStrike && (
@@ -450,7 +446,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                           </div>
                         ) : (
                           <div className="flex items-baseline gap-2">
-                            <span className="text-sm font-bold text-blue-600 font-mono">
+                            <span className="text-sm font-bold text-slate-900 font-mono product-price-typography">
                               {isVariantEnabled && variantSummary && variantSummary.variantCount > 0
                                 ? (variantSummary.minPrice > 0 ? (variantSummary.minPrice === variantSummary.maxPrice ? `Rs. ${variantSummary.minPrice.toLocaleString('en-PK')}` : `Rs. ${variantSummary.minPrice.toLocaleString('en-PK')} – ${variantSummary.maxPrice.toLocaleString('en-PK')}`) : (product.price || 'Price on Request'))
                                 : (product.hidePrice ? 'Call for Price' : (product.isPriceOnRequest ? 'Price on Request' : (product.price || 'Price on Request')))}
@@ -461,7 +457,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-2">
+                    <div className="pt-3 border-t border-slate-100 grid grid-cols-2 gap-2">
                       {onAddToCart && (
                         <button
                           type="button"
@@ -469,7 +465,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                             e.stopPropagation();
                             onAddToCart(product);
                           }}
-                          className="py-2 px-2 rounded-xl bg-slate-900 hover:bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center gap-1 transition-all"
+                          className="py-2.5 px-2 rounded-xl bg-slate-900 hover:bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-95"
                         >
                           <ShoppingBag className="w-3.5 h-3.5" />
                           <span>Add Cart</span>
@@ -479,7 +475,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                       <button
                         type="button"
                         onClick={(e) => handleWhatsAppProduct(e, product)}
-                        className="py-2 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center justify-center gap-1 transition-all shadow-sm"
+                        className="py-2.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm shadow-emerald-600/10 active:scale-95"
                       >
                         <MessageSquare className="w-3.5 h-3.5" />
                         <span>WhatsApp</span>
