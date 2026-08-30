@@ -795,9 +795,12 @@ export function buildProductWhatsAppOrderUrl(params: BuildWhatsAppOrderParams): 
   // Delivery details formatting
   let deliverySection = '';
   if (deliveryCity || deliveryAddress) {
-    const feeText = typeof deliveryFee === 'number'
-      ? (deliveryFee === 0 ? 'FREE Delivery' : `Rs. ${deliveryFee.toLocaleString('en-PK')}`)
-      : (deliveryFee || (isCustomCity ? 'To be confirmed on WhatsApp' : 'Standard'));
+    let feeText = 'Depends on quantity & location (To be confirmed)';
+    if (typeof deliveryFee === 'number' && deliveryFee > 0) {
+      feeText = `Rs. ${deliveryFee.toLocaleString('en-PK')}`;
+    } else if (typeof deliveryFee === 'string' && deliveryFee.trim() !== '') {
+      feeText = deliveryFee;
+    }
     
     let deliveryLines = `\n\n🚚 *DELIVERY & SHIPPING DESTINATION*:\n━━━━━━━━━━━━━━━━━━`;
     if (deliveryCity) {
@@ -806,9 +809,7 @@ export function buildProductWhatsAppOrderUrl(params: BuildWhatsAppOrderParams): 
     if (deliveryAddress) {
       deliveryLines += `\n• Delivery Address: *${deliveryAddress}*`;
     }
-    if (deliveryFee !== undefined && deliveryFee !== null) {
-      deliveryLines += `\n• Delivery Charges: *${feeText}*`;
-    }
+    deliveryLines += `\n• Delivery Charges: *${feeText}*`;
     deliverySection = deliveryLines;
   }
 

@@ -2717,6 +2717,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           product={editingProduct}
           categories={categories}
           brands={brands}
+          allProducts={products}
           onSave={handleSaveSingleProduct}
           onDelete={handleDeleteProduct}
           onClose={() => {

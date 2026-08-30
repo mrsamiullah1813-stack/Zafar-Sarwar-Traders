@@ -114,44 +114,57 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
 
   // Derive delivery fee info
   const deliveryFeeInfo = useMemo(() => {
-    // 1. Product specific fee override
+    // 1. Explicit Product specific fee override (only if admin explicitly configured one on this product)
     if (prodConfig && prodConfig.deliveryFeeType && prodConfig.deliveryFeeType !== 'inherit') {
       if (prodConfig.deliveryFeeType === 'free') {
-        return { amount: 0, type: 'free' as const, display: 'Free Delivery' };
+        return { 
+          amount: 0, 
+          type: 'free' as const, 
+          display: 'Free Delivery',
+          heading: 'Free Delivery',
+          subtitle: 'Free delivery applied for this product.',
+          note: 'Contact for delivery information.'
+        };
       }
       if (prodConfig.deliveryFeeType === 'fixed') {
         const amt = prodConfig.deliveryFeeAmount ?? 0;
-        return { amount: amt, type: 'fixed' as const, display: amt === 0 ? 'Free Delivery' : `Rs. ${amt.toLocaleString('en-PK')}` };
+        return { 
+          amount: amt, 
+          type: 'fixed' as const, 
+          display: amt === 0 ? 'Free Delivery' : `Rs. ${amt.toLocaleString('en-PK')}`,
+          heading: amt === 0 ? 'Free Delivery' : `Fixed Delivery Fee: Rs. ${amt.toLocaleString('en-PK')}`,
+          subtitle: 'Fixed delivery charge configured for this product.',
+          note: 'Contact for delivery information.'
+        };
       }
-      if (prodConfig.deliveryFeeType === 'contact') {
-        return { amount: 0, type: 'contact' as const, display: 'Contact for Charges' };
-      }
-      if (prodConfig.deliveryFeeType === 'custom') {
-        return { amount: 0, type: 'custom' as const, display: prodConfig.deliveryFeeCustomText || 'Calculated by location' };
+      if (prodConfig.deliveryFeeType === 'custom' && prodConfig.deliveryFeeCustomText) {
+        return { 
+          amount: 0, 
+          type: 'custom' as const, 
+          display: prodConfig.deliveryFeeCustomText,
+          heading: prodConfig.deliveryFeeLabel || 'Contact for Delivery',
+          subtitle: prodConfig.deliveryFeeCustomText,
+          note: 'Contact for further details.'
+        };
       }
     }
 
-    // 2. Custom city selection
-    if (isCustomMode) {
-      return { amount: 0, type: 'contact' as const, display: 'Confirmed on WhatsApp' };
-    }
+    // Default for ALL existing & future products:
+    // Heading: "Contact for Delivery"
+    // Subtitle: "Delivery depends on quantity, item type and location."
+    // Note: "Contact for further details."
+    const customHeading = prodConfig?.deliveryFeeLabel?.trim() || 'Contact for Delivery';
+    const customSub = prodConfig?.deliveryFeeCustomText?.trim() || 'Delivery depends on quantity, item type and location.';
+    const customNote = prodConfig?.deliveryNote?.trim() || 'Contact for further details.';
 
-    // 3. Predefined city
-    if (selectedCity) {
-      if (selectedCity.freeDelivery || selectedCity.deliveryFeeType === 'free' || selectedCity.deliveryFee === 0) {
-        return { amount: 0, type: 'free' as const, display: 'Free Delivery' };
-      }
-      if (selectedCity.deliveryFeeType === 'contact') {
-        return { amount: 0, type: 'contact' as const, display: 'Contact for Charges' };
-      }
-      if (selectedCity.deliveryFeeType === 'custom' && selectedCity.deliveryFeeCustomText) {
-        return { amount: 0, type: 'custom' as const, display: selectedCity.deliveryFeeCustomText };
-      }
-      const fee = selectedCity.deliveryFee || 0;
-      return { amount: fee, type: 'fixed' as const, display: fee === 0 ? 'Free Delivery' : `Rs. ${fee.toLocaleString('en-PK')}` };
-    }
-
-    return { amount: 0, type: 'free' as const, display: 'Free Delivery' };
+    return { 
+      amount: 0, 
+      type: 'contact' as const, 
+      display: customHeading,
+      heading: customHeading,
+      subtitle: customSub,
+      note: customNote
+    };
   }, [prodConfig, isCustomMode, selectedCity]);
 
   // Current active city name
@@ -210,7 +223,7 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
               Delivery Information
             </h4>
             <p className="text-[11px] text-slate-400">
-              Select your city for exact delivery charges & timeframe
+              Nationwide delivery with direct freight & cargo handling
             </p>
           </div>
         </div>
@@ -221,6 +234,22 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
             <span>Delivery Available</span>
           </span>
         )}
+      </div>
+
+      {/* PROMINENT DELIVERY FEE NOTICE DISPLAY */}
+      <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-slate-900/90 to-slate-950/90 border border-amber-500/30 space-y-1 shadow-sm">
+        <div className="flex items-center gap-2">
+          <Truck className="w-4 h-4 text-amber-400 shrink-0" />
+          <h5 className="text-xs sm:text-sm font-extrabold text-amber-300 uppercase tracking-wide">
+            {deliveryFeeInfo.heading}
+          </h5>
+        </div>
+        <p className="text-xs text-slate-200 font-medium leading-relaxed pl-6">
+          {deliveryFeeInfo.subtitle}
+        </p>
+        <p className="text-[11px] text-slate-400 font-normal pl-6">
+          {deliveryFeeInfo.note}
+        </p>
       </div>
 
       {/* 1. CUSTOMER-FACING DELIVERY CITY SELECTOR BUTTON */}
@@ -264,7 +293,7 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
               <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
                 <span>{estimatedDays}</span>
                 <span>•</span>
-                <span className={deliveryFeeInfo.type === 'free' ? 'text-emerald-400 font-bold' : 'text-slate-300 font-medium'}>
+                <span className="text-amber-300 font-medium">
                   {deliveryFeeInfo.display}
                 </span>
               </div>
@@ -287,8 +316,8 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
               <span>Time: <strong className="text-white">{estimatedDays}</strong></span>
             </div>
             <div className="flex items-center gap-2 text-slate-300">
-              <Truck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>Charges: <strong className={deliveryFeeInfo.type === 'free' ? 'text-emerald-400' : 'text-white'}>{deliveryFeeInfo.display}</strong></span>
+              <Truck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>Delivery Fee: <strong className="text-amber-300">{deliveryFeeInfo.display}</strong></span>
             </div>
           </div>
 
@@ -424,12 +453,8 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
                       </div>
 
                       <div className="text-right shrink-0">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider block ${
-                          isFree
-                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
-                            : 'bg-slate-800 text-slate-300 border border-slate-700'
-                        }`}>
-                          {isFree ? 'FREE Delivery' : `Rs. ${city.deliveryFee}`}
+                        <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider block bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                          Delivery Available
                         </span>
                         <span className="text-[10px] text-slate-400 font-mono mt-0.5 block">
                           {city.estimatedDays}

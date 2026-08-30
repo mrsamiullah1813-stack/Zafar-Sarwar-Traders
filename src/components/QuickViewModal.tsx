@@ -184,8 +184,8 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
     isCustomCity: false,
     address: '',
     deliveryFeeAmount: 0,
-    deliveryFeeType: 'free',
-    deliveryFeeDisplay: 'Free Delivery',
+    deliveryFeeType: 'contact',
+    deliveryFeeDisplay: 'Contact for Delivery',
     estimatedDays: '1–2 Days',
     isValid: false
   });
@@ -233,10 +233,10 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
   const currentVideo = hasVideos ? product.videos![selectedVideoIndex] || product.videos![0] : null;
 
   // Derive colors if available or provide fallback defaults based on finishes/category
-  const displayColors = product.availableColors || product.availableFinishes || ['Chrome', 'Matte Black', 'Brushed Gold', 'Gunmetal'];
-  const displaySizes = product.availableSizes || ['Standard', 'Medium 12"', 'Large 24"'];
-  const displayVariants = product.availableVariants || ['Concealed Mount', 'Countertop', 'Exposed Fittings'];
-  const displayMaterials = product.availableMaterials || [product.specs?.['Material'] || 'Premium Brass & Ceramic'];
+  const displayColors = product.availableColors?.length ? product.availableColors : (product.availableFinishes?.length ? product.availableFinishes : []);
+  const displaySizes = product.availableSizes && product.availableSizes.length > 0 ? product.availableSizes : [];
+  const displayVariants = product.availableVariants && product.availableVariants.length > 0 ? product.availableVariants : [];
+  const displayMaterials = product.availableMaterials && product.availableMaterials.length > 0 ? product.availableMaterials : (product.specs?.['Material'] ? [product.specs['Material']] : []);
   const stockStatus = product.stockStatus || 'In Stock - Ready for Order';
 
   // Similar products from same category or fallback
@@ -1054,8 +1054,8 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
               {deliveryDetails.city && (
                 <div className="flex justify-between items-center text-slate-300">
                   <span className="text-slate-400">Delivery Fee:</span>
-                  <span className={`font-semibold ${deliveryDetails.deliveryFeeType === 'free' ? 'text-emerald-400' : 'text-slate-200'}`}>
-                    {deliveryDetails.deliveryFeeDisplay}
+                  <span className={`font-semibold ${deliveryDetails.deliveryFeeType === 'free' ? 'text-emerald-400' : 'text-amber-300'}`}>
+                    {deliveryDetails.deliveryFeeDisplay || 'Contact for Delivery'}
                   </span>
                 </div>
               )}

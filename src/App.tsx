@@ -889,6 +889,7 @@ export default function App() {
           product={editingProduct}
           categories={categories}
           brands={brands}
+          allProducts={products}
           onSave={handleSaveProduct}
           onDelete={handleDeleteProduct}
           onClose={() => {

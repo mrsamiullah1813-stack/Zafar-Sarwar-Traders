@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Lock, X, Mail, Key, AlertCircle, CheckCircle, Loader2, LogOut } from 'lucide-react';
+import { ShieldCheck, Lock, X, Mail, Key, AlertCircle, CheckCircle, Loader2, LogOut, Volume2, VolumeX } from 'lucide-react';
 import { setAdminAuthToken, setIsAdminLoggedIn } from '../utils/storage';
 import { supabase, initializeSupabaseRuntime } from '../lib/supabase';
+import { speakAdminVoice, getAdminVoicePreference, setAdminVoicePreference } from '../utils/adminVoice';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -29,12 +30,27 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   const [activeUserEmail, setActiveUserEmail] = useState<string | null>(null);
   const [tempSessionToken, setTempSessionToken] = useState<string | null>(null);
 
+  // Safe Voice Feedback State
+  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => getAdminVoicePreference());
+
+  const toggleVoice = () => {
+    const nextState = !voiceEnabled;
+    setVoiceEnabled(nextState);
+    setAdminVoicePreference(nextState);
+  };
+
   useEffect(() => {
     if (isOpen) {
       setError('');
       setSuccess('');
       setStep('credentials');
       setPin('');
+      
+      // Voice feedback when modal opens (only if not already authenticated)
+      if (!isAdmin) {
+        speakAdminVoice("Please enter your email and password.");
+      }
+
       // Check for an existing authenticated Supabase session
       initializeSupabaseRuntime().then(() => {
         supabase.auth.getSession().then(({ data }) => {
@@ -44,7 +60,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         }).catch(() => {});
       });
     }
-  }, [isOpen]);
+  }, [isOpen, isAdmin]);
 
   if (!isOpen) return null;
 
@@ -58,6 +74,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
     if (!trimmedEmail || !trimmedPassword) {
       setError('Please enter both Admin Email and Password.');
+      speakAdminVoice("Authentication failed. Please try again.");
       return;
     }
 
@@ -74,6 +91,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       if (authError) {
         console.error('[Admin Login] Supabase Auth error:', authError);
         setError(authError.message || 'Invalid email or password. Please verify your Supabase credentials.');
+        speakAdminVoice("Authentication failed. Please try again.");
         setLoading(false);
         return;
       }
@@ -85,12 +103,15 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         setPin('');
         setError('');
         setSuccess('');
+        speakAdminVoice("Please enter your security PIN.");
       } else {
         setError('No authenticated session created. Please try again.');
+        speakAdminVoice("Authentication failed. Please try again.");
       }
     } catch (err: any) {
       console.error('[Admin Login] Unexpected error:', err);
       setError(err?.message || 'Failed to authenticate with Supabase. Please check connection.');
+      speakAdminVoice("Authentication failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -104,6 +125,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     const cleanPin = pin.trim().replace(/\D/g, '');
     if (cleanPin.length !== 4) {
       setError('Invalid security PIN.');
+      speakAdminVoice("Security PIN is incorrect. Please try again.");
       return;
     }
 
@@ -131,6 +153,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         } catch {}
 
         setSuccess('Security PIN verified! Opening Admin Dashboard...');
+        speakAdminVoice("Welcome, Sir. Welcome to your Admin Dashboard.", true);
 
         setTimeout(() => {
           onLoginSuccess();
@@ -139,14 +162,16 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           setSuccess('');
           setStep('credentials');
           onClose();
-        }, 400);
+        }, 300);
       } else {
         setError('Invalid security PIN.');
+        speakAdminVoice("Security PIN is incorrect. Please try again.");
         setPin('');
       }
     } catch (err: any) {
       console.error('[Admin PIN] Verification error:', err);
       setError('Invalid security PIN.');
+      speakAdminVoice("Security PIN is incorrect. Please try again.");
       setPin('');
     } finally {
       setPinLoading(false);
@@ -176,13 +201,27 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     <div className="fixed inset-0 z-[110] bg-slate-950/90 backdrop-blur-md flex justify-center items-start sm:items-center p-3 sm:p-6 animate-fadeIn overflow-y-auto">
       <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full my-auto overflow-hidden shadow-2xl relative p-6 sm:p-8 max-h-[92vh] flex flex-col">
         
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-full bg-slate-950/80 border border-slate-800 text-slate-400 hover:text-white transition-all"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        {/* Header Actions: Voice Toggle & Close Button */}
+        <div className="absolute top-4 right-4 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleVoice}
+            className={`p-2 rounded-full border transition-all flex items-center justify-center ${
+              voiceEnabled 
+                ? 'bg-blue-950/80 border-blue-500/50 text-blue-400 hover:text-blue-300' 
+                : 'bg-slate-950/80 border-slate-800 text-slate-500 hover:text-slate-400'
+            }`}
+            title={voiceEnabled ? "Voice Feedback: ON (Click to turn off)" : "Voice Feedback: OFF (Click to turn on)"}
+          >
+            {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full bg-slate-950/80 border border-slate-800 text-slate-400 hover:text-white transition-all"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
         {/* Header Icon */}
         <div className="flex flex-col items-center text-center mb-6">
@@ -294,6 +333,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                     setStep('credentials');
                     setError('');
                     setPin('');
+                    speakAdminVoice("Please enter your email and password.");
                   }}
                   className="text-xs text-slate-400 hover:text-slate-200 transition-colors"
                 >

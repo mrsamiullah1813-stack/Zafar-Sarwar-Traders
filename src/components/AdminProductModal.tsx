@@ -12,6 +12,7 @@ interface AdminProductModalProps {
   product: Product | null; // null for creating new product
   categories: ProductCategory[];
   brands?: ProductBrand[];
+  allProducts?: Product[];
   onSave: (product: Product) => Promise<void> | void;
   onDelete?: (productId: string) => void;
   onClose: () => void;
@@ -21,6 +22,7 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
   product,
   categories,
   brands = [],
+  allProducts = [],
   onSave,
   onDelete,
   onClose
@@ -70,11 +72,11 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
   const [customDeliveryMessage, setCustomDeliveryMessage] = useState<string>('');
   const [customMessageLabel, setCustomMessageLabel] = useState<string>('Delivery Info:');
   const [deliveryFeeType, setDeliveryFeeType] = useState<'free' | 'fixed' | 'contact' | 'custom'>('contact');
-  const [deliveryFeeAmount, setDeliveryFeeAmount] = useState<number>(350);
+  const [deliveryFeeAmount, setDeliveryFeeAmount] = useState<number>(0);
   const [deliveryFeeCustomText, setDeliveryFeeCustomText] = useState<string>('');
-  const [deliveryFeeLabel, setDeliveryFeeLabel] = useState<string>('Delivery Fee:');
+  const [deliveryFeeLabel, setDeliveryFeeLabel] = useState<string>('Contact for Delivery');
   const [deliveryAreaText, setDeliveryAreaText] = useState<string>('');
-  const [deliveryNote, setDeliveryNote] = useState<string>('');
+  const [deliveryNote, setDeliveryNote] = useState<string>('Contact for further details.');
   const [hideDeliveryInfo, setHideDeliveryInfo] = useState<boolean>(false);
 
   // Sale & Discount configuration states
@@ -203,11 +205,11 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
         setCustomDeliveryMessage('');
         setCustomMessageLabel('Delivery Info:');
         setDeliveryFeeType('contact');
-        setDeliveryFeeAmount(350);
+        setDeliveryFeeAmount(0);
         setDeliveryFeeCustomText('');
-        setDeliveryFeeLabel('Delivery Fee:');
+        setDeliveryFeeLabel('Contact for Delivery');
         setDeliveryAreaText('');
-        setDeliveryNote('');
+        setDeliveryNote('Contact for further details.');
         setHideDeliveryInfo(false);
       }
     } else {
@@ -245,11 +247,11 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       setCustomDeliveryMessage('');
       setCustomMessageLabel('Delivery Info:');
       setDeliveryFeeType('contact');
-      setDeliveryFeeAmount(350);
+      setDeliveryFeeAmount(0);
       setDeliveryFeeCustomText('');
-      setDeliveryFeeLabel('Delivery Fee:');
+      setDeliveryFeeLabel('Contact for Delivery');
       setDeliveryAreaText('');
-      setDeliveryNote('');
+      setDeliveryNote('Contact for further details.');
       setHideDeliveryInfo(false);
     }
   }, [product]);
@@ -346,6 +348,73 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       displayOrder: variantsList.length
     };
     setVariantsList(prev => [...prev, dup]);
+  };
+
+  const [selectedCopyProductId, setSelectedCopyProductId] = useState<string>('');
+  const [quickSizeNameInput, setQuickSizeNameInput] = useState<string>('');
+  const [quickSizePriceInput, setQuickSizePriceInput] = useState<string>('250');
+
+  // Copy Sizes From Another Product (creates completely independent deep copy)
+  const handleCopySizesFromOtherProduct = () => {
+    if (!selectedCopyProductId) return;
+    const sourceProd = allProducts.find(p => p.id === selectedCopyProductId);
+    if (!sourceProd) return;
+
+    if (sourceProd.variantsList && sourceProd.variantsList.length > 0) {
+      const cloned = sourceProd.variantsList.map((v, i) => ({
+        ...v,
+        id: `var-${Date.now()}-${i + 1}`,
+        isActive: v.isActive !== false,
+        isDefault: i === 0,
+        displayOrder: i
+      }));
+      setVariantsList(cloned);
+      if (sourceProd.optionName) {
+        setOptionName(sourceProd.optionName);
+      }
+      setVariantsEnabled(true);
+    } else if (sourceProd.availableSizes && sourceProd.availableSizes.length > 0) {
+      const baseNum = parseNumericPrice(sourceProd.price) || 250;
+      const cloned: ProductVariant[] = sourceProd.availableSizes.map((sz, i) => ({
+        id: `var-${Date.now()}-${i + 1}`,
+        name: sz,
+        price: String(baseNum + (i * 120)),
+        isActive: true,
+        isDefault: i === 0,
+        displayOrder: i,
+        stockStatus: 'In Stock',
+        stockQuantity: 50
+      }));
+      setVariantsList(cloned);
+      setOptionName('Size');
+      setVariantsEnabled(true);
+    }
+  };
+
+  // Quick single size badge adder
+  const handleQuickAddSizeBadge = (sizeLabel: string, defaultPriceNum: number = 250) => {
+    const exists = variantsList.some(v => v.name.toLowerCase().trim() === sizeLabel.toLowerCase().trim());
+    if (exists) return;
+    const newVariant: ProductVariant = {
+      id: `var-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      name: sizeLabel,
+      price: String(defaultPriceNum),
+      isActive: true,
+      isDefault: variantsList.length === 0,
+      displayOrder: variantsList.length,
+      stockStatus: 'In Stock',
+      stockQuantity: 100
+    };
+    setVariantsList(prev => [...prev, newVariant]);
+    setVariantsEnabled(true);
+  };
+
+  // Quick custom size add from input
+  const handleQuickAddCustomSize = () => {
+    if (!quickSizeNameInput.trim()) return;
+    const numPrice = parseNumericPrice(quickSizePriceInput) || 250;
+    handleQuickAddSizeBadge(quickSizeNameInput.trim(), numPrice);
+    setQuickSizeNameInput('');
   };
 
   const handleMoveVariant = (index: number, direction: 'up' | 'down') => {
@@ -1029,20 +1098,20 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-white uppercase tracking-wider">
-                      Variants, Sizes & Dynamic Pricing
+                      Sizes & Pricing (Optional)
                     </span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                       variantsEnabled 
                         ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40' 
                         : 'bg-slate-800 text-slate-400 border border-slate-700'
                     }`}>
-                      {variantsEnabled ? `ACTIVE (${variantsList.filter(v => v.isActive !== false).length} OPTIONS)` : 'DISABLED / OFF'}
+                      {variantsEnabled ? `ENABLED (${variantsList.filter(v => v.isActive !== false).length} SIZES)` : 'DISABLED / SINGLE PRICE'}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400">
                     {variantsEnabled 
-                      ? 'Customers can select capacity, size, or model with real-time dynamic pricing.' 
-                      : 'Normal single-price product. Enable below to add size/capacity choices with individual prices.'}
+                      ? 'Add different sizes/capacities (e.g., 1/2", 3/4", 1", 20mm, 500L) with individual prices.' 
+                      : 'Disabled: Product operates as a standard single-price product. Toggle ON to add size options.'}
                   </p>
                 </div>
               </div>
@@ -1148,12 +1217,125 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
                       </div>
                     </div>
 
+                    {/* Copy Sizes From Another Product (Independent deep clone) */}
+                    {allProducts && allProducts.length > 0 && (
+                      <div className="p-3.5 rounded-xl bg-slate-950/90 border border-indigo-500/30 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
+                            <Copy className="w-3.5 h-3.5 text-indigo-400" />
+                            <span>Copy Sizes From Existing Product</span>
+                          </span>
+                          <span className="text-[10px] text-slate-500">Clones sizes & prices independently</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row items-center gap-2">
+                          <select
+                            value={selectedCopyProductId}
+                            onChange={(e) => setSelectedCopyProductId(e.target.value)}
+                            className="flex-1 w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500"
+                          >
+                            <option value="">-- Select Product with Sizes / Variants --</option>
+                            {allProducts
+                              .filter(p => p.id !== product?.id && ((p.variantsList && p.variantsList.length > 0) || (p.availableSizes && p.availableSizes.length > 0)))
+                              .map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name} ({p.variantsList?.length || p.availableSizes?.length} sizes)
+                                </option>
+                              ))}
+                          </select>
+                          <button
+                            type="button"
+                            disabled={!selectedCopyProductId}
+                            onClick={handleCopySizesFromOtherProduct}
+                            className="w-full sm:w-auto px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white text-xs font-bold shrink-0 transition-colors flex items-center justify-center gap-1.5"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copy Sizes Into This Product</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Quick Single Size Insert Pills (Inch & Metric) */}
+                    <div className="p-3.5 rounded-xl bg-slate-950/90 border border-slate-800 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                          <Plus className="w-3.5 h-3.5 text-blue-400" />
+                          <span>Quick Add Size (1-Click)</span>
+                        </span>
+                        <span className="text-[10px] text-slate-500">Click to instantly add size option</span>
+                      </div>
+
+                      {/* Imperial Inches */}
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Imperial (Inches):</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {['1/2"', '3/4"', '1"', '1-1/4"', '1-1/2"', '2"', '2-1/2"', '3"', '4"', '5"', '6"'].map(sz => (
+                            <button
+                              key={sz}
+                              type="button"
+                              onClick={() => handleQuickAddSizeBadge(sz, 250)}
+                              className="px-2 py-1 rounded-lg bg-slate-900 hover:bg-blue-600 hover:text-white border border-slate-800 text-slate-300 text-xs font-semibold transition-colors"
+                            >
+                              + {sz}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Metric mm */}
+                      <div className="space-y-1 pt-1 border-t border-slate-800/60">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Metric (mm):</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {['20mm', '25mm', '32mm', '40mm', '50mm', '63mm', '75mm', '90mm', '110mm'].map(sz => (
+                            <button
+                              key={sz}
+                              type="button"
+                              onClick={() => handleQuickAddSizeBadge(sz, 280)}
+                              className="px-2 py-1 rounded-lg bg-slate-900 hover:bg-indigo-600 hover:text-white border border-slate-800 text-slate-300 text-xs font-semibold transition-colors"
+                            >
+                              + {sz}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Custom Size Quick Adder */}
+                      <div className="flex items-center gap-2 pt-2 border-t border-slate-800/60">
+                        <input
+                          type="text"
+                          value={quickSizeNameInput}
+                          onChange={(e) => setQuickSizeNameInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleQuickAddCustomSize(); }}}
+                          placeholder="Type custom size (e.g. 500L, 8 inch, Extra Large)..."
+                          className="flex-1 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                        />
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] text-slate-500 font-mono">Rs.</span>
+                          <input
+                            type="number"
+                            value={quickSizePriceInput}
+                            onChange={(e) => setQuickSizePriceInput(e.target.value)}
+                            placeholder="Price"
+                            className="w-24 px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-emerald-400 font-mono font-bold focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleQuickAddCustomSize}
+                          className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1 shrink-0"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Size</span>
+                        </button>
+                      </div>
+                    </div>
+
                     {/* 1-Click Complete Industry Template Generator */}
                     <div className="p-3 rounded-xl bg-slate-950/90 border border-indigo-500/20 space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-bold text-indigo-300 flex items-center gap-1.5">
                           <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                          <span>1-Click Popular Hardware & Sanitaryware Templates</span>
+                          <span>1-Click Full Category Templates</span>
                         </span>
                         <span className="text-[10px] text-slate-500">Auto-fills sizes, SKUs & sample PKR rates</span>
                       </div>
@@ -2468,14 +2650,21 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
                       </div>
                     )}
 
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-400 font-medium">{deliveryFeeLabel || 'Delivery Fee:'}</span>
-                      <span className="font-bold text-emerald-400">
-                        {deliveryFeeType === 'free' && 'Free Delivery'}
-                        {deliveryFeeType === 'fixed' && `Rs. ${deliveryFeeAmount.toLocaleString()}`}
-                        {deliveryFeeType === 'contact' && 'Contact Us'}
-                        {deliveryFeeType === 'custom' && (deliveryFeeCustomText || 'Custom Charges')}
-                      </span>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-400 font-medium">Delivery Fee Display:</span>
+                        <span className="font-bold text-amber-300">
+                          {deliveryFeeType === 'free' && 'Free Delivery'}
+                          {deliveryFeeType === 'fixed' && `Rs. ${deliveryFeeAmount.toLocaleString()}`}
+                          {deliveryFeeType === 'contact' && (deliveryFeeLabel || 'Contact for Delivery')}
+                          {deliveryFeeType === 'custom' && (deliveryFeeCustomText || 'Delivery depends on quantity, item type and location.')}
+                        </span>
+                      </div>
+                      {deliveryFeeType === 'contact' && (
+                        <p className="text-[11px] text-slate-400 pl-4">
+                          Delivery depends on quantity, item type and location. Contact for further details.
+                        </p>
+                      )}
                     </div>
 
                     {deliveryAreaText && (
