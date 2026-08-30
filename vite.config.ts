@@ -46,8 +46,8 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      hmr: process.env.DISABLE_HMR !== 'true',
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      hmr: process.env.DISABLE_HMR === 'true' ? false : undefined,
+      watch: process.env.DISABLE_HMR === 'true' ? null : undefined,
     },
   };
 });

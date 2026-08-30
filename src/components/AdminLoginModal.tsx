@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Lock, X, Mail, Key, AlertCircle, CheckCircle, Loader2, LogOut, Volume2, VolumeX } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { ShieldCheck, Lock, X, Mail, Key, AlertCircle, CheckCircle, Loader2, LogOut, Volume2, VolumeX, Sparkles } from 'lucide-react';
 import { setAdminAuthToken, setIsAdminLoggedIn } from '../utils/storage';
 import { supabase, initializeSupabaseRuntime } from '../lib/supabase';
 import { speakAdminVoice, getAdminVoicePreference, setAdminVoicePreference } from '../utils/adminVoice';
+import { AIAssistantAvatar, AIAssistantMood } from './AIAssistantAvatar';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -29,6 +31,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   const [success, setSuccess] = useState('');
   const [activeUserEmail, setActiveUserEmail] = useState<string | null>(null);
   const [tempSessionToken, setTempSessionToken] = useState<string | null>(null);
+  const [shakeKey, setShakeKey] = useState(0);
 
   // Safe Voice Feedback State
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => getAdminVoicePreference());
@@ -62,7 +65,9 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     }
   }, [isOpen, isAdmin]);
 
-  if (!isOpen) return null;
+  const triggerErrorShake = () => {
+    setShakeKey(prev => prev + 1);
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,6 +79,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
     if (!trimmedEmail || !trimmedPassword) {
       setError('Please enter both Admin Email and Password.');
+      triggerErrorShake();
       speakAdminVoice("Authentication failed. Please try again.");
       return;
     }
@@ -91,6 +97,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       if (authError) {
         console.error('[Admin Login] Supabase Auth error:', authError);
         setError(authError.message || 'Invalid email or password. Please verify your Supabase credentials.');
+        triggerErrorShake();
         speakAdminVoice("Authentication failed. Please try again.");
         setLoading(false);
         return;
@@ -106,11 +113,13 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         speakAdminVoice("Please enter your security PIN.");
       } else {
         setError('No authenticated session created. Please try again.');
+        triggerErrorShake();
         speakAdminVoice("Authentication failed. Please try again.");
       }
     } catch (err: any) {
       console.error('[Admin Login] Unexpected error:', err);
       setError(err?.message || 'Failed to authenticate with Supabase. Please check connection.');
+      triggerErrorShake();
       speakAdminVoice("Authentication failed. Please try again.");
     } finally {
       setLoading(false);
@@ -125,6 +134,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     const cleanPin = pin.trim().replace(/\D/g, '');
     if (cleanPin.length !== 4) {
       setError('Invalid security PIN.');
+      triggerErrorShake();
       speakAdminVoice("Security PIN is incorrect. Please try again.");
       return;
     }
@@ -165,12 +175,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         }, 300);
       } else {
         setError('Invalid security PIN.');
+        triggerErrorShake();
         speakAdminVoice("Security PIN is incorrect. Please try again.");
         setPin('');
       }
     } catch (err: any) {
       console.error('[Admin PIN] Verification error:', err);
       setError('Invalid security PIN.');
+      triggerErrorShake();
       speakAdminVoice("Security PIN is incorrect. Please try again.");
       setPin('');
     } finally {
@@ -197,227 +209,395 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     onClose();
   };
 
+  const assistantMood: AIAssistantMood = (Boolean(error) || shakeKey > 0)
+    ? 'error'
+    : (Boolean(success) || isAdmin)
+    ? 'success'
+    : (loading || pinLoading)
+    ? 'authenticating'
+    : 'idle';
+
   return (
-    <div className="fixed inset-0 z-[110] bg-slate-950/90 backdrop-blur-md flex justify-center items-start sm:items-center p-3 sm:p-6 animate-fadeIn overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full my-auto overflow-hidden shadow-2xl relative p-6 sm:p-8 max-h-[92vh] flex flex-col">
-        
-        {/* Header Actions: Voice Toggle & Close Button */}
-        <div className="absolute top-4 right-4 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={toggleVoice}
-            className={`p-2 rounded-full border transition-all flex items-center justify-center ${
-              voiceEnabled 
-                ? 'bg-blue-950/80 border-blue-500/50 text-blue-400 hover:text-blue-300' 
-                : 'bg-slate-950/80 border-slate-800 text-slate-500 hover:text-slate-400'
-            }`}
-            title={voiceEnabled ? "Voice Feedback: ON (Click to turn off)" : "Voice Feedback: OFF (Click to turn on)"}
-          >
-            {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-          </button>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-full bg-slate-950/80 border border-slate-800 text-slate-400 hover:text-white transition-all"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          id="admin-login-backdrop"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+          className="fixed inset-0 z-[110] bg-[radial-gradient(ellipse_at_center,_rgba(15,23,42,0.85)_0%,_rgba(2,6,23,0.95)_60%,_rgba(0,0,0,0.98)_100%)] backdrop-blur-2xl flex justify-center items-start sm:items-center p-3 sm:p-6 overflow-y-auto"
+        >
+          {/* Cinematic Ambient Lighting Gradients & Atmosphere */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
+            {/* Primary soft atmospheric light orb */}
+            <motion.div
+              animate={{
+                scale: [1, 1.2, 1],
+                opacity: [0.22, 0.35, 0.22],
+                x: [0, 30, 0],
+                y: [0, -25, 0]
+              }}
+              transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
+              className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-gradient-to-tr from-blue-600/35 via-indigo-500/25 to-cyan-400/30 rounded-full blur-[120px]"
+            />
+            {/* Secondary atmospheric cyan beam */}
+            <motion.div
+              animate={{
+                scale: [1.15, 1, 1.15],
+                opacity: [0.12, 0.24, 0.12],
+                x: [0, -35, 0],
+                y: [0, 30, 0]
+              }}
+              transition={{ duration: 16, repeat: Infinity, ease: 'easeInOut' }}
+              className="absolute bottom-1/4 left-1/3 w-[500px] h-[500px] bg-gradient-to-br from-cyan-500/25 via-blue-800/20 to-transparent rounded-full blur-[110px]"
+            />
 
-        {/* Header Icon */}
-        <div className="flex flex-col items-center text-center mb-6">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-700 to-cyan-500 p-[1.5px] shadow-xl shadow-blue-900/30 mb-3">
-            <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center">
-              <Lock className="w-7 h-7 text-blue-400" />
+            {/* Subtle animated floating stardust particles */}
+            <div className="absolute inset-0 opacity-30 hidden sm:block">
+              <motion.span
+                animate={{ y: [-10, 10, -10], opacity: [0.2, 0.6, 0.2] }}
+                transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
+                className="absolute top-[18%] left-[22%] w-1.5 h-1.5 rounded-full bg-cyan-400 blur-[0.5px]"
+              />
+              <motion.span
+                animate={{ y: [10, -10, 10], opacity: [0.15, 0.5, 0.15] }}
+                transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
+                className="absolute top-[62%] left-[78%] w-1 h-1 rounded-full bg-blue-300 blur-[0.5px]"
+              />
+              <motion.span
+                animate={{ y: [-8, 8, -8], opacity: [0.1, 0.45, 0.1] }}
+                transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
+                className="absolute top-[32%] left-[82%] w-1.5 h-1.5 rounded-full bg-indigo-300 blur-[0.5px]"
+              />
+              <motion.span
+                animate={{ y: [8, -8, 8], opacity: [0.2, 0.5, 0.2] }}
+                transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
+                className="absolute top-[78%] left-[18%] w-1 h-1 rounded-full bg-cyan-200 blur-[0.5px]"
+              />
             </div>
           </div>
-          <h3 className="text-2xl font-bold text-white font-serif">Website Admin Portal</h3>
-          <p className="text-xs text-slate-400 mt-1 font-light">
-            Authorized management via Supabase Authentication.
-          </p>
-        </div>
 
-        {isAdmin ? (
-          <div className="space-y-6 text-center">
-            <div className="p-4 rounded-2xl bg-emerald-950/50 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-3">
-              <ShieldCheck className="w-6 h-6 text-emerald-400 shrink-0" />
-              <div className="text-left">
-                <p className="font-bold">Admin Session Active</p>
-                {activeUserEmail && (
-                  <p className="text-[11px] text-emerald-300/90 font-mono mt-0.5">
-                    User: {activeUserEmail}
-                  </p>
-                )}
-                <p className="text-[11px] text-emerald-400/80 font-light mt-0.5">
-                  Authenticated session enables category and product creation, editing, and deletion.
-                </p>
-              </div>
-            </div>
+          {/* Cinematic Glass Login Card */}
+          <motion.div
+            key={shakeKey}
+            id="admin-login-card"
+            initial={{ opacity: 0, scale: 0.92, y: 24, filter: 'blur(12px)' }}
+            animate={{
+              opacity: 1,
+              scale: 1,
+              y: 0,
+              filter: 'blur(0px)',
+              x: shakeKey > 0 ? [-10, 10, -8, 8, -4, 4, 0] : 0
+            }}
+            exit={{ opacity: 0, scale: 0.94, y: 16, filter: 'blur(8px)' }}
+            transition={{
+              duration: shakeKey > 0 ? 0.45 : 0.5,
+              ease: [0.22, 1, 0.36, 1]
+            }}
+            className="relative bg-slate-900/85 border border-slate-700/50 rounded-3xl max-w-md w-full my-auto overflow-hidden shadow-[0_30px_70px_-15px_rgba(0,0,0,0.85),0_0_50px_rgba(37,99,235,0.15)] p-6 sm:p-8 max-h-[92vh] flex flex-col backdrop-blur-3xl z-10"
+          >
+            {/* Cinematic top-edge refractive ambient glow line */}
+            <div className="absolute -top-px left-6 right-6 h-[2px] bg-gradient-to-r from-transparent via-cyan-400/90 via-blue-500/80 to-transparent pointer-events-none" />
 
-            <button
-              onClick={handleSignOut}
-              disabled={loading}
-              className="w-full py-3 px-4 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 transition-all shadow-lg shadow-rose-950 flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
-              <span>Exit Admin Mode (Sign Out)</span>
-            </button>
-          </div>
-        ) : step === 'pin' ? (
-          <div className="space-y-4">
-            <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-center">
-              <h4 className="text-sm font-bold text-white">Enter 4-digit PIN</h4>
-              {activeUserEmail && (
-                <p className="text-[11px] text-slate-400 font-mono mt-1">
-                  Authenticated as: <span className="text-slate-300">{activeUserEmail}</span>
-                </p>
-              )}
-            </div>
-
-            <form onSubmit={handleVerifyPin} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5 text-center">
-                  Security PIN
-                </label>
-                <div className="relative max-w-xs mx-auto">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={4}
-                    value={pin}
-                    onChange={(e) => {
-                      const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
-                      setPin(digits);
-                      setError('');
-                    }}
-                    placeholder="[ _ _ _ _ ]"
-                    autoFocus
-                    required
-                    className="w-full py-3 px-4 rounded-xl bg-slate-950 border border-slate-800 focus:border-blue-500 text-white placeholder-slate-600 text-center text-2xl font-mono tracking-[0.4em] font-bold focus:outline-none"
-                  />
-                  <Key className="w-4 h-4 text-slate-500 absolute right-3.5 top-4 pointer-events-none" />
-                </div>
-              </div>
-
-              {error && (
-                <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs flex items-start gap-2 animate-fadeIn">
-                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              {success && (
-                <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2 animate-fadeIn">
-                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>{success}</span>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={pinLoading || pin.length !== 4}
-                className="w-full py-3 px-4 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 transition-all shadow-lg shadow-blue-950 flex items-center justify-center gap-2 disabled:opacity-50"
+            {/* Header Actions: Voice Toggle & Close Button */}
+            <div className="absolute top-4 right-4 flex items-center gap-2 z-20">
+              <motion.button
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.92 }}
+                type="button"
+                onClick={toggleVoice}
+                className={`p-2 rounded-full border transition-all duration-300 flex items-center justify-center backdrop-blur-md ${
+                  voiceEnabled 
+                    ? 'bg-blue-950/80 border-cyan-500/50 text-cyan-400 hover:text-cyan-300 shadow-[0_0_16px_rgba(6,182,212,0.35)]' 
+                    : 'bg-slate-950/80 border-slate-800 text-slate-500 hover:text-slate-400'
+                }`}
+                title={voiceEnabled ? "Voice Feedback: ON (Click to turn off)" : "Voice Feedback: OFF (Click to turn on)"}
               >
-                {pinLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <ShieldCheck className="w-4 h-4" />
-                )}
-                <span>{pinLoading ? 'Verifying...' : 'Verify'}</span>
-              </button>
-
-              <div className="text-center pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep('credentials');
-                    setError('');
-                    setPin('');
-                    speakAdminVoice("Please enter your email and password.");
-                  }}
-                  className="text-xs text-slate-400 hover:text-slate-200 transition-colors"
-                >
-                  ← Back to Email / Password
-                </button>
-              </div>
-            </form>
-          </div>
-        ) : (
-          <form onSubmit={handleLogin} className="space-y-4">
-            {/* Email Field */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                Admin Email Address
-              </label>
-              <div className="relative">
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    setError('');
-                  }}
-                  placeholder="admin@zafarsarwar.com"
-                  autoFocus
-                  required
-                  className="w-full pl-4 pr-10 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-sm"
-                />
-                <Mail className="w-4 h-4 text-slate-500 absolute right-3.5 top-3.5 pointer-events-none" />
-              </div>
+                {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.1, rotate: 90 }}
+                whileTap={{ scale: 0.92 }}
+                transition={{ duration: 0.2 }}
+                onClick={onClose}
+                className="p-2 rounded-full bg-slate-950/80 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-all backdrop-blur-md"
+              >
+                <X className="w-5 h-5" />
+              </motion.button>
             </div>
 
-            {/* Password Field */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                Admin Password
-              </label>
-              <div className="relative">
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setError('');
-                  }}
-                  placeholder="Enter Supabase Admin Password..."
-                  required
-                  className="w-full pl-4 pr-10 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 text-sm"
-                />
-                <Key className="w-4 h-4 text-slate-500 absolute right-3.5 top-3.5 pointer-events-none" />
-              </div>
-            </div>
-
-            {error && (
-              <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs flex items-start gap-2 animate-fadeIn">
-                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            {success && (
-              <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2 animate-fadeIn">
-                <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>{success}</span>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 px-4 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 transition-all shadow-lg shadow-blue-950 flex items-center justify-center gap-2 disabled:opacity-50"
+            {/* Logo / Branding Header with Cinematic Glow reveal */}
+            <motion.div
+              initial={{ opacity: 0, y: 12, filter: 'blur(6px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              transition={{ duration: 0.5, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
+              className="flex flex-col items-center text-center mb-6"
             >
-              {loading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <ShieldCheck className="w-4 h-4" />
-              )}
-              <span>{loading ? 'Authenticating with Supabase...' : 'Unlock Admin Access'}</span>
-            </button>
-          </form>
-        )}
+              <div className="relative mb-3.5">
+                <AIAssistantAvatar mood={assistantMood} size={58} />
+              </div>
+              <h3 className="text-2xl font-bold text-white font-serif tracking-tight flex items-center gap-1.5 justify-center">
+                <span>Website Admin Portal</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-1 font-light tracking-wide">
+                Authorized management via Supabase Authentication.
+              </p>
+            </motion.div>
 
-      </div>
-    </div>
+            {/* Step Transitions with AnimatePresence */}
+            <AnimatePresence mode="wait">
+              {isAdmin ? (
+                <motion.div
+                  key="active-admin-session"
+                  initial={{ opacity: 0, y: 16, filter: 'blur(6px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, y: -16, filter: 'blur(6px)' }}
+                  transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                  className="space-y-6 text-center"
+                >
+                  <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-3 backdrop-blur-md shadow-[0_0_24px_rgba(16,185,129,0.15)]">
+                    <ShieldCheck className="w-6 h-6 text-emerald-400 shrink-0" />
+                    <div className="text-left">
+                      <p className="font-bold tracking-wide">Admin Session Active</p>
+                      {activeUserEmail && (
+                        <p className="text-[11px] text-emerald-300/90 font-mono mt-0.5">
+                          User: {activeUserEmail}
+                        </p>
+                      )}
+                      <p className="text-[11px] text-emerald-400/80 font-light mt-0.5">
+                        Authenticated session enables category and product creation, editing, and deletion.
+                      </p>
+                    </div>
+                  </div>
+
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleSignOut}
+                    disabled={loading}
+                    className="w-full py-3.5 px-4 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 transition-all duration-300 shadow-lg shadow-rose-950/60 flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+                    <span>Exit Admin Mode (Sign Out)</span>
+                  </motion.button>
+                </motion.div>
+              ) : step === 'pin' ? (
+                <motion.div
+                  key="step-pin"
+                  initial={{ opacity: 0, x: 30, filter: 'blur(8px)' }}
+                  animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, x: -30, filter: 'blur(8px)' }}
+                  transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+                  className="space-y-4"
+                >
+                  <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 text-center backdrop-blur-md shadow-inner">
+                    <h4 className="text-sm font-bold text-white flex items-center justify-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Enter 4-digit Security PIN</span>
+                    </h4>
+                    {activeUserEmail && (
+                      <p className="text-[11px] text-slate-400 font-mono mt-1">
+                        Authenticated as: <span className="text-slate-300">{activeUserEmail}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  <form onSubmit={handleVerifyPin} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1.5 text-center">
+                        Security PIN
+                      </label>
+                      <div className="relative max-w-xs mx-auto group">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={4}
+                          value={pin}
+                          onChange={(e) => {
+                            const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
+                            setPin(digits);
+                            setError('');
+                          }}
+                          placeholder="[ _ _ _ _ ]"
+                          autoFocus
+                          required
+                          className="w-full py-3.5 px-4 rounded-xl bg-slate-950/90 border border-slate-800 text-white placeholder-slate-600 text-center text-2xl font-mono tracking-[0.45em] font-bold focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 transition-all duration-300 shadow-inner"
+                        />
+                        <Key className="w-4 h-4 text-slate-500 group-focus-within:text-cyan-400 absolute right-3.5 top-4 pointer-events-none transition-colors duration-300" />
+                      </div>
+                    </div>
+
+                    <AnimatePresence mode="wait">
+                      {error && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -8, filter: 'blur(4px)' }}
+                          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                          exit={{ opacity: 0, y: -8, filter: 'blur(4px)' }}
+                          transition={{ duration: 0.25 }}
+                          className="p-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs flex items-start gap-2 backdrop-blur-md shadow-[0_0_15px_rgba(244,63,94,0.15)]"
+                        >
+                          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                          <span>{error}</span>
+                        </motion.div>
+                      )}
+
+                      {success && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.94, filter: 'blur(4px)' }}
+                          animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                          exit={{ opacity: 0, scale: 0.94, filter: 'blur(4px)' }}
+                          transition={{ duration: 0.25 }}
+                          className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2 backdrop-blur-md shadow-[0_0_20px_rgba(16,185,129,0.2)]"
+                        >
+                          <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>{success}</span>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      type="submit"
+                      disabled={pinLoading || pin.length !== 4}
+                      className="relative group w-full py-3.5 px-4 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:via-indigo-500 hover:to-cyan-400 transition-all duration-300 shadow-lg shadow-blue-950/70 flex items-center justify-center gap-2 disabled:opacity-50 overflow-hidden"
+                    >
+                      {/* Cinematic light sweep shimmer reflection */}
+                      <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 pointer-events-none" />
+                      
+                      {pinLoading ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <ShieldCheck className="w-4 h-4" />
+                      )}
+                      <span className="tracking-wide">{pinLoading ? 'Verifying PIN...' : 'Verify PIN & Open Dashboard'}</span>
+                    </motion.button>
+
+                    <div className="text-center pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStep('credentials');
+                          setError('');
+                          setPin('');
+                          speakAdminVoice("Please enter your email and password.");
+                        }}
+                        className="text-xs text-slate-400 hover:text-cyan-300 transition-colors duration-200"
+                      >
+                        ← Back to Email / Password
+                      </button>
+                    </div>
+                  </form>
+                </motion.div>
+              ) : (
+                <motion.form
+                  key="step-credentials"
+                  initial={{ opacity: 0, x: -30, filter: 'blur(8px)' }}
+                  animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, x: 30, filter: 'blur(8px)' }}
+                  transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+                  onSubmit={handleLogin}
+                  className="space-y-4"
+                >
+                  {/* Email Field */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                      Admin Email Address
+                    </label>
+                    <div className="relative group">
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          setError('');
+                        }}
+                        placeholder="admin@zafarsarwar.com"
+                        autoFocus
+                        required
+                        className="w-full pl-4 pr-10 py-3 rounded-xl bg-slate-950/90 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 text-sm transition-all duration-300 shadow-inner"
+                      />
+                      <Mail className="w-4 h-4 text-slate-500 group-focus-within:text-cyan-400 absolute right-3.5 top-3.5 pointer-events-none transition-colors duration-300" />
+                    </div>
+                  </div>
+
+                  {/* Password Field */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                      Admin Password
+                    </label>
+                    <div className="relative group">
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => {
+                          setPassword(e.target.value);
+                          setError('');
+                        }}
+                        placeholder="Enter Supabase Admin Password..."
+                        required
+                        className="w-full pl-4 pr-10 py-3 rounded-xl bg-slate-950/90 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 text-sm transition-all duration-300 shadow-inner"
+                      />
+                      <Key className="w-4 h-4 text-slate-500 group-focus-within:text-cyan-400 absolute right-3.5 top-3.5 pointer-events-none transition-colors duration-300" />
+                    </div>
+                  </div>
+
+                  <AnimatePresence mode="wait">
+                    {error && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -8, filter: 'blur(4px)' }}
+                        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                        exit={{ opacity: 0, y: -8, filter: 'blur(4px)' }}
+                        transition={{ duration: 0.25 }}
+                        className="p-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs flex items-start gap-2 backdrop-blur-md shadow-[0_0_15px_rgba(244,63,94,0.15)]"
+                      >
+                        <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                        <span>{error}</span>
+                      </motion.div>
+                    )}
+
+                    {success && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.94, filter: 'blur(4px)' }}
+                        animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                        exit={{ opacity: 0, scale: 0.94, filter: 'blur(4px)' }}
+                        transition={{ duration: 0.25 }}
+                        className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2 backdrop-blur-md shadow-[0_0_20px_rgba(16,185,129,0.2)]"
+                      >
+                        <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>{success}</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    type="submit"
+                    disabled={loading}
+                    className="relative group w-full py-3.5 px-4 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:via-indigo-500 hover:to-cyan-400 transition-all duration-300 shadow-lg shadow-blue-950/70 flex items-center justify-center gap-2 disabled:opacity-50 overflow-hidden"
+                  >
+                    {/* Cinematic light sweep shimmer reflection */}
+                    <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 pointer-events-none" />
+                    
+                    {loading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <ShieldCheck className="w-4 h-4" />
+                    )}
+                    <span className="tracking-wide">{loading ? 'Authenticating with Supabase...' : 'Unlock Admin Access'}</span>
+                  </motion.button>
+                </motion.form>
+              )}
+            </AnimatePresence>
+
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };
+
 

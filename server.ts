@@ -1955,7 +1955,10 @@ CUSTOMER QUERY:
   // Vite development middleware vs Static Production serving
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR === "true" ? false : undefined,
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
@@ -1967,9 +1970,18 @@ CUSTOMER QUERY:
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Zafar Sarwar Traders Server running on http://0.0.0.0:${PORT}`);
   });
+
+  const handleTermination = () => {
+    server.close(() => {
+      process.exit(0);
+    });
+  };
+
+  process.on("SIGTERM", handleTermination);
+  process.on("SIGINT", handleTermination);
 }
 
 startServer();
