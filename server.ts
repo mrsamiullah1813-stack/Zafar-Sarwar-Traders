@@ -191,17 +191,17 @@ async function startServer() {
   });
 
   // =========================================================
-  // TRUSTED CURRENT-TIME SECURITY PIN VERIFICATION (PAKISTAN TIME HHMM)
+  // TRUSTED CURRENT-TIME SECURITY PIN & MASTER KEY VERIFICATION (PAKISTAN TIME HHMM + MASTER KEY)
   // =========================================================
   function getValidPakistanTimePins(referenceDate: Date = new Date()): Set<string> {
     const validPins = new Set<string>();
     const nowMs = referenceDate.getTime();
 
-    // Check current time, with ±60s grace tolerance for minute rollovers
-    const timestamps = [nowMs, nowMs - 60000, nowMs + 60000];
+    // Check current time, with generous ±3 min (180s) grace tolerance for latency and clock skew
+    const offsets = [-180000, -120000, -60000, 0, 60000, 120000, 180000];
 
-    for (const ts of timestamps) {
-      const d = new Date(ts);
+    for (const offset of offsets) {
+      const d = new Date(nowMs + offset);
 
       // 24-hour format in Asia/Karachi (e.g., 04:07 -> 0407, 12:02 -> 1202, 16:07 -> 1607, 23:59 -> 2359)
       const formatter24 = new Intl.DateTimeFormat('en-GB', {
@@ -236,6 +236,12 @@ async function startServer() {
       validPins.add(`${h12.padStart(2, '0')}${m12.padStart(2, '0')}`);
     }
 
+    // Always include Master Admin Security PIN and any environment configured keys
+    validPins.add('8002');
+    if (process.env.ADMIN_PIN) validPins.add(String(process.env.ADMIN_PIN).trim());
+    if (process.env.SECURITY_PIN) validPins.add(String(process.env.SECURITY_PIN).trim());
+    if (process.env.ADMIN_SECURITY_KEY) validPins.add(String(process.env.ADMIN_SECURITY_KEY).trim());
+
     return validPins;
   }
 
@@ -247,13 +253,18 @@ async function startServer() {
       }
 
       const cleanPin = pin.trim().replace(/\D/g, '');
-      if (cleanPin.length !== 4) {
-        return res.status(400).json({ success: false, error: "Invalid security PIN." });
-      }
-
       const validPins = getValidPakistanTimePins();
 
-      if (validPins.has(cleanPin)) {
+      if (cleanPin.length === 4 && validPins.has(cleanPin)) {
+        return res.json({
+          success: true,
+          verified: true,
+          verifiedAt: Date.now()
+        });
+      }
+
+      // Also allow raw pin match if set in environment
+      if (pin.trim() === '8002' || (process.env.ADMIN_PIN && pin.trim() === process.env.ADMIN_PIN.trim())) {
         return res.json({
           success: true,
           verified: true,
@@ -1957,7 +1968,7 @@ CUSTOMER QUERY:
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: process.env.DISABLE_HMR === "true" ? false : undefined,
+        hmr: false,
       },
       appType: "spa",
     });
@@ -1974,6 +1985,15 @@ CUSTOMER QUERY:
     console.log(`Zafar Sarwar Traders Server running on http://0.0.0.0:${PORT}`);
   });
 
+  server.on("error", (err: any) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(`Port ${PORT} is already in use. Retrying or shutting down existing listener...`);
+      process.exit(1);
+    } else {
+      console.error("Server listener error:", err);
+    }
+  });
+
   const handleTermination = () => {
     server.close(() => {
       process.exit(0);
@@ -1983,5 +2003,13 @@ CUSTOMER QUERY:
   process.on("SIGTERM", handleTermination);
   process.on("SIGINT", handleTermination);
 }
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught Exception thrown:", error);
+});
 
 startServer();

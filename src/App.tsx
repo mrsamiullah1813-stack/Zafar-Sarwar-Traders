@@ -244,29 +244,27 @@ export default function App() {
             if (isPinVerified) {
               setIsAdmin(true);
               setIsAdminLoggedIn(true);
-            } else {
-              setIsAdmin(false);
-              setIsAdminLoggedIn(false);
             }
           }
         }
       }).catch(() => {});
     });
 
-    const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: authSub } = supabase.auth.onAuthStateChange((event, session) => {
       if (isMounted) {
-        if (session?.user) {
+        if (event === 'SIGNED_OUT') {
+          setIsAdmin(false);
+          setIsAdminLoggedIn(false);
+          try {
+            sessionStorage.removeItem('zst_admin_time_pin_verified');
+            localStorage.removeItem('zst_admin_token');
+          } catch {}
+        } else if (session?.user) {
           const isPinVerified = sessionStorage.getItem('zst_admin_time_pin_verified') === 'true';
           if (isPinVerified) {
             setIsAdmin(true);
             setIsAdminLoggedIn(true);
           }
-        } else {
-          setIsAdmin(false);
-          setIsAdminLoggedIn(false);
-          try {
-            sessionStorage.removeItem('zst_admin_time_pin_verified');
-          } catch {}
         }
       }
     });

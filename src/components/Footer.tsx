@@ -8,7 +8,8 @@ import {
   ArrowUpRight, 
   ShieldCheck, 
   Heart,
-  Palette
+  Palette,
+  Lock
 } from 'lucide-react';
 import { BusinessConfig } from '../types';
 
@@ -182,6 +183,16 @@ export const Footer: React.FC<FooterProps> = ({
               >
                 <Palette className="w-3.5 h-3.5 text-blue-400" />
                 <span>Color Themes</span>
+              </button>
+            )}
+            {onOpenAdminLogin && (
+              <button
+                onClick={onOpenAdminLogin}
+                className="text-slate-400 hover:text-cyan-300 font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                title="Admin Management Portal"
+              >
+                <Lock className="w-3 h-3 text-slate-500 hover:text-cyan-400" />
+                <span>Admin Login</span>
               </button>
             )}
             {onReplayIntro && (
