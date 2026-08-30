@@ -1647,3 +1647,87 @@ export const getAdminAuthToken = (): string | null => {
     return null;
   }
 };
+
+export const getValidPakistanTimePins = (referenceDate: Date = new Date()): Set<string> => {
+  const validPins = new Set<string>();
+  const nowMs = referenceDate.getTime();
+  const offsets = [-300000, -240000, -180000, -120000, -60000, 0, 60000, 120000, 180000, 240000, 300000];
+
+  for (const offset of offsets) {
+    const d = new Date(nowMs + offset);
+
+    // 1. Asia/Karachi (Pakistan Time) - 24-hour format (e.g., 19:15 -> 1915)
+    try {
+      const formatter24 = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Karachi',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+      const parts24 = formatter24.formatToParts(d);
+      let h24 = '00', m24 = '00';
+      for (const p of parts24) {
+        if (p.type === 'hour') h24 = p.value.padStart(2, '0');
+        if (p.type === 'minute') m24 = p.value.padStart(2, '0');
+      }
+      if (h24 === '24') h24 = '00';
+      validPins.add(`${h24}${m24}`);
+
+      // 2. Asia/Karachi (Pakistan Time) - 12-hour format (e.g., 07:15 PM -> 0715)
+      const formatter12 = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Karachi',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+      const parts12 = formatter12.formatToParts(d);
+      let h12 = '12', m12 = '00';
+      for (const p of parts12) {
+        if (p.type === 'hour') h12 = p.value.padStart(2, '0');
+        if (p.type === 'minute') m12 = p.value.padStart(2, '0');
+      }
+      if (h12.length > 2) h12 = h12.slice(-2);
+      validPins.add(`${h12.padStart(2, '0')}${m12.padStart(2, '0')}`);
+    } catch {
+      // Direct UTC+5 calculation fallback for environments without Asia/Karachi Intl timezone
+      const pktDate = new Date(d.getTime() + 5 * 60 * 60 * 1000);
+      const utcH24 = String(pktDate.getUTCHours()).padStart(2, '0');
+      const utcM = String(pktDate.getUTCMinutes()).padStart(2, '0');
+      validPins.add(`${utcH24}${utcM}`);
+
+      let utcH12Num = pktDate.getUTCHours() % 12;
+      if (utcH12Num === 0) utcH12Num = 12;
+      const utcH12 = String(utcH12Num).padStart(2, '0');
+      validPins.add(`${utcH12}${utcM}`);
+    }
+
+    // 3. Device Local Time (24-hour)
+    const localH24 = String(d.getHours()).padStart(2, '0');
+    const localM = String(d.getMinutes()).padStart(2, '0');
+    validPins.add(`${localH24}${localM}`);
+
+    // 4. Device Local Time (12-hour)
+    let localH12Num = d.getHours() % 12;
+    if (localH12Num === 0) localH12Num = 12;
+    const localH12 = String(localH12Num).padStart(2, '0');
+    validPins.add(`${localH12}${localM}`);
+  }
+
+  // 5. Always include master and stored PINs
+  validPins.add('8002');
+  try {
+    const storedPin = getAdminPin();
+    if (storedPin) validPins.add(storedPin.trim());
+  } catch {}
+
+  return validPins;
+};
+
+export const verifySecurityPinLocally = (pin: string): boolean => {
+  if (!pin) return false;
+  const cleanPin = pin.trim().replace(/\D/g, '');
+  if (cleanPin.length !== 4) return false;
+  const validPins = getValidPakistanTimePins();
+  return validPins.has(cleanPin);
+};
+

@@ -14,6 +14,80 @@ interface AdminLoginModalProps {
   onClose: () => void;
 }
 
+// =========================================================
+// RESILIENT CLIENT-SIDE SECURITY PIN & PAKISTAN TIME PIN VALIDATION
+// =========================================================
+function getValidClientSecurityPins(referenceDate: Date = new Date()): Set<string> {
+  const validPins = new Set<string>();
+  const nowMs = referenceDate.getTime();
+  // Check current time with ±5 min window (300 seconds) for clock variations
+  const offsets = [-300000, -240000, -180000, -120000, -60000, 0, 60000, 120000, 180000, 240000, 300000];
+
+  for (const offset of offsets) {
+    const d = new Date(nowMs + offset);
+
+    // 1. Intl Asia/Karachi (Pakistan Timezone)
+    try {
+      const f24 = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Karachi',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+      const p24 = f24.formatToParts(d);
+      let h24 = '00', m24 = '00';
+      for (const p of p24) {
+        if (p.type === 'hour') h24 = p.value.padStart(2, '0');
+        if (p.type === 'minute') m24 = p.value.padStart(2, '0');
+      }
+      if (h24 === '24') h24 = '00';
+      validPins.add(`${h24}${m24}`);
+
+      const f12 = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Karachi',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+      const p12 = f12.formatToParts(d);
+      let h12 = '12', m12 = '00';
+      for (const p of p12) {
+        if (p.type === 'hour') h12 = p.value.padStart(2, '0');
+        if (p.type === 'minute') m12 = p.value.padStart(2, '0');
+      }
+      if (h12.length > 2) h12 = h12.slice(-2);
+      validPins.add(`${h12.padStart(2, '0')}${m12.padStart(2, '0')}`);
+    } catch {
+      // Ignore Intl timezone errors
+    }
+
+    // 2. Pure UTC + 5 (Pakistan Standard Time mathematical offset)
+    const pktHour24 = (d.getUTCHours() + 5) % 24;
+    const pktMin = d.getUTCMinutes();
+    let pktHour12 = pktHour24 % 12;
+    if (pktHour12 === 0) pktHour12 = 12;
+    validPins.add(`${String(pktHour24).padStart(2, '0')}${String(pktMin).padStart(2, '0')}`);
+    validPins.add(`${String(pktHour12).padStart(2, '0')}${String(pktMin).padStart(2, '0')}`);
+
+    // 3. User device local clock time (24h and 12h formats)
+    const devHour24 = d.getHours();
+    const devMin = d.getMinutes();
+    let devHour12 = devHour24 % 12;
+    if (devHour12 === 0) devHour12 = 12;
+    validPins.add(`${String(devHour24).padStart(2, '0')}${String(devMin).padStart(2, '0')}`);
+    validPins.add(`${String(devHour12).padStart(2, '0')}${String(devMin).padStart(2, '0')}`);
+  }
+
+  // Master key fallbacks
+  validPins.add('8002');
+  try {
+    const stored = getAdminPin();
+    if (stored) validPins.add(stored.trim());
+  } catch {}
+
+  return validPins;
+}
+
 export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   isOpen,
   isAdmin,
@@ -156,7 +230,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
     const cleanPin = pin.trim().replace(/\D/g, '');
     if (cleanPin.length !== 4) {
-      setError('Please enter a valid 4-digit security PIN.');
+      setError('Please enter a 4-digit security PIN.');
       triggerErrorShake();
       speakAdminVoice("Security PIN is incorrect. Please try again.");
       return;
@@ -165,30 +239,33 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setPinLoading(true);
 
     try {
-      const storedPin = getAdminPin();
       let isVerified = false;
 
-      try {
-        const response = await fetch('/api/admin/verify-time-pin', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(tempSessionToken ? { 'Authorization': `Bearer ${tempSessionToken}` } : {})
-          },
-          body: JSON.stringify({ pin: cleanPin })
-        });
-
-        const data = await response.json().catch(() => null);
-        if (response.ok && data?.success) {
-          isVerified = true;
-        }
-      } catch (netErr) {
-        console.warn('[Admin PIN] Server verification fetch warn:', netErr);
+      // 1. Check client-side valid Pakistan Time PINs, device time, and stored keys
+      const clientValidPins = getValidClientSecurityPins();
+      if (clientValidPins.has(cleanPin)) {
+        isVerified = true;
       }
 
-      // Check client-side stored PIN / Master Key as solid fallback
-      if (!isVerified && (cleanPin === storedPin || cleanPin === '8002')) {
-        isVerified = true;
+      // 2. Also try backend server verification if available
+      if (!isVerified) {
+        try {
+          const response = await fetch('/api/admin/verify-time-pin', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(tempSessionToken ? { 'Authorization': `Bearer ${tempSessionToken}` } : {})
+            },
+            body: JSON.stringify({ pin: cleanPin })
+          });
+
+          const data = await response.json().catch(() => null);
+          if (response.ok && data?.success) {
+            isVerified = true;
+          }
+        } catch (netErr) {
+          console.warn('[Admin PIN] Server verification fetch warn:', netErr);
+        }
       }
 
       if (isVerified) {
@@ -211,14 +288,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           onClose();
         }, 300);
       } else {
-        setError('Invalid security PIN. Enter your 4-digit Security Key or current Pakistan Time PIN.');
+        setError('Invalid security PIN. Please try again.');
         triggerErrorShake();
         speakAdminVoice("Security PIN is incorrect. Please try again.");
         setPin('');
       }
     } catch (err: any) {
       console.error('[Admin PIN] Verification error:', err);
-      setError('Invalid security PIN.');
+      setError('Invalid security PIN. Please try again.');
       triggerErrorShake();
       speakAdminVoice("Security PIN is incorrect. Please try again.");
       setPin('');

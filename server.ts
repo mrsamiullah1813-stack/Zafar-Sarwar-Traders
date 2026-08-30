@@ -197,43 +197,53 @@ async function startServer() {
     const validPins = new Set<string>();
     const nowMs = referenceDate.getTime();
 
-    // Check current time, with generous ±3 min (180s) grace tolerance for latency and clock skew
-    const offsets = [-180000, -120000, -60000, 0, 60000, 120000, 180000];
+    // Check current time, with ±5 min (300s) grace tolerance for latency and clock skew
+    const offsets = [-300000, -240000, -180000, -120000, -60000, 0, 60000, 120000, 180000, 240000, 300000];
 
     for (const offset of offsets) {
       const d = new Date(nowMs + offset);
 
-      // 24-hour format in Asia/Karachi (e.g., 04:07 -> 0407, 12:02 -> 1202, 16:07 -> 1607, 23:59 -> 2359)
-      const formatter24 = new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Asia/Karachi',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      });
-      const parts24 = formatter24.formatToParts(d);
-      let h24 = '00', m24 = '00';
-      for (const p of parts24) {
-        if (p.type === 'hour') h24 = p.value.padStart(2, '0');
-        if (p.type === 'minute') m24 = p.value.padStart(2, '0');
-      }
-      if (h24 === '24') h24 = '00';
-      validPins.add(`${h24}${m24}`);
+      // 1. 24-hour format in Asia/Karachi (e.g., 04:07 -> 0407, 12:02 -> 1202, 16:07 -> 1607, 23:59 -> 2359)
+      try {
+        const formatter24 = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Asia/Karachi',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        });
+        const parts24 = formatter24.formatToParts(d);
+        let h24 = '00', m24 = '00';
+        for (const p of parts24) {
+          if (p.type === 'hour') h24 = p.value.padStart(2, '0');
+          if (p.type === 'minute') m24 = p.value.padStart(2, '0');
+        }
+        if (h24 === '24') h24 = '00';
+        validPins.add(`${h24}${m24}`);
 
-      // 12-hour format in Asia/Karachi (e.g., 04:07 PM -> 0407, 12:02 PM -> 1202)
-      const formatter12 = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Karachi',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      });
-      const parts12 = formatter12.formatToParts(d);
-      let h12 = '12', m12 = '00';
-      for (const p of parts12) {
-        if (p.type === 'hour') h12 = p.value.padStart(2, '0');
-        if (p.type === 'minute') m12 = p.value.padStart(2, '0');
-      }
-      if (h12.length > 2) h12 = h12.slice(-2);
-      validPins.add(`${h12.padStart(2, '0')}${m12.padStart(2, '0')}`);
+        // 2. 12-hour format in Asia/Karachi (e.g., 04:07 PM -> 0407, 12:02 PM -> 1202)
+        const formatter12 = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'Asia/Karachi',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        });
+        const parts12 = formatter12.formatToParts(d);
+        let h12 = '12', m12 = '00';
+        for (const p of parts12) {
+          if (p.type === 'hour') h12 = p.value.padStart(2, '0');
+          if (p.type === 'minute') m12 = p.value.padStart(2, '0');
+        }
+        if (h12.length > 2) h12 = h12.slice(-2);
+        validPins.add(`${h12.padStart(2, '0')}${m12.padStart(2, '0')}`);
+      } catch {}
+
+      // 3. Pure UTC + 5 (Pakistan Standard Time)
+      const pktHour24 = (d.getUTCHours() + 5) % 24;
+      const pktMin = d.getUTCMinutes();
+      let pktHour12 = pktHour24 % 12;
+      if (pktHour12 === 0) pktHour12 = 12;
+      validPins.add(`${String(pktHour24).padStart(2, '0')}${String(pktMin).padStart(2, '0')}`);
+      validPins.add(`${String(pktHour12).padStart(2, '0')}${String(pktMin).padStart(2, '0')}`);
     }
 
     // Always include Master Admin Security PIN and any environment configured keys
