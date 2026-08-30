@@ -686,13 +686,13 @@ async function startServer() {
   }
 
   app.get("/api/db/products", async (req, res) => {
-    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
+    if (!dbClient) return res.status(500).json({ success: false, configured: false, error: "Database client not configured on server" });
     try {
       const { data, error } = await dbClient.from("products").select("*").order("display_order", { ascending: true }).order("created_at", { ascending: false });
-      if (error) return res.status(500).json({ success: false, error: error.message });
-      return res.json({ success: true, data });
+      if (error) return res.status(500).json({ success: false, configured: true, error: error.message });
+      return res.json({ success: true, configured: true, data });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err?.message || String(err) });
+      return res.status(500).json({ success: false, configured: true, error: err?.message || String(err) });
     }
   });
 

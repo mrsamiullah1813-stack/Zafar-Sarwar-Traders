@@ -210,7 +210,7 @@ export function mapDbProductToProduct(row: any): Product {
     ''
   );
 
-  const primaryImage = row.main_image || row.image || (Array.isArray(row.gallery_images) && row.gallery_images[0]) || (Array.isArray(row.images) && row.images[0]) || (Array.isArray(row.gallery) && row.gallery[0]) || '';
+  const primaryImage = row.main_image || row.image || row.image_url || row.img_url || row.cover_image || row.thumbnail || row.picture || row.photo || (Array.isArray(row.gallery_images) && row.gallery_images[0]) || (Array.isArray(row.images) && row.images[0]) || (Array.isArray(row.gallery) && row.gallery[0]) || '';
   const galleryImagesList = Array.isArray(row.gallery_images) && row.gallery_images.length > 0 
     ? row.gallery_images 
     : (Array.isArray(row.images) && row.images.length > 0 

@@ -655,7 +655,7 @@ export const saveStoredProductSingle = async (product: Product): Promise<{ succe
     } else {
       updated = [product, ...current];
     }
-    const sanitized = updated.slice(0, 60).map(sanitizeProductForLocalStorage);
+    const sanitized = updated.map(sanitizeProductForLocalStorage);
     safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, sanitized);
     saveToServerCMS(STORAGE_KEYS.PRODUCTS, updated);
     return { success: true };
@@ -674,8 +674,8 @@ export const saveStoredProducts = async (products: Product[]): Promise<{ success
         return { success: false, error: res.error };
       }
     }
-    // Quota-safe lightweight caching (max 60 recent items, no base64/blobs)
-    const sanitized = Array.isArray(products) ? products.slice(0, 60).map(sanitizeProductForLocalStorage) : [];
+    // Quota-safe lightweight caching (no base64/blobs to avoid storage overflow)
+    const sanitized = Array.isArray(products) ? products.map(sanitizeProductForLocalStorage) : [];
     safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, sanitized);
     saveToServerCMS(STORAGE_KEYS.PRODUCTS, products);
     console.log('[Supabase Direct SDK] Products saved and local state cached successfully');
@@ -697,7 +697,7 @@ export const deleteProductFromStorage = async (productId: string): Promise<{ suc
     }
     const current = loadStoredProducts();
     const updated = current.filter(p => p.id !== productId);
-    const sanitized = updated.slice(0, 60).map(sanitizeProductForLocalStorage);
+    const sanitized = updated.map(sanitizeProductForLocalStorage);
     safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, sanitized);
     saveToServerCMS(STORAGE_KEYS.PRODUCTS, updated);
     return { success: true };
@@ -1377,7 +1377,8 @@ export const syncWithServerCMS = async (callbacks: {
     if (productsFromDb && Array.isArray(productsFromDb) && productsFromDb.length > 0) {
       console.log(`[Sync] Products loaded into React state: ${productsFromDb.length}`);
       if (callbacks.setProducts) callbacks.setProducts(productsFromDb);
-      safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, productsFromDb);
+      const sanitized = productsFromDb.map(sanitizeProductForLocalStorage);
+      safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, sanitized);
     } else {
       const stored = loadStoredProducts();
       if (stored && stored.length > 0) {
