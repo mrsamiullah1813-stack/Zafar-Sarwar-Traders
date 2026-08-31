@@ -478,13 +478,40 @@ How can I help you today?`,
   },
   customKnowledge: [
     {
+      id: "ck-owner",
+      title: "Owner & Founder: Zafar Sarwar",
+      category: "companyInfo",
+      questionOrTopic: "Who is the Owner and Founder of Zafar Sarwar Traders? (Owner, Founder, Proprietor, Who started the business, Who owns the shop, Who established the business, Who founded the business, Main person, Head of the business, Person behind the business)",
+      answerOrContent: "Zafar Sarwar is the Founder and Owner of Zafar Sarwar Traders. He established and owns the business and provides the overall vision and leadership behind the shop. The business operates under his ownership with a focus on quality products, customer satisfaction, and long-term growth.",
+      isEnabled: true,
+      displayOrder: 1
+    },
+    {
+      id: "ck-ceo",
+      title: "CEO: Abubakar Zafar",
+      category: "companyInfo",
+      questionOrTopic: "Who is the CEO of Zafar Sarwar Traders? (CEO, Chief Executive Officer, Day-to-Day Operations Manager, Management Head, Head of management, Who manages the business, Who runs the business, Who manages the shop, Main manager, Business manager)",
+      answerOrContent: "Abubakar Zafar, the son of Zafar Sarwar, serves as the CEO of Zafar Sarwar Traders. He is responsible for managing the shop's day-to-day operations, business activities, administration, and overall management, working to maintain the quality and growth of the business.",
+      isEnabled: true,
+      displayOrder: 2
+    },
+    {
+      id: "ck-leadership",
+      title: "Business Leadership: Owner & CEO",
+      category: "companyInfo",
+      questionOrTopic: "Who are the Owner and CEO of Zafar Sarwar Traders? (Owner and CEO, Founder and CEO, Who runs Zafar Sarwar Traders, Who is behind Zafar Sarwar Traders, Who is in charge, Who leads the business, Management team, Shop management, Seller, Main person)",
+      answerOrContent: "Zafar Sarwar is the Founder and Owner of Zafar Sarwar Traders, while his son, Abubakar Zafar, serves as the CEO and oversees the day-to-day management and operations of the business.",
+      isEnabled: true,
+      displayOrder: 3
+    },
+    {
       id: "ck-1",
       title: "Showroom Hours & Live Testing",
       category: "general",
       questionOrTopic: "Where is the showroom and can we test products live?",
       answerOrContent: "Zafar Sarwar Traders showroom features live water pressure test benches for rain showers and designer mixers. Hours: Mon-Sat 9:00 AM - 9:00 PM (Friday break 1:00 PM - 2:30 PM for Juma Prayer). Closed on Sundays.",
       isEnabled: true,
-      displayOrder: 1
+      displayOrder: 4
     },
     {
       id: "ck-2",
@@ -493,7 +520,7 @@ How can I help you today?`,
       questionOrTopic: "Are all products original and covered by brand warranty?",
       answerOrContent: "Yes, every product sold by Zafar Sarwar Traders (Sonex, Faisal, Master, Hansgrohe, Grohe) is 100% original and comes with official manufacturer cartridge and brass finish warranties ranging from 10 to 25 years.",
       isEnabled: true,
-      displayOrder: 2
+      displayOrder: 5
     },
     {
       id: "ck-3",
@@ -502,7 +529,7 @@ How can I help you today?`,
       questionOrTopic: "How does delivery work across Pakistan?",
       answerOrContent: "We deliver across Pakistan using TCS, Leopard Courier, and our showroom fleet. Major cities: Lahore (1-2 days), Islamabad/Rawalpindi (2-3 days), Karachi (3-5 days). Free express delivery on orders over PKR 50,000.",
       isEnabled: true,
-      displayOrder: 3
+      displayOrder: 6
     },
     {
       id: "ck-4",
@@ -511,7 +538,7 @@ How can I help you today?`,
       questionOrTopic: "Do you offer wholesale bulk discounts for builders and plumbers?",
       answerOrContent: "Yes! We provide special itemized quotations and volume trade discounts for commercial projects, residential plazas, and plumbing contractors. Direct WhatsApp consultation is available.",
       isEnabled: true,
-      displayOrder: 4
+      displayOrder: 7
     }
   ],
   enableProductRecommendations: true,
@@ -525,7 +552,19 @@ export const loadAiAssistantConfig = (): AiAssistantConfig => {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed.aiName) {
-        return { ...defaultAiAssistantConfig, ...parsed };
+        // Ensure default leadership knowledge entries are preserved
+        const mergedKnowledge = [...defaultAiAssistantConfig.customKnowledge];
+        if (Array.isArray(parsed.customKnowledge)) {
+          parsed.customKnowledge.forEach((item: any) => {
+            const idx = mergedKnowledge.findIndex(k => k.id === item.id);
+            if (idx >= 0) {
+              mergedKnowledge[idx] = { ...mergedKnowledge[idx], ...item };
+            } else {
+              mergedKnowledge.push(item);
+            }
+          });
+        }
+        return { ...defaultAiAssistantConfig, ...parsed, customKnowledge: mergedKnowledge };
       }
     }
   } catch (e) {

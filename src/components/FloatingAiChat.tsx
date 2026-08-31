@@ -133,6 +133,153 @@ export const FloatingAiChat: React.FC<FloatingAiChatProps> = ({
     // Check for quick client-side trigger actions
     const lowerText = textToSend.toLowerCase();
 
+    // Match Business Leadership Queries (Owner, Founder, CEO, Combined Leadership)
+    const matchLeadership = (raw: string): 'owner' | 'ceo' | 'combined' | null => {
+      const q = raw.toLowerCase().replace(/['"’`]/g, '').replace(/[?.,!/\\-_:;]/g, ' ').trim();
+      const normalized = ` ${q.replace(/\s+/g, ' ')} `;
+      const mentionsOwner = /\b(owner|founder|proprietor|started the business|established the business|founded the business|owns the shop|owns this|owns zafar|zafar sarwar|malik)\b/i.test(normalized);
+      const mentionsCeo = /\b(ceo|chief executive|operations manager|day to day manager|manages the business|manages the shop|manages this business|management head|head of management|abubakar zafar|abubakar)\b/i.test(normalized);
+      if (mentionsOwner && mentionsCeo) return 'combined';
+      const isCombinedOrGeneral = 
+        normalized.includes(' owner and ceo ') ||
+        normalized.includes(' owner & ceo ') ||
+        normalized.includes(' founder and ceo ') ||
+        normalized.includes(' founder & ceo ') ||
+        normalized.includes(' who runs zafar sarwar traders ') ||
+        normalized.includes(' who runs zafar ') ||
+        normalized.includes(' who is behind zafar sarwar traders ') ||
+        normalized.includes(' who is behind zafar ') ||
+        normalized.includes(' who is behind the shop ') ||
+        normalized.includes(' who is behind this ') ||
+        normalized.includes(' who is the main person in the business ') ||
+        normalized.includes(' who is the main person ') ||
+        normalized.includes(' who manages zafar sarwar traders ') ||
+        normalized.includes(' who manages zafar ') ||
+        normalized.includes(' who is in charge of the shop ') ||
+        normalized.includes(' who is in charge of this ') ||
+        normalized.includes(' who is in charge ') ||
+        normalized.includes(' who leads the business ') ||
+        normalized.includes(' business leadership ') ||
+        normalized.includes(' company leadership ') ||
+        normalized.includes(' management team ') ||
+        normalized.includes(' business management ') ||
+        normalized.includes(' shop management ') ||
+        normalized.includes(' who runs the company ') ||
+        normalized.includes(' who runs this store ') ||
+        normalized.includes(' who runs this shop ') ||
+        normalized.includes(' who runs the shop ') ||
+        normalized.includes(' who is the seller ') ||
+        normalized.includes(' who is behind the shop ') ||
+        normalized.includes(' dukan kon chalata hai ') ||
+        normalized.includes(' incharge kon hai ');
+      if (isCombinedOrGeneral) return 'combined';
+      const isOwner = 
+        normalized.includes(' owner ') ||
+        normalized.includes(' owner name ') ||
+        normalized.includes(' who is the owner ') ||
+        normalized.includes(' whos the owner ') ||
+        normalized.includes(' who is owner ') ||
+        normalized.includes(' owner of zafar sarwar traders ') ||
+        normalized.includes(' owner of zafar ') ||
+        normalized.includes(' founder ') ||
+        normalized.includes(' founder name ') ||
+        normalized.includes(' who is the founder ') ||
+        normalized.includes(' who is founder ') ||
+        normalized.includes(' founder of zafar sarwar traders ') ||
+        normalized.includes(' founder of zafar ') ||
+        normalized.includes(' business owner ') ||
+        normalized.includes(' shop owner ') ||
+        normalized.includes(' main owner ') ||
+        normalized.includes(' proprietor ') ||
+        normalized.includes(' who owns the shop ') ||
+        normalized.includes(' who owns zafar sarwar traders ') ||
+        normalized.includes(' who owns zafar ') ||
+        normalized.includes(' who owns this ') ||
+        normalized.includes(' who started the business ') ||
+        normalized.includes(' who established the business ') ||
+        normalized.includes(' who founded the business ') ||
+        normalized.includes(' who started zafar sarwar traders ') ||
+        normalized.includes(' who started zafar ') ||
+        normalized.includes(' head of the business ') ||
+        normalized.includes(' person behind the business ') ||
+        normalized.includes(' owner details ') ||
+        normalized.includes(' owner information ') ||
+        normalized.includes(' owner of this store ') ||
+        normalized.includes(' owner of this shop ') ||
+        normalized.includes(' about the owner ') ||
+        normalized.includes(' tell me about the owner ') ||
+        normalized.includes(' about the founder ') ||
+        normalized.includes(' tell me about the founder ') ||
+        normalized.includes(' zafar sarwar ') ||
+        normalized.includes(' dukan ka malik ') ||
+        normalized.includes(' malik kaun hai ') ||
+        normalized.includes(' owner kon hai ');
+      if (isOwner && !mentionsCeo) return 'owner';
+      const isCeo = 
+        normalized.includes(' ceo ') ||
+        normalized.includes(' ceo name ') ||
+        normalized.includes(' who is the ceo ') ||
+        normalized.includes(' whos the ceo ') ||
+        normalized.includes(' who is ceo ') ||
+        normalized.includes(' ceo of zafar sarwar traders ') ||
+        normalized.includes(' ceo of zafar ') ||
+        normalized.includes(' chief executive officer ') ||
+        normalized.includes(' chief executive ') ||
+        normalized.includes(' business ceo ') ||
+        normalized.includes(' shop ceo ') ||
+        normalized.includes(' company ceo ') ||
+        normalized.includes(' management head ') ||
+        normalized.includes(' head of management ') ||
+        normalized.includes(' who manages the business ') ||
+        normalized.includes(' who manages this business ') ||
+        normalized.includes(' who runs the business ') ||
+        normalized.includes(' who manages the shop ') ||
+        normalized.includes(' main manager ') ||
+        normalized.includes(' business manager ') ||
+        normalized.includes(' day to day manager ') ||
+        normalized.includes(' operations manager ') ||
+        normalized.includes(' ceo details ') ||
+        normalized.includes(' ceo information ') ||
+        normalized.includes(' about the ceo ') ||
+        normalized.includes(' tell me about the ceo ') ||
+        normalized.includes(' abubakar zafar ') ||
+        normalized.includes(' ceo kon hai ') ||
+        normalized.includes(' manager kon hai ');
+      if (isCeo && !mentionsOwner) return 'ceo';
+      const trimmed = q.trim();
+      if (trimmed === 'owner' || trimmed === 'owner name' || trimmed === 'founder' || trimmed === 'founder name' || trimmed === 'proprietor' || trimmed === 'business owner' || trimmed === 'shop owner') return 'owner';
+      if (trimmed === 'ceo' || trimmed === 'ceo name' || trimmed === 'chief executive' || trimmed === 'chief executive officer' || trimmed === 'operations manager') return 'ceo';
+      if (trimmed === 'seller' || trimmed === 'main person' || trimmed === 'in charge' || trimmed === 'management' || trimmed === 'management team' || trimmed === 'leadership') return 'combined';
+      return null;
+    };
+
+    const leadershipType = matchLeadership(textToSend);
+    if (leadershipType) {
+      let replyText = '';
+      if (leadershipType === 'owner') {
+        replyText = 'Zafar Sarwar is the Founder and Owner of Zafar Sarwar Traders. He established and owns the business and provides the overall vision and leadership behind the shop. The business operates under his ownership with a focus on quality products, customer satisfaction, and long-term growth.';
+      } else if (leadershipType === 'ceo') {
+        replyText = 'Abubakar Zafar, the son of Zafar Sarwar, serves as the CEO of Zafar Sarwar Traders. He is responsible for managing the shop\'s day-to-day operations, business activities, administration, and overall management, working to maintain the quality and growth of the business.';
+      } else {
+        replyText = 'Zafar Sarwar is the Founder and Owner of Zafar Sarwar Traders, while his son, Abubakar Zafar, serves as the CEO and oversees the day-to-day management and operations of the business.';
+      }
+
+      setTimeout(() => {
+        setIsTyping(false);
+        setMessages(prev => [
+          ...prev,
+          {
+            id: `asst-${Date.now()}`,
+            sender: 'assistant',
+            text: replyText,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            suggestedReplies: ['Browse Products', 'Bathroom Planner', 'Order on WhatsApp']
+          }
+        ]);
+      }, 400);
+      return;
+    }
+
     // Trigger: Bathroom Planner request
     if (lowerText.includes('bathroom planner') || lowerText.includes('planner') || lowerText.includes('design my bathroom')) {
       setTimeout(() => {
@@ -326,7 +473,7 @@ export const FloatingAiChat: React.FC<FloatingAiChatProps> = ({
     <>
       {/* FLOATING AI CHAT BUTTON (Bottom-Right Corner) */}
       {!isOpen && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 animate-bounce-subtle">
+        <div className="fixed bottom-4 sm:bottom-6 right-3 sm:right-6 z-50 flex items-center gap-3 animate-bounce-subtle safe-area-bottom">
           {/* Unread Message Tooltip Preview */}
           <div className="hidden sm:flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-slate-900/90 backdrop-blur-xl border border-cyan-500/40 text-xs text-white shadow-2xl shadow-cyan-950/80 animate-fadeIn">
             <span className="relative flex h-2 w-2">
@@ -369,10 +516,10 @@ export const FloatingAiChat: React.FC<FloatingAiChatProps> = ({
         <div
           className={`fixed z-50 flex flex-col transition-all duration-300 ${
             isFullscreen
-              ? 'inset-3 sm:inset-6 bg-slate-950/95 backdrop-blur-2xl border border-cyan-500/30 rounded-2xl shadow-2xl overflow-hidden'
+              ? 'inset-2 sm:inset-6 bg-slate-950/95 backdrop-blur-2xl border border-cyan-500/30 rounded-2xl shadow-2xl overflow-hidden'
               : isMinimized
-              ? 'bottom-6 right-6 w-80 bg-slate-900/95 backdrop-blur-xl border border-cyan-500/40 rounded-2xl shadow-2xl overflow-hidden'
-              : 'bottom-4 sm:bottom-6 right-2 sm:right-6 w-[94vw] sm:w-[440px] h-[640px] max-h-[88vh] bg-slate-950/95 backdrop-blur-2xl border border-cyan-500/40 rounded-2xl shadow-2xl shadow-cyan-950/80 overflow-hidden'
+              ? 'bottom-4 sm:bottom-6 right-3 sm:right-6 w-[calc(100vw-1.5rem)] sm:w-80 max-w-xs bg-slate-900/95 backdrop-blur-xl border border-cyan-500/40 rounded-2xl shadow-2xl overflow-hidden safe-area-bottom'
+              : 'bottom-2 sm:bottom-6 right-2 sm:right-6 w-[calc(100vw-1rem)] sm:w-[440px] h-[86vh] sm:h-[640px] max-h-[90vh] bg-slate-950/95 backdrop-blur-2xl border border-cyan-500/40 rounded-2xl shadow-2xl shadow-cyan-950/80 overflow-hidden safe-area-bottom'
           }`}
         >
           {/* HEADER BAR */}

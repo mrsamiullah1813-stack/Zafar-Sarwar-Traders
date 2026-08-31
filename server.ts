@@ -1215,6 +1215,73 @@ async function startServer() {
       }
     }
 
+    // Default AI Knowledge items for store grounding & business knowledge
+    const defaultAiKnowledge = [
+      {
+        id: "ck-owner",
+        title: "Owner & Founder: Zafar Sarwar",
+        category: "companyInfo",
+        questionOrTopic: "Who is the Owner and Founder of Zafar Sarwar Traders? (Owner, Founder, Proprietor, Who started the business, Who owns the shop, Who established the business, Who founded the business, Main person, Head of the business, Person behind the business)",
+        answerOrContent: "Zafar Sarwar is the Founder and Owner of Zafar Sarwar Traders. He established and owns the business and provides the overall vision and leadership behind the shop. The business operates under his ownership with a focus on quality products, customer satisfaction, and long-term growth.",
+        isEnabled: true,
+        displayOrder: 1
+      },
+      {
+        id: "ck-ceo",
+        title: "CEO: Abubakar Zafar",
+        category: "companyInfo",
+        questionOrTopic: "Who is the CEO of Zafar Sarwar Traders? (CEO, Chief Executive Officer, Day-to-Day Operations Manager, Management Head, Head of management, Who manages the business, Who runs the business, Who manages the shop, Main manager, Business manager)",
+        answerOrContent: "Abubakar Zafar, the son of Zafar Sarwar, serves as the CEO of Zafar Sarwar Traders. He is responsible for managing the shop's day-to-day operations, business activities, administration, and overall management, working to maintain the quality and growth of the business.",
+        isEnabled: true,
+        displayOrder: 2
+      },
+      {
+        id: "ck-leadership",
+        title: "Business Leadership: Owner & CEO",
+        category: "companyInfo",
+        questionOrTopic: "Who are the Owner and CEO of Zafar Sarwar Traders? (Owner and CEO, Founder and CEO, Who runs Zafar Sarwar Traders, Who is behind Zafar Sarwar Traders, Who is in charge, Who leads the business, Management team, Shop management, Seller, Main person)",
+        answerOrContent: "Zafar Sarwar is the Founder and Owner of Zafar Sarwar Traders, while his son, Abubakar Zafar, serves as the CEO and oversees the day-to-day management and operations of the business.",
+        isEnabled: true,
+        displayOrder: 3
+      },
+      {
+        id: "ck-1",
+        title: "Showroom Hours & Live Testing",
+        category: "general",
+        questionOrTopic: "Where is the showroom and can we test products live?",
+        answerOrContent: "Zafar Sarwar Traders showroom features live water pressure test benches for rain showers and designer mixers. Hours: Mon-Sat 9:00 AM - 9:00 PM (Friday break 1:00 PM - 2:30 PM for Juma Prayer). Closed on Sundays.",
+        isEnabled: true,
+        displayOrder: 4
+      },
+      {
+        id: "ck-2",
+        title: "100% Original Brand Warranty",
+        category: "warranty",
+        questionOrTopic: "Are all products original and covered by brand warranty?",
+        answerOrContent: "Yes, every product sold by Zafar Sarwar Traders (Sonex, Faisal, Master, Hansgrohe, Grohe) is 100% original and comes with official manufacturer cartridge and brass finish warranties ranging from 10 to 25 years.",
+        isEnabled: true,
+        displayOrder: 5
+      },
+      {
+        id: "ck-3",
+        title: "Express Nationwide Courier & Fleet Shipping",
+        category: "shipping",
+        questionOrTopic: "How does delivery work across Pakistan?",
+        answerOrContent: "We deliver across Pakistan using TCS, Leopard Courier, and our showroom fleet. Major cities: Lahore (1-2 days), Islamabad/Rawalpindi (2-3 days), Karachi (3-5 days). Free express delivery on orders over PKR 50,000.",
+        isEnabled: true,
+        displayOrder: 6
+      },
+      {
+        id: "ck-4",
+        title: "Wholesale & Contractor Quotations",
+        category: "policy",
+        questionOrTopic: "Do you offer wholesale bulk discounts for builders and plumbers?",
+        answerOrContent: "Yes! We provide special itemized quotations and volume trade discounts for commercial projects, residential plazas, and plumbing contractors. Direct WhatsApp consultation is available.",
+        isEnabled: true,
+        displayOrder: 7
+      }
+    ];
+
     // Unify and Deduplicate AI Knowledge from all available sources
     const knowledgeMap = new Map<string, any>();
     const addKnowledgeItem = (k: any) => {
@@ -1233,6 +1300,9 @@ async function startServer() {
         });
       }
     };
+
+    // Pre-populate with default knowledge
+    defaultAiKnowledge.forEach(addKnowledgeItem);
 
     if (Array.isArray(dbAiKnowledge)) dbAiKnowledge.forEach(addKnowledgeItem);
     if (dbSiteSettingAiConfig && Array.isArray(dbSiteSettingAiConfig.customKnowledge)) dbSiteSettingAiConfig.customKnowledge.forEach(addKnowledgeItem);
@@ -1613,6 +1683,164 @@ Ensure tone is highly professional, inspiring, and elegant like Kohler, Hansgroh
 
       const query = (message || '').toLowerCase().trim();
 
+      // Match Business Leadership Intent (Owner, Founder, CEO, Combined Leadership)
+      const matchBusinessLeadershipQuery = (rawQuery: string): 'owner' | 'ceo' | 'combined' | null => {
+        if (!rawQuery) return null;
+        const q = rawQuery.toLowerCase().replace(/['"’`]/g, '').replace(/[?.,!/\\-_:;]/g, ' ').trim();
+        const normalized = ` ${q.replace(/\s+/g, ' ')} `;
+
+        const mentionsOwner = /\b(owner|founder|proprietor|started the business|established the business|founded the business|owns the shop|owns this|owns zafar|zafar sarwar|malik)\b/i.test(normalized);
+        const mentionsCeo = /\b(ceo|chief executive|operations manager|day to day manager|manages the business|manages the shop|manages this business|management head|head of management|abubakar zafar|abubakar)\b/i.test(normalized);
+
+        if (mentionsOwner && mentionsCeo) return 'combined';
+
+        const isCombinedOrGeneral = 
+          normalized.includes(' owner and ceo ') ||
+          normalized.includes(' owner & ceo ') ||
+          normalized.includes(' founder and ceo ') ||
+          normalized.includes(' founder & ceo ') ||
+          normalized.includes(' who runs zafar sarwar traders ') ||
+          normalized.includes(' who runs zafar ') ||
+          normalized.includes(' who is behind zafar sarwar traders ') ||
+          normalized.includes(' who is behind zafar ') ||
+          normalized.includes(' who is behind the shop ') ||
+          normalized.includes(' who is behind this ') ||
+          normalized.includes(' who is the main person in the business ') ||
+          normalized.includes(' who is the main person ') ||
+          normalized.includes(' who manages zafar sarwar traders ') ||
+          normalized.includes(' who manages zafar ') ||
+          normalized.includes(' who is in charge of the shop ') ||
+          normalized.includes(' who is in charge of this ') ||
+          normalized.includes(' who is in charge ') ||
+          normalized.includes(' who leads the business ') ||
+          normalized.includes(' business leadership ') ||
+          normalized.includes(' company leadership ') ||
+          normalized.includes(' management team ') ||
+          normalized.includes(' business management ') ||
+          normalized.includes(' shop management ') ||
+          normalized.includes(' who runs the company ') ||
+          normalized.includes(' who runs this store ') ||
+          normalized.includes(' who runs this shop ') ||
+          normalized.includes(' who runs the shop ') ||
+          normalized.includes(' who is the seller ') ||
+          normalized.includes(' who is behind the shop ') ||
+          normalized.includes(' dukan kon chalata hai ') ||
+          normalized.includes(' incharge kon hai ');
+
+        if (isCombinedOrGeneral) return 'combined';
+
+        const isOwner = 
+          normalized.includes(' owner ') ||
+          normalized.includes(' owner name ') ||
+          normalized.includes(' who is the owner ') ||
+          normalized.includes(' whos the owner ') ||
+          normalized.includes(' who is owner ') ||
+          normalized.includes(' owner of zafar sarwar traders ') ||
+          normalized.includes(' owner of zafar ') ||
+          normalized.includes(' founder ') ||
+          normalized.includes(' founder name ') ||
+          normalized.includes(' who is the founder ') ||
+          normalized.includes(' who is founder ') ||
+          normalized.includes(' founder of zafar sarwar traders ') ||
+          normalized.includes(' founder of zafar ') ||
+          normalized.includes(' business owner ') ||
+          normalized.includes(' shop owner ') ||
+          normalized.includes(' main owner ') ||
+          normalized.includes(' proprietor ') ||
+          normalized.includes(' who owns the shop ') ||
+          normalized.includes(' who owns zafar sarwar traders ') ||
+          normalized.includes(' who owns zafar ') ||
+          normalized.includes(' who owns this ') ||
+          normalized.includes(' who started the business ') ||
+          normalized.includes(' who established the business ') ||
+          normalized.includes(' who founded the business ') ||
+          normalized.includes(' who started zafar sarwar traders ') ||
+          normalized.includes(' who started zafar ') ||
+          normalized.includes(' head of the business ') ||
+          normalized.includes(' person behind the business ') ||
+          normalized.includes(' owner details ') ||
+          normalized.includes(' owner information ') ||
+          normalized.includes(' owner of this store ') ||
+          normalized.includes(' owner of this shop ') ||
+          normalized.includes(' about the owner ') ||
+          normalized.includes(' tell me about the owner ') ||
+          normalized.includes(' about the founder ') ||
+          normalized.includes(' tell me about the founder ') ||
+          normalized.includes(' zafar sarwar ') ||
+          normalized.includes(' dukan ka malik ') ||
+          normalized.includes(' malik kaun hai ') ||
+          normalized.includes(' owner kon hai ');
+
+        if (isOwner && !mentionsCeo) return 'owner';
+
+        const isCeo = 
+          normalized.includes(' ceo ') ||
+          normalized.includes(' ceo name ') ||
+          normalized.includes(' who is the ceo ') ||
+          normalized.includes(' whos the ceo ') ||
+          normalized.includes(' who is ceo ') ||
+          normalized.includes(' ceo of zafar sarwar traders ') ||
+          normalized.includes(' ceo of zafar ') ||
+          normalized.includes(' chief executive officer ') ||
+          normalized.includes(' chief executive ') ||
+          normalized.includes(' business ceo ') ||
+          normalized.includes(' shop ceo ') ||
+          normalized.includes(' company ceo ') ||
+          normalized.includes(' management head ') ||
+          normalized.includes(' head of management ') ||
+          normalized.includes(' who manages the business ') ||
+          normalized.includes(' who manages this business ') ||
+          normalized.includes(' who runs the business ') ||
+          normalized.includes(' who manages the shop ') ||
+          normalized.includes(' main manager ') ||
+          normalized.includes(' business manager ') ||
+          normalized.includes(' day to day manager ') ||
+          normalized.includes(' operations manager ') ||
+          normalized.includes(' ceo details ') ||
+          normalized.includes(' ceo information ') ||
+          normalized.includes(' about the ceo ') ||
+          normalized.includes(' tell me about the ceo ') ||
+          normalized.includes(' abubakar zafar ') ||
+          normalized.includes(' ceo kon hai ') ||
+          normalized.includes(' manager kon hai ');
+
+        if (isCeo && !mentionsOwner) return 'ceo';
+
+        const trimmed = q.trim();
+        if (trimmed === 'owner' || trimmed === 'owner name' || trimmed === 'founder' || trimmed === 'founder name' || trimmed === 'proprietor' || trimmed === 'business owner' || trimmed === 'shop owner') return 'owner';
+        if (trimmed === 'ceo' || trimmed === 'ceo name' || trimmed === 'chief executive' || trimmed === 'chief executive officer' || trimmed === 'operations manager') return 'ceo';
+        if (trimmed === 'seller' || trimmed === 'main person' || trimmed === 'in charge' || trimmed === 'management' || trimmed === 'management team' || trimmed === 'leadership') return 'combined';
+
+        return null;
+      };
+
+      const leadershipIntent = matchBusinessLeadershipQuery(message || '');
+
+      // If business leadership inquiry detected, provide exact authoritative response
+      if (leadershipIntent) {
+        let leadershipReply = '';
+        if (leadershipIntent === 'owner') {
+          leadershipReply = 'Zafar Sarwar is the Founder and Owner of Zafar Sarwar Traders. He established and owns the business and provides the overall vision and leadership behind the shop. The business operates under his ownership with a focus on quality products, customer satisfaction, and long-term growth.';
+        } else if (leadershipIntent === 'ceo') {
+          leadershipReply = 'Abubakar Zafar, the son of Zafar Sarwar, serves as the CEO of Zafar Sarwar Traders. He is responsible for managing the shop\'s day-to-day operations, business activities, administration, and overall management, working to maintain the quality and growth of the business.';
+        } else {
+          leadershipReply = 'Zafar Sarwar is the Founder and Owner of Zafar Sarwar Traders, while his son, Abubakar Zafar, serves as the CEO and oversees the day-to-day management and operations of the business.';
+        }
+
+        return res.json({
+          success: true,
+          data: {
+            reply: leadershipReply,
+            recommendedProducts: [],
+            recommendedCategory: null,
+            deliveryInfoCard: null,
+            comparisonTable: null,
+            suggestedSmartTool: null,
+            suggestedReplies: ['Browse Products', 'Bathroom Planner', 'Order on WhatsApp']
+          }
+        });
+      }
+
       // 2. Multilingual & Smart Tool Intent Analysis
       const isUrduQuery = /[\u0600-\u06FF]/.test(message || '') || 
         /\b(kya|hai|hein|chahiye|dikhao|batao|kitne|ka|ki|rate|bhejo|toti|nal|commode|sasta|mehenga|lagti|hogi|mujhe|mjhe|chaniot|lahore)\b/i.test(query);
@@ -1781,6 +2009,20 @@ CORE ARCHITECTURAL RULES & GUARDRAILS:
    - If user asks about cement/concrete bags or construction calculation, suggest our Material Estimator and set "suggestedSmartTool": "cement_estimator".
    - If user asks about water tanks or pump power, set "suggestedSmartTool": "tank_calculator".
 5. SECURITY & CONFIDENTIALITY: Never reveal internal admin PINs, developer keys, Supabase credentials, or private customer records.
+6. BUSINESS LEADERSHIP & STORE ROLES (STRICT TRUTH):
+   - OWNER / FOUNDER: Zafar Sarwar is the Founder and Owner of Zafar Sarwar Traders. He established and owns the business and provides the overall vision and leadership behind the shop. The business operates under his ownership with a focus on quality products, customer satisfaction, and long-term growth.
+   - CEO: Abubakar Zafar, the son of Zafar Sarwar, serves as the CEO of Zafar Sarwar Traders. He is responsible for managing the shop's day-to-day operations, business activities, administration, and overall management, working to maintain the quality and growth of the business.
+   - COMBINED LEADERSHIP: Zafar Sarwar is the Founder and Owner of Zafar Sarwar Traders, while his son, Abubakar Zafar, serves as the CEO and oversees the day-to-day management and operations of the business.
+   - ROLE SEPARATION RULE:
+     * Zafar Sarwar -> Founder & Owner
+     * Abubakar Zafar -> CEO
+     * Never call the Owner the CEO or the CEO the Owner.
+   - ANSWER SELECTION RULE:
+     * If asked about the Owner / Founder / Proprietor / Who started the business / Who owns the shop: Return the Owner answer.
+     * If asked about the CEO / Chief Executive / Day-to-Day Operations Manager / Management Head / Who manages the business: Return the CEO answer.
+     * If asked about both Owner and CEO, OR if the query is vague/general such as "who runs the shop?", "who is in charge?", "who is the main person?", "who is behind the shop?", "seller?", "who leads the business?": Provide the Combined Leadership Answer.
+   - ACCURACY RULE:
+     * Use ONLY this supplied information. Do NOT invent additional titles, family members, business history, education, personal/contact/financial information, locations, or extra responsibilities.
 
 Respond in strict JSON format matching this schema:
 {

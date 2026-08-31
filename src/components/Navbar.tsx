@@ -435,7 +435,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden bg-white border-t border-slate-200 p-4 space-y-4 animate-fadeIn">
+        <div className="md:hidden bg-white border-t border-slate-200 p-4 space-y-4 animate-fadeIn max-h-[82vh] overflow-y-auto overscroll-contain touch-scroll shadow-2xl">
           <div className="text-center pb-2 border-b border-slate-100">
             <h2 className="font-serif font-black text-slate-900 text-lg">ZAFAR SARWAR TRADERS</h2>
             <p className="text-xs text-slate-500 font-medium">Sanitary & Bathroom Solutions</p>
