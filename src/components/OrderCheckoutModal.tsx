@@ -218,16 +218,24 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
     msg += `ORDER ITEMS\n\n`;
     orderItems.forEach((item, index) => {
-      msg += `${index + 1}. ${item.productName}\n`;
+      const variantName = (item.selectedVariant || item.selectedVariantName || item.selectedSize || '').trim();
+      const hasVariant = Boolean(variantName && variantName.length > 0);
+      const productTitle = hasVariant && !item.productName.toLowerCase().includes(variantName.toLowerCase())
+        ? `${item.productName} — ${variantName}`
+        : item.productName;
+
+      msg += `${index + 1}. ${productTitle}\n`;
+      msg += `Product: ${item.productName}\n`;
+      if (hasVariant) {
+        msg += `Size: ${variantName}\n`;
+      }
       msg += `Quantity: ${item.quantity}\n`;
-      if (item.selectedVariant) msg += `Size / Option: ${item.selectedVariant}\n`;
       if (item.selectedShade) msg += `Selected Shade: ${item.selectedShade}\n`;
       if (item.selectedShadeCode) msg += `Shade Code: ${item.selectedShadeCode}\n`;
       if (item.selectedColor && !item.selectedShade) msg += `Color: ${item.selectedColor}\n`;
-      if (item.selectedSize && !item.selectedVariant) msg += `Size: ${item.selectedSize}\n`;
       if (item.selectedQuality) msg += `Quality: ${item.selectedQuality}\n`;
-      msg += `Price: ${item.unitPrice}\n`;
-      msg += `Subtotal: ${item.lineTotal > 0 ? `PKR ${item.lineTotal.toLocaleString('en-PK')}` : item.unitPrice}\n\n`;
+      msg += `Unit Price: ${item.unitPrice}\n`;
+      msg += `Total Price: ${item.lineTotal > 0 ? `PKR ${item.lineTotal.toLocaleString('en-PK')}` : item.unitPrice}\n\n`;
     });
 
     msg += `--------------------------------\n`;

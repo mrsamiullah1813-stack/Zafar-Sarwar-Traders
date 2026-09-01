@@ -155,6 +155,20 @@ export const defaultSmartToolsSettings: SmartToolsSettings = {
       disclaimer: "Approximate estimate only. Actual coverage depends on paint brand, surface condition, primer, number of coats, and application method."
     },
     {
+      id: "ai-paint-visualizer",
+      title: "AI Paint Color Visualizer",
+      urduTitle: "اے آئی پینٹ کلر ویژولائزر",
+      tagline: "Upload room or wall photos to get AI-powered shade recommendations & color palettes.",
+      description: "Upload a photo of your living room, bedroom, drawing room, or exterior wall. Our AI analyzes lighting, space undertones, and suggests matching paint shades from our store catalog with 1-click WhatsApp ordering.",
+      badge: "AI Photo Analysis",
+      iconName: "Sparkles",
+      buttonText: "Try Visualizer",
+      isEnabled: true,
+      showOnHomepage: true,
+      displayOrder: 9,
+      disclaimer: "Colors shown on screen may slightly vary depending on screen calibration, room lighting, and wall textures. We recommend verifying with our store shade cards."
+    },
+    {
       id: "water-tank",
       title: "Water Tank Calculator",
       urduTitle: "پانی کا ٹینک اور پمپ کیلکولیٹر",
@@ -165,7 +179,7 @@ export const defaultSmartToolsSettings: SmartToolsSettings = {
       buttonText: "Open Tool",
       isEnabled: true,
       showOnHomepage: true,
-      displayOrder: 9,
+      displayOrder: 10,
       disclaimer: "Final tank and pump selection depends on building height, water source, pipe length, pressure and site conditions."
     },
     {
@@ -179,7 +193,7 @@ export const defaultSmartToolsSettings: SmartToolsSettings = {
       buttonText: "Build Package",
       isEnabled: true,
       showOnHomepage: true,
-      displayOrder: 10,
+      displayOrder: 11,
       disclaimer: "All pipes, fittings, and sanitary hardware are genuine showroom products. Quantity recommendations are estimates based on standard plumbing layouts."
     }
   ]

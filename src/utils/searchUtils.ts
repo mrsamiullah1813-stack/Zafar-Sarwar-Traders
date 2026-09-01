@@ -1,4 +1,5 @@
 import { Product, ProductCategory, ProductBrand } from '../types';
+import { parseNumericPrice } from './pricingUtils';
 
 export interface NaturalQueryFilter {
   cleanKeywords: string[];
@@ -108,11 +109,11 @@ export function parseNaturalLanguageQuery(query: string): NaturalQueryFilter {
  */
 export function getNumericPrice(product: Product): number {
   if (product.salePrice) {
-    const num = parseFloat(product.salePrice.replace(/[^0-9.]/g, ''));
+    const num = parseNumericPrice(product.salePrice);
     if (!isNaN(num) && num > 0) return num;
   }
   if (product.price) {
-    const num = parseFloat(product.price.replace(/[^0-9.]/g, ''));
+    const num = parseNumericPrice(product.price);
     if (!isNaN(num) && num > 0) return num;
   }
   return 0;

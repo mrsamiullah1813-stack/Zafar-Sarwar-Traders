@@ -4,6 +4,7 @@ import {
   BudgetRecommendedItem, 
   Product 
 } from '../types';
+import { parseNumericPrice } from './pricingUtils';
 
 /**
  * Intelligent deterministic & semantic solver that matches real Supabase inventory
@@ -19,10 +20,7 @@ export function calculateBudgetToProducts(
 
   // Helper to parse numeric price
   const getNumericPrice = (p: Product): number => {
-    if (typeof p.price === 'number') return p.price;
-    const str = String(p.price || '').replace(/[^0-9.]/g, '');
-    const num = parseFloat(str);
-    return isNaN(num) ? 0 : num;
+    return parseNumericPrice(p.price);
   };
 
   // Group real products by functional category keys

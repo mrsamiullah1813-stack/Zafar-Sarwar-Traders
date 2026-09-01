@@ -515,7 +515,7 @@ export interface AiRecommendationResponse {
 export interface AiCustomKnowledge {
   id: string;
   title: string;
-  category: 'policy' | 'faq' | 'shipping' | 'warranty' | 'general' | 'custom';
+  category: 'policy' | 'faq' | 'shipping' | 'warranty' | 'general' | 'companyInfo' | 'custom';
   questionOrTopic: string;
   answerOrContent: string;
   isEnabled: boolean;
@@ -980,11 +980,76 @@ export type SmartToolId =
   | 'budget-products' 
   | 'bricks' 
   | 'paint' 
+  | 'ai-paint-visualizer'
   | 'water-tank'
   | 'construction-builder'
   | 'fitting-builder'
   | 'bathroom-budget-finder' // backward compatibility alias
   | 'water-tank-pump-guide'; // backward compatibility alias
+
+export type VisualizerSpaceType =
+  | 'living_room'
+  | 'bedroom'
+  | 'drawing_room'
+  | 'exterior_facade'
+  | 'kitchen'
+  | 'washroom'
+  | 'office_workspace'
+  | 'hallway_staircase'
+  | 'dining_room'
+  | 'general_wall';
+
+export type VisualizerMood =
+  | 'modern_neutral'
+  | 'warm_cozy'
+  | 'bright_airy'
+  | 'luxury_accent'
+  | 'cool_calm'
+  | 'earthy_natural'
+  | 'royal_classic';
+
+export interface VisualizerRecommendedShade {
+  role: 'Primary Wall' | 'Accent Wall' | 'Ceiling / Trim' | 'Feature / Border';
+  shadeName: string;
+  shadeCode: string;
+  colorHex: string;
+  finishType?: string;
+  productId?: string;
+  productName?: string;
+  productImage?: string;
+  price?: string | number;
+  reason?: string;
+  urduReason?: string;
+  matchConfidence?: 'Best Match' | 'Very Suitable' | 'Similar Match' | string;
+  hasStoreMatch?: boolean;
+  stockStatus?: string;
+  availabilityText?: string;
+}
+
+export interface PaintVisualizerPalette {
+  id: string;
+  paletteName: string;
+  urduPaletteName?: string;
+  mood: string;
+  description: string;
+  designerTip: string;
+  urduTip?: string;
+  shades: VisualizerRecommendedShade[];
+}
+
+export interface AiPaintVisualizerResult {
+  identifiedSpace: string;
+  urduIdentifiedSpace?: string;
+  spaceAssessment: string;
+  urduSpaceAssessment?: string;
+  lightingAnalysis: string;
+  palettes: PaintVisualizerPalette[];
+  coverageRecommendation?: {
+    suggestedProduct?: string;
+    estimatedLitresForStandardCoat?: string;
+    primerAdvice?: string;
+  };
+}
 
 export interface SmartToolCardConfig {
   id: SmartToolId;

@@ -43,6 +43,7 @@ import { HouseConstructionCostEstimator } from './tools/HouseConstructionCostEst
 import { BudgetToProductsAi } from './tools/BudgetToProductsAi';
 import { BricksEstimator } from './tools/BricksEstimator';
 import { PaintQuantityCalculator } from './tools/PaintQuantityCalculator';
+import { AiPaintVisualizer } from './tools/AiPaintVisualizer';
 
 // Safe Tool ID Normalizer to bridge all variations seamlessly
 export function normalizeSmartToolId(id: string | null | undefined): SmartToolId | 'hub' | null {
@@ -81,6 +82,11 @@ export function normalizeSmartToolId(id: string | null | undefined): SmartToolId
     case 'paint':
     case 'paint-quantity-calculator':
       return 'paint';
+
+    case 'ai-paint-visualizer':
+    case 'paint-visualizer':
+    case 'ai-paint':
+      return 'ai-paint-visualizer';
 
     case 'water-tank':
     case 'water-tank-pump-guide':
@@ -258,6 +264,7 @@ export const SmartToolsModal: React.FC<SmartToolsModalProps> = ({
       case 'budget-products': return <Bot className={`${className} text-indigo-400`} />;
       case 'bricks': return <Boxes className={`${className} text-orange-400`} />;
       case 'paint': return <Palette className={`${className} text-rose-400`} />;
+      case 'ai-paint-visualizer': return <Sparkles className={`${className} text-rose-400`} />;
       case 'water-tank': return <Droplet className={`${className} text-cyan-400`} />;
       case 'fitting-builder': return <Wrench className={`${className} text-blue-400`} />;
       default: return <Sparkles className={`${className} text-blue-400`} />;
@@ -278,9 +285,9 @@ export const SmartToolsModal: React.FC<SmartToolsModalProps> = ({
     const norm = normalizeSmartToolId(t.id);
     if (!t.isEnabled) return false;
     if (hubCategory !== 'all') {
-      if (hubCategory === 'construction' && !['cement-calculator', 'material-estimator', 'construction-cost', 'bricks', 'fitting-builder'].includes(norm as string)) return false;
-      if (hubCategory === 'sanitary' && !['bathroom-planner', 'water-tank', 'product-finder', 'paint', 'fitting-builder'].includes(norm as string)) return false;
-      if (hubCategory === 'budget' && !['budget-products', 'construction-cost', 'product-finder', 'fitting-builder'].includes(norm as string)) return false;
+      if (hubCategory === 'construction' && !['cement-calculator', 'material-estimator', 'construction-cost', 'bricks', 'fitting-builder', 'paint', 'ai-paint-visualizer'].includes(norm as string)) return false;
+      if (hubCategory === 'sanitary' && !['bathroom-planner', 'water-tank', 'product-finder', 'paint', 'ai-paint-visualizer', 'fitting-builder'].includes(norm as string)) return false;
+      if (hubCategory === 'budget' && !['budget-products', 'construction-cost', 'product-finder', 'fitting-builder', 'ai-paint-visualizer'].includes(norm as string)) return false;
     }
     if (hubSearch.trim()) {
       const q = hubSearch.toLowerCase();
@@ -376,6 +383,17 @@ export const SmartToolsModal: React.FC<SmartToolsModalProps> = ({
             config={config}
             settings={currentSettings}
             onAddToCart={(p, qty) => onAddToCart && onAddToCart(p, qty || 1)}
+            onViewProduct={(p) => onOpenQuickView && onOpenQuickView(p)}
+          />
+        );
+
+      case 'ai-paint-visualizer':
+        return (
+          <AiPaintVisualizer
+            products={products}
+            config={config}
+            settings={currentSettings}
+            onAddToCart={(p, qty, shade) => onAddToCart && onAddToCart(p, qty || 1, shade)}
             onViewProduct={(p) => onOpenQuickView && onOpenQuickView(p)}
           />
         );

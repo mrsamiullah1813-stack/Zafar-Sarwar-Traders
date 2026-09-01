@@ -1,15 +1,30 @@
 import { Product, ProductSaleConfig, ProductVariant } from '../types';
 
 /**
- * Parses numeric price from any string format (e.g. "Rs. 10,000", "10,000 PKR", "10000", 10000)
+ * Parses numeric price from any string format (e.g. "Rs. 10,000", "10,000 PKR", "Rs. 3,500", "10000", 10000)
+ * Safely strips currency prefixes/suffixes without letting abbreviation dots (like in "Rs.") corrupt integer prices into decimals.
  */
 export function parseNumericPrice(val?: string | number | null): number {
   if (typeof val === 'number') {
     return isNaN(val) ? 0 : val;
   }
   if (!val) return 0;
-  const cleaned = String(val).replace(/[^0-9.]/g, '');
-  const parsed = parseFloat(cleaned);
+
+  let str = String(val).trim();
+  if (!str) return 0;
+
+  // 1. Remove known currency prefixes with optional dots or symbols (e.g. "Rs.", "RS.", "PKR", "₨", "$", "USD")
+  str = str.replace(/^(rs\.?|pkr|₨|\$|usd|eur|gbp)\s*/i, '');
+  // 2. Remove known trailing currency words
+  str = str.replace(/\s*(rs\.?|pkr|₨|\$|usd|eur|gbp)$/i, '');
+  // 3. Remove comma thousand separators
+  str = str.replace(/,/g, '');
+
+  // 4. Extract the first valid number (integer or float)
+  const match = str.match(/\d+(?:\.\d+)?/);
+  if (!match) return 0;
+
+  const parsed = parseFloat(match[0]);
   return isNaN(parsed) ? 0 : parsed;
 }
 
@@ -754,12 +769,26 @@ export function buildProductWhatsAppOrderUrl(params: BuildWhatsAppOrderParams): 
   const unitNumeric = pricing.effectivePriceNumeric;
   const { totalNumeric, formattedTotal } = calculateDynamicOrderTotal(unitNumeric, safeQty);
 
+  // Determine active variant / size name
+  const activeVariantName =
+    selectedVariantObj?.name?.trim() ||
+    (selectedVariantName && selectedVariantName.trim() !== '' ? selectedVariantName.trim() : '') ||
+    (selectedSize && selectedSize.trim() !== '' ? selectedSize.trim() : '');
+
+  const hasVariant = Boolean(activeVariantName && activeVariantName.length > 0);
+
+  // Combine Main Product Name + Selected Variant/Size (e.g., "Elbow — 40 mm")
+  const productHeading = hasVariant && !product.name.toLowerCase().includes(activeVariantName.toLowerCase())
+    ? `${product.name} — ${activeVariantName}`
+    : product.name;
+
   // Build structured message sections
   let variantLine = '';
-  if (selectedVariantObj) {
-    variantLine = `\n• Selected ${selectedOptionLabel}: ${selectedVariantObj.name}${selectedVariantObj.sku ? ` (SKU: ${selectedVariantObj.sku})` : ''}`;
-  } else if (selectedVariantName && selectedVariantName.trim() !== '') {
-    variantLine = `\n• Selected ${selectedOptionLabel}: ${selectedVariantName}`;
+  if (hasVariant) {
+    const optLabel = selectedOptionLabel && !selectedOptionLabel.toLowerCase().includes('option') && !selectedOptionLabel.toLowerCase().includes('size')
+      ? selectedOptionLabel
+      : 'Size';
+    variantLine = `\n• ${optLabel}: ${activeVariantName}${selectedVariantObj?.sku ? ` (SKU: ${selectedVariantObj.sku})` : ''}`;
   }
 
   let shadeLine = '';
@@ -773,10 +802,8 @@ export function buildProductWhatsAppOrderUrl(params: BuildWhatsAppOrderParams): 
   }
 
   let sizeLine = '';
-  if (selectedSize && selectedSize.trim() !== '') {
-    if (!selectedVariantObj || (selectedVariantObj.name !== selectedSize && !variantLine.includes(selectedSize))) {
-      sizeLine = `\n• Selected Size: ${selectedSize}`;
-    }
+  if (selectedSize && selectedSize.trim() !== '' && selectedSize.trim() !== activeVariantName) {
+    sizeLine = `\n• Selected Size: ${selectedSize.trim()}`;
   }
 
   let materialLine = '';
@@ -822,7 +849,7 @@ export function buildProductWhatsAppOrderUrl(params: BuildWhatsAppOrderParams): 
     ? (typeof finalTotal === 'number' ? formatPakistaniPrice(finalTotal) : finalTotal)
     : (totalNumeric > 0 ? formattedTotal : pricing.effectivePriceString);
 
-  const message = `Hello ${businessName}! 👋\n\nI would like to place an order from your website catalog:\n\n📦 *PRODUCT ORDER DETAILS*:\n━━━━━━━━━━━━━━━━━━\n• Product: *${product.name}*${brandLine}${categoryLine}${skuLine}${variantLine}${shadeLine}${colorLine}${sizeLine}${materialLine}\n\n📊 *PRICING & QUANTITY*:\n• Quantity: *${quantityDisplay}*\n• Unit Price: *${unitPriceText}*\n• Product Total: *${totalNumeric > 0 ? formattedTotal : pricing.effectivePriceString}*${deliverySection}\n\n💰 *ORDER TOTAL*: *${calculatedTotalDisplay}*\n━━━━━━━━━━━━━━━━━━${noteLine}\n\nPlease confirm availability, delivery timeframe, and dispatch schedule. Thank you!`;
+  const message = `Hello ${businessName}! 👋\n\nI would like to place an order from your website catalog:\n\n📦 *PRODUCT ORDER DETAILS*:\n━━━━━━━━━━━━━━━━━━\n• Product: *${productHeading}*${brandLine}${categoryLine}${skuLine}${variantLine}${shadeLine}${colorLine}${sizeLine}${materialLine}\n\n📊 *PRICING & QUANTITY*:\n• Quantity: *${quantityDisplay}*\n• Unit Price: *${unitPriceText}*\n• Total Price: *${totalNumeric > 0 ? formattedTotal : pricing.effectivePriceString}*${deliverySection}\n\n💰 *ORDER TOTAL*: *${calculatedTotalDisplay}*\n━━━━━━━━━━━━━━━━━━${noteLine}\n\nPlease confirm availability, delivery timeframe, and dispatch schedule. Thank you!`;
 
   const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
 

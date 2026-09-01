@@ -12,7 +12,13 @@ import {
   ExternalLink,
   UserCheck,
   Shield,
-  Briefcase
+  Briefcase,
+  Crown,
+  Check,
+  Copy,
+  ArrowUpRight,
+  PhoneCall,
+  BadgeCheck
 } from 'lucide-react';
 import { BusinessConfig, ContactPerson } from '../types';
 
@@ -29,6 +35,7 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ config, contacts
     message: ''
   });
   const [submitted, setSubmitted] = useState(false);
+  const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
 
   const visibleContacts = contacts
     .filter(c => !c.isHidden)
@@ -39,6 +46,15 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ config, contacts
     const greetingName = name ? `Dear ${name}` : `Hello ${config.name}`;
     const text = encodeURIComponent(`${greetingName}, I am visiting your website and would like to get in touch regarding products & pricing.`);
     window.open(`https://wa.me/${targetNumber}?text=${text}`, '_blank');
+  };
+
+  const handleCopyNumber = (phone: string, id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(phone);
+      setCopiedPhone(id);
+      setTimeout(() => setCopiedPhone(null), 2000);
+    }
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -79,102 +95,154 @@ Inquiry from Website:
 
         {/* Dynamic Personnel Contacts Grid */}
         {visibleContacts.length > 0 && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
+          <div className="space-y-6 pt-2">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between border-b border-slate-800/80 pb-4 gap-3">
               <div>
-                <h3 className="text-xl font-bold font-serif text-white flex items-center gap-2">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-300 text-[10px] font-semibold uppercase tracking-wider mb-2">
+                  <BadgeCheck className="w-3 h-3 text-amber-400" />
+                  <span>Verified Showroom Leadership</span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-bold font-serif text-white flex items-center gap-2.5">
                   <UserCheck className="w-5 h-5 text-amber-400" />
-                  <span>Key Contact Persons & Managers</span>
+                  <span>Key Contact Persons & Department Specialists</span>
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Reach out directly to our department managers for rapid response and specialized assistance.
+                <p className="text-xs text-slate-400 mt-1 max-w-2xl font-light">
+                  Reach out directly to our department managers and leadership for rapid quotes, technical assistance, and instant order dispatch.
                 </p>
               </div>
-              <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-[11px] text-slate-300">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span>Showroom Team Online</span>
-              </span>
+
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/90 border border-slate-800 text-[11px] text-slate-300 shadow-sm shrink-0 self-start sm:self-auto">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span className="font-medium text-slate-200">Showroom Team Online</span>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6">
               {visibleContacts.map((contact) => {
                 const statusColor = 
-                  contact.availabilityStatus === 'Available' ? 'bg-emerald-500 text-emerald-300 border-emerald-500/30' :
-                  contact.availabilityStatus === 'Busy' ? 'bg-amber-500 text-amber-300 border-amber-500/30' :
-                  'bg-slate-500 text-slate-300 border-slate-500/30';
+                  contact.availabilityStatus === 'Available' ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' :
+                  contact.availabilityStatus === 'Busy' ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' :
+                  'bg-slate-500/15 text-slate-300 border-slate-500/30';
 
                 return (
                   <div 
                     key={contact.id} 
-                    className="p-5 rounded-3xl glass-card border border-slate-800/90 hover:border-amber-500/40 transition-all flex flex-col justify-between space-y-4 shadow-xl group relative overflow-hidden"
+                    className="group relative rounded-3xl bg-gradient-to-b from-[#0d1527]/95 via-[#080d19]/95 to-[#040710]/98 border border-slate-800/80 hover:border-amber-500/50 p-5 sm:p-6 transition-all duration-300 shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:shadow-[0_16px_40px_-8px_rgba(245,158,11,0.12)] flex flex-col justify-between space-y-4 overflow-hidden"
                   >
+                    {/* Top ambient highlight line */}
+                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-500/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
                     {contact.isPrimary && (
-                      <div className="absolute top-0 right-0 bg-gradient-to-l from-amber-500 to-yellow-500 text-slate-950 font-black text-[9px] uppercase px-3 py-1 rounded-bl-xl shadow-md flex items-center gap-1">
-                        <Shield className="w-3 h-3" />
-                        <span>Primary</span>
+                      <div className="absolute top-3.5 right-3.5 z-10 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-bold tracking-wider uppercase backdrop-blur-md shadow-xs">
+                        <Crown className="w-3 h-3 text-amber-400" />
+                        <span>Executive</span>
                       </div>
                     )}
 
-                    <div className="flex items-start gap-3.5">
+                    {/* Profile Header */}
+                    <div className="flex items-start gap-4">
                       <div className="relative shrink-0">
-                        {contact.profilePhoto ? (
-                          <img 
-                            src={contact.profilePhoto} 
-                            alt={contact.fullName}
-                            className="w-14 h-14 rounded-2xl object-cover border border-slate-700/80 shadow-md group-hover:scale-105 transition-transform" 
-                          />
-                        ) : (
-                          <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-amber-400 font-bold text-lg font-serif">
-                            {contact.fullName.charAt(0)}
-                          </div>
-                        )}
+                        <div className="p-0.5 rounded-2xl bg-gradient-to-b from-amber-500/40 via-slate-700/60 to-slate-800/90 shadow-md group-hover:from-amber-400/60 group-hover:to-amber-500/40 transition-colors">
+                          {contact.profilePhoto ? (
+                            <img 
+                              src={contact.profilePhoto} 
+                              alt={contact.fullName}
+                              className="w-14 h-14 sm:w-16 sm:h-16 rounded-[14px] object-cover group-hover:scale-105 transition-transform duration-300" 
+                            />
+                          ) : (
+                            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-[14px] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 flex items-center justify-center text-amber-400 font-bold text-xl font-serif">
+                              {contact.fullName.charAt(0)}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Availability Beacon */}
                         <span 
-                          className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-slate-950 ${
-                            contact.availabilityStatus === 'Available' ? 'bg-emerald-400' :
-                            contact.availabilityStatus === 'Busy' ? 'bg-amber-400' : 'bg-slate-500'
+                          className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[#040710] flex items-center justify-center ${
+                            contact.availabilityStatus === 'Available' ? 'bg-emerald-500' :
+                            contact.availabilityStatus === 'Busy' ? 'bg-amber-500' : 'bg-slate-500'
                           }`}
                           title={`Status: ${contact.availabilityStatus}`}
-                        />
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full bg-white ${contact.availabilityStatus === 'Available' ? 'animate-pulse' : ''}`} />
+                        </span>
                       </div>
 
                       <div className="flex-1 min-w-0 pr-6">
-                        <h4 className="text-white font-bold text-sm truncate group-hover:text-amber-300 transition-colors">
+                        <h4 className="text-white font-bold text-base font-serif tracking-tight group-hover:text-amber-300 transition-colors line-clamp-1">
                           {contact.fullName}
                         </h4>
-                        <div className="text-[11px] font-semibold text-amber-400/90 truncate flex items-center gap-1">
-                          <Briefcase className="w-3 h-3 shrink-0" />
-                          <span>{contact.designation}</span>
+                        
+                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 mt-1 rounded-md bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs font-semibold">
+                          <Briefcase className="w-3 h-3 text-amber-400 shrink-0" />
+                          <span className="truncate">{contact.designation}</span>
                         </div>
-                        <div className="text-[10px] text-slate-400 truncate mt-0.5">
+
+                        <div className="text-[11px] text-slate-400 font-medium truncate mt-1">
                           {contact.department}
                         </div>
                       </div>
                     </div>
 
-                    <div className="space-y-1.5 pt-2 border-t border-slate-800/80 text-xs text-slate-300 font-light">
+                    {/* Metadata Strip */}
+                    <div className="space-y-2 pt-3 border-t border-slate-800/80 text-xs">
                       {contact.workingHours && (
-                        <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
-                          <Clock className="w-3 h-3 text-amber-400/80" />
-                          <span>{contact.workingHours}</span>
+                        <div className="flex items-center justify-between text-[11px] text-slate-400">
+                          <span className="flex items-center gap-1 text-slate-400">
+                            <Clock className="w-3 h-3 text-amber-400/80" />
+                            <span>Hours:</span>
+                          </span>
+                          <span className="text-slate-300 font-medium">{contact.workingHours}</span>
                         </div>
                       )}
+
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-slate-400">Status:</span>
+                        <span className="text-slate-400">Availability:</span>
                         <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${statusColor}`}>
                           {contact.availabilityStatus}
                         </span>
                       </div>
+
+                      {/* Direct Phone Number Bar */}
+                      <div className="p-2 rounded-xl bg-slate-950/70 border border-slate-800/70 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-slate-300 font-mono text-[11px] truncate">
+                          <PhoneCall className="w-3 h-3 text-amber-400/80 shrink-0" />
+                          <span className="truncate">{contact.mobileNumber}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => handleCopyNumber(contact.mobileNumber, contact.id, e)}
+                          className="shrink-0 text-[10px] text-slate-400 hover:text-amber-300 px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 transition-colors flex items-center gap-1 cursor-pointer"
+                          title="Copy phone number"
+                        >
+                          {copiedPhone === contact.id ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-400" />
+                              <span className="text-emerald-400">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" />
+                              <span>Copy</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
 
+                    {/* Direct Contact Action Buttons */}
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       {contact.enableWhatsapp !== false && (
                         <button
                           type="button"
                           onClick={() => handleWhatsAppDirect(contact.whatsappNumber, contact.fullName)}
-                          className="w-full py-2 px-2 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold flex items-center justify-center gap-1 transition-all shadow-md active:scale-95"
-                          title="Chat on WhatsApp"
+                          className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-md shadow-emerald-950/40 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                          title="Chat directly on WhatsApp"
                         >
-                          <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                          <MessageSquare className="w-3.5 h-3.5 text-emerald-100" />
                           <span>WhatsApp</span>
                         </button>
                       )}
@@ -182,11 +250,11 @@ Inquiry from Website:
                       {contact.enableCall !== false && (
                         <a
                           href={`tel:${contact.mobileNumber}`}
-                          className="w-full py-2 px-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-white text-[11px] font-bold flex items-center justify-center gap-1 transition-all shadow-md active:scale-95 text-center"
-                          title="Call Mobile"
+                          className="w-full py-2.5 px-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 hover:border-amber-500/40 text-slate-200 hover:text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-md hover:scale-[1.02] active:scale-[0.98] text-center"
+                          title="Call Mobile Number"
                         >
                           <Phone className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Call</span>
+                          <span>Call Direct</span>
                         </a>
                       )}
                     </div>

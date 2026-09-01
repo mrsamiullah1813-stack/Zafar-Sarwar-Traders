@@ -46,9 +46,9 @@ export const SmartToolsSection: React.FC<SmartToolsSectionProps> = ({
   const filteredTools = enabledTools.filter(t => {
     const norm = normalizeSmartToolId(t.id);
     if (activeFilter === 'all') return true;
-    if (activeFilter === 'construction') return ['cement-calculator', 'material-estimator', 'construction-cost', 'bricks', 'fitting-builder'].includes(norm as string);
-    if (activeFilter === 'sanitary') return ['bathroom-planner', 'water-tank', 'product-finder', 'paint', 'fitting-builder'].includes(norm as string);
-    if (activeFilter === 'budget') return ['budget-products', 'construction-cost', 'product-finder', 'fitting-builder'].includes(norm as string);
+    if (activeFilter === 'construction') return ['cement-calculator', 'material-estimator', 'construction-cost', 'bricks', 'fitting-builder', 'paint', 'ai-paint-visualizer'].includes(norm as string);
+    if (activeFilter === 'sanitary') return ['bathroom-planner', 'water-tank', 'product-finder', 'paint', 'ai-paint-visualizer', 'fitting-builder'].includes(norm as string);
+    if (activeFilter === 'budget') return ['budget-products', 'construction-cost', 'product-finder', 'fitting-builder', 'ai-paint-visualizer'].includes(norm as string);
     return true;
   });
 
@@ -81,6 +81,8 @@ export const SmartToolsSection: React.FC<SmartToolsSectionProps> = ({
         return <Boxes className="w-5 h-5 text-orange-500" />;
       case 'Palette':
         return <Palette className="w-5 h-5 text-rose-500" />;
+      case 'Sparkles':
+        return <Sparkles className="w-5 h-5 text-rose-500" />;
       default:
         return <Sparkles className="w-5 h-5 text-blue-500" />;
     }
@@ -97,6 +99,7 @@ export const SmartToolsSection: React.FC<SmartToolsSectionProps> = ({
       case 'budget-products': return 'hover:border-indigo-500/50 hover:shadow-indigo-500/10 text-indigo-600 dark:text-indigo-400';
       case 'bricks': return 'hover:border-orange-500/50 hover:shadow-orange-500/10 text-orange-600 dark:text-orange-400';
       case 'paint': return 'hover:border-rose-500/50 hover:shadow-rose-500/10 text-rose-600 dark:text-rose-400';
+      case 'ai-paint-visualizer': return 'hover:border-rose-500/50 hover:shadow-rose-500/10 text-rose-600 dark:text-rose-400';
       case 'water-tank': return 'hover:border-cyan-500/50 hover:shadow-cyan-500/10 text-cyan-600 dark:text-cyan-400';
       case 'fitting-builder': return 'hover:border-blue-500/50 hover:shadow-blue-500/10 text-blue-600 dark:text-blue-400';
       default: return 'hover:border-blue-500/50 hover:shadow-blue-500/10 text-blue-600 dark:text-blue-400';
@@ -114,6 +117,7 @@ export const SmartToolsSection: React.FC<SmartToolsSectionProps> = ({
       case 'budget-products': return 'bg-indigo-600 hover:bg-indigo-500 text-white';
       case 'bricks': return 'bg-orange-600 hover:bg-orange-500 text-white';
       case 'paint': return 'bg-rose-600 hover:bg-rose-500 text-white';
+      case 'ai-paint-visualizer': return 'bg-rose-600 hover:bg-rose-500 text-white';
       case 'water-tank': return 'bg-cyan-600 hover:bg-cyan-500 text-white';
       case 'fitting-builder': return 'bg-blue-600 hover:bg-blue-500 text-white';
       default: return 'bg-blue-600 hover:bg-blue-500 text-white';

@@ -20,6 +20,7 @@ import {
   FittingBuilderConfig
 } from '../types';
 import { defaultFittingBuilderConfig } from '../data/defaultFittingBuilderData';
+import { parseNumericPrice } from '../utils/pricingUtils';
 
 // =========================================================
 // AUTH HEADERS HELPER FOR SECURE ADMIN BACKEND PROXY
@@ -103,7 +104,7 @@ export function mapDbProductToProduct(row: any): Product {
     row.discount_enabled ??
     rawSpecs._sale_enabled ??
     rawSpecs._sale_config?.saleEnabled ??
-    (resolvedSalePrice && Number(String(resolvedSalePrice).replace(/[^0-9.]/g, '')) > 0 && rawSpecs._sale_enabled !== false)
+    (resolvedSalePrice && parseNumericPrice(resolvedSalePrice) > 0 && rawSpecs._sale_enabled !== false)
   );
 
   // Parse Variants & Dynamic Pricing
@@ -325,22 +326,9 @@ export function mapDbProductToProduct(row: any): Product {
 }
 
 export function mapProductToDb(product: Product): any {
-  let numericPrice = 0;
-  if (product.price) {
-    const digitsOnly = String(product.price).replace(/[^0-9.]/g, '');
-    if (digitsOnly) {
-      numericPrice = parseFloat(digitsOnly) || 0;
-    }
-  }
-
-  let numericSalePrice: number | null = null;
+  const numericPrice = parseNumericPrice(product.price);
   const rawSaleVal = product.salePrice ?? product.saleConfig?.salePrice;
-  if (rawSaleVal) {
-    const digitsOnly = String(rawSaleVal).replace(/[^0-9.]/g, '');
-    if (digitsOnly) {
-      numericSalePrice = parseFloat(digitsOnly) || null;
-    }
-  }
+  const numericSalePrice = rawSaleVal ? (parseNumericPrice(rawSaleVal) || null) : null;
 
   const isSaleEnabled = Boolean(product.saleEnabled === true || product.saleConfig?.saleEnabled === true);
   const isVariantsEnabled = Boolean(product.variantsEnabled === true || product.variantsConfig?.variantsEnabled === true);

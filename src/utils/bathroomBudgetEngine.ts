@@ -1,10 +1,8 @@
 import { Product, BathroomBudgetInputs, BathroomBudgetPackageResult, BathroomBudgetItem } from '../types';
+import { parseNumericPrice } from './pricingUtils';
 
 export function parsePriceToNumber(priceStr?: string | number): number {
-  if (typeof priceStr === 'number') return priceStr;
-  if (!priceStr) return 0;
-  const cleaned = String(priceStr).replace(/[^0-9.]/g, '');
-  return parseFloat(cleaned) || 0;
+  return parseNumericPrice(priceStr);
 }
 
 export function formatPricePKR(amount: number): string {
