@@ -629,6 +629,8 @@ export interface OrderItem {
   productId: string;
   productName: string;
   brand?: string;
+  category?: string;
+  material?: string;
   image?: string;
   sku?: string;
   unitPrice: string;
@@ -717,6 +719,45 @@ export interface CustomerOrder {
   trackingReference?: string;
   adminNotes?: string;
   deliveryDelayNote?: string;
+  // Coupon / Promo Code Details
+  couponCode?: string;
+  appliedCouponCode?: string;
+  discountPercentage?: number;
+  couponDiscountPercentage?: number;
+  discountAmount?: number;
+  couponDiscountAmount?: number;
+  originalSubtotal?: number;
+}
+
+export interface Coupon {
+  id: string;
+  code: string; // unique uppercase promo code e.g. "WELCOME10"
+  discountPercentage: number; // e.g. 10 for 10%
+  isEnabled: boolean; // toggle active/inactive
+  expiryDate?: string; // optional ISO/YYYY-MM-DD
+  minOrderAmount?: number; // optional minimum order subtotal in PKR
+  maxDiscountAmount?: number; // optional max discount cap in PKR
+  description?: string; // optional admin notes e.g. "Summer Sale"
+  usageCount?: number; // number of times applied
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AppliedCouponState {
+  id?: string;
+  code: string;
+  discountPercentage: number;
+  discountAmount: number;
+  originalTotal: number;
+  finalTotal: number;
+  minOrderAmount?: number;
+  maxDiscountAmount?: number;
+}
+
+export interface CouponValidationResult {
+  valid: boolean;
+  error?: string;
+  coupon?: AppliedCouponState;
 }
 
 export interface AnnouncementItem {

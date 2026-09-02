@@ -42,8 +42,9 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ config, contacts
     .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
 
   const handleWhatsAppDirect = (number?: string, name?: string) => {
-    const targetNumber = (number || config.whatsapp).replace(/[^0-9]/g, '');
-    const greetingName = name ? `Dear ${name}` : `Hello ${config.name}`;
+    const rawNumber = number || config.whatsapp || config.phone || '923108002863';
+    const targetNumber = rawNumber.replace(/[^0-9]/g, '') || '923108002863';
+    const greetingName = name ? `Dear ${name}` : `Hello ${config.name || 'Zafar Sarwar Traders'}`;
     const text = encodeURIComponent(`${greetingName}, I am visiting your website and would like to get in touch regarding products & pricing.`);
     window.open(`https://wa.me/${targetNumber}?text=${text}`, '_blank');
   };

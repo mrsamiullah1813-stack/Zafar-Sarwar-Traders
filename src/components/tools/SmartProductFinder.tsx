@@ -67,7 +67,11 @@ export function SmartProductFinder({
         const matchesCat = (p.category || '').toLowerCase().includes(q);
         const matchesBrand = (p.brand || '').toLowerCase().includes(q);
         const matchesSku = (p.sku || '').toLowerCase().includes(q);
-        if (!matchesName && !matchesCat && !matchesBrand && !matchesSku) return false;
+        const variantsList = p.variantsList || p.variantsConfig?.variants || [];
+        const matchesVariants = variantsList.some(v => (v.name || '').toLowerCase().includes(q) || (v.sku || '').toLowerCase().includes(q));
+        const matchesSizes = (p.availableSizes || []).some(s => s.toLowerCase().includes(q));
+        const matchesColors = (p.availableColors || []).some(c => c.toLowerCase().includes(q));
+        if (!matchesName && !matchesCat && !matchesBrand && !matchesSku && !matchesVariants && !matchesSizes && !matchesColors) return false;
       }
 
       // 2. Category / Item Type Filter
@@ -123,14 +127,15 @@ export function SmartProductFinder({
   };
 
   const handleWhatsAppProduct = (p: Product) => {
-    const phone = config.phone || "923108002863";
+    const rawPhone = config.whatsapp || config.phone || "923108002863";
+    const phone = rawPhone.replace(/[^0-9]/g, '') || "923108002863";
     const msg = `*Product Inquiry via Smart Product Finder*\n` +
       `Product: ${p.name}\n` +
-      `Price: Rs. ${p.price}\n` +
+      `Price: Rs. ${p.price || 'Call for Price'}\n` +
       `Brand: ${p.brand || 'Original'}\n` +
       `SKU: ${p.sku || 'N/A'}\n` +
       `Please confirm stock availability and discount options.`;
-    window.open(`https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
   return (

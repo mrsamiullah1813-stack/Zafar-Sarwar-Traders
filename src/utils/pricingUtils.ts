@@ -1,4 +1,4 @@
-import { Product, ProductSaleConfig, ProductVariant } from '../types';
+import { Product, ProductSaleConfig, ProductVariant, AppliedCouponState } from '../types';
 
 /**
  * Parses numeric price from any string format (e.g. "Rs. 10,000", "10,000 PKR", "Rs. 3,500", "10000", 10000)
@@ -723,6 +723,7 @@ export interface BuildWhatsAppOrderParams {
   deliveryFee?: number | string;
   finalTotal?: string | number;
   isCustomCity?: boolean;
+  appliedCoupon?: AppliedCouponState | null;
 }
 
 /**
@@ -751,7 +752,8 @@ export function buildProductWhatsAppOrderUrl(params: BuildWhatsAppOrderParams): 
     deliveryAddress,
     deliveryFee,
     finalTotal,
-    isCustomCity
+    isCustomCity,
+    appliedCoupon
   } = params;
 
   const cleanPhone = (whatsappNumber || '923108002863').replace(/[^0-9]/g, '') || '923108002863';
@@ -777,80 +779,92 @@ export function buildProductWhatsAppOrderUrl(params: BuildWhatsAppOrderParams): 
 
   const hasVariant = Boolean(activeVariantName && activeVariantName.length > 0);
 
-  // Combine Main Product Name + Selected Variant/Size (e.g., "Elbow — 40 mm")
-  const productHeading = hasVariant && !product.name.toLowerCase().includes(activeVariantName.toLowerCase())
-    ? `${product.name} — ${activeVariantName}`
-    : product.name;
-
-  // Build structured message sections
-  let variantLine = '';
+  // 1. Product Information Section
+  const productInfoLines: string[] = [];
+  productInfoLines.push(`- Product Name: ${product.name}`);
+  if (product.brand && product.brand.trim()) {
+    productInfoLines.push(`- Brand: ${product.brand.trim()}`);
+  }
+  if (product.category && product.category.trim()) {
+    productInfoLines.push(`- Category: ${product.category.trim()}`);
+  }
   if (hasVariant) {
-    const optLabel = selectedOptionLabel && !selectedOptionLabel.toLowerCase().includes('option') && !selectedOptionLabel.toLowerCase().includes('size')
-      ? selectedOptionLabel
-      : 'Size';
-    variantLine = `\n• ${optLabel}: ${activeVariantName}${selectedVariantObj?.sku ? ` (SKU: ${selectedVariantObj.sku})` : ''}`;
+    productInfoLines.push(`- Size / Variant: ${activeVariantName}${selectedVariantObj?.sku ? ` (SKU: ${selectedVariantObj.sku})` : ''}`);
+  } else if (selectedSize && selectedSize.trim()) {
+    productInfoLines.push(`- Size / Variant: ${selectedSize.trim()}`);
   }
-
-  let shadeLine = '';
+  
   if (selectedShade) {
-    shadeLine = `\n• Selected Paint Shade: ${selectedShade.name}${selectedShade.code ? ` (Code: ${selectedShade.code})` : ''}`;
+    productInfoLines.push(`- Color / Finish: ${selectedShade.name}${selectedShade.code ? ` (Code: ${selectedShade.code})` : ''}`);
+  } else if (selectedColor && selectedColor.trim()) {
+    productInfoLines.push(`- Color / Finish: ${selectedColor.trim()}`);
   }
 
-  let colorLine = '';
-  if (selectedColor && selectedColor.trim() !== '') {
-    colorLine = `\n• Selected Finish / Color: ${selectedColor}`;
+  if (selectedMaterial && selectedMaterial.trim()) {
+    productInfoLines.push(`- Material: ${selectedMaterial.trim()}`);
+  } else if (product.material && product.material.trim()) {
+    productInfoLines.push(`- Material: ${product.material.trim()}`);
   }
 
-  let sizeLine = '';
-  if (selectedSize && selectedSize.trim() !== '' && selectedSize.trim() !== activeVariantName) {
-    sizeLine = `\n• Selected Size: ${selectedSize.trim()}`;
-  }
-
-  let materialLine = '';
-  if (selectedMaterial && selectedMaterial.trim() !== '') {
-    materialLine = `\n• Material Grade: ${selectedMaterial}`;
-  }
-
-  const skuLine = (selectedVariantObj?.sku || product.sku) ? `\n• SKU / Code: ${selectedVariantObj?.sku || product.sku}` : '';
-  const brandLine = product.brand ? `\n• Brand: ${product.brand}` : '';
-  const categoryLine = product.category ? `\n• Category: ${product.category}` : '';
-
+  // 2. Pricing Breakdown Table
   const quantityDisplay = qtySettings.isEnabled && qtySettings.unit
     ? `${safeQty} ${qtySettings.unit}`
     : `${safeQty}`;
 
-  // Delivery details formatting
-  let deliverySection = '';
-  if (deliveryCity || deliveryAddress) {
-    let feeText = 'Depends on quantity & location (To be confirmed)';
-    if (typeof deliveryFee === 'number' && deliveryFee > 0) {
-      feeText = `Rs. ${deliveryFee.toLocaleString('en-PK')}`;
-    } else if (typeof deliveryFee === 'string' && deliveryFee.trim() !== '') {
-      feeText = deliveryFee;
-    }
-    
-    let deliveryLines = `\n\n🚚 *DELIVERY & SHIPPING DESTINATION*:\n━━━━━━━━━━━━━━━━━━`;
-    if (deliveryCity) {
-      deliveryLines += `\n• Delivery City: *${deliveryCity}${isCustomCity ? ' (Custom Location)' : ''}*`;
-    }
-    if (deliveryAddress) {
-      deliveryLines += `\n• Delivery Address: *${deliveryAddress}*`;
-    }
-    deliveryLines += `\n• Delivery Charges: *${feeText}*`;
-    deliverySection = deliveryLines;
+  const variantOrSizeLabel = hasVariant ? activeVariantName : (selectedSize || 'Standard');
+  const unitPriceFormatted = pricing.effectivePriceNumeric > 0 ? formatPakistaniPrice(pricing.effectivePriceNumeric) : pricing.effectivePriceString;
+  const lineTotalFormatted = totalNumeric > 0 ? formattedTotal : unitPriceFormatted;
+
+  const pricingBreakdownTableLines = [
+    '| Item Name | Size / Variant | Quantity | Unit Price | Total Price |',
+    `| ${product.name} | ${variantOrSizeLabel} | ${quantityDisplay} | ${unitPriceFormatted} | ${lineTotalFormatted} |`
+  ];
+
+  if (appliedCoupon) {
+    pricingBreakdownTableLines.push(`\n- Original Subtotal: ${lineTotalFormatted}`);
+    pricingBreakdownTableLines.push(`- Applied Coupon Code: ${appliedCoupon.code} (${appliedCoupon.discountPercentage}% OFF)`);
+    pricingBreakdownTableLines.push(`- Coupon Discount: -Rs. ${appliedCoupon.discountAmount.toLocaleString('en-PK')}`);
+    pricingBreakdownTableLines.push(`- Discounted Subtotal: Rs. ${appliedCoupon.finalTotal.toLocaleString('en-PK')}`);
   }
 
-  let noteLine = '';
-  if (customerNote && customerNote.trim() !== '') {
-    noteLine = `\n\n📝 *CUSTOMER NOTE*:\n${customerNote.trim()}`;
-  }
+  const pricingBreakdownTable = pricingBreakdownTableLines.join('\n');
 
-  const calculatedTotalDisplay = finalTotal !== undefined && finalTotal !== null
+  // 3. Delivery Details Section
+  const deliveryLines: string[] = [];
+  deliveryLines.push(`- Delivery City: ${deliveryCity || 'To be confirmed'}${isCustomCity ? ' (Custom Location)' : ''}`);
+  deliveryLines.push(`- Delivery Address: ${deliveryAddress || 'To be confirmed on WhatsApp'}`);
+  
+  let deliveryFeeLabel = 'FREE Delivery';
+  if (typeof deliveryFee === 'number' && deliveryFee > 0) {
+    deliveryFeeLabel = formatPakistaniPrice(deliveryFee);
+  } else if (typeof deliveryFee === 'string' && deliveryFee.trim() !== '') {
+    deliveryFeeLabel = deliveryFee.trim();
+  }
+  deliveryLines.push(`- Delivery Status / Delivery Charges: ${deliveryFeeLabel}`);
+
+  // 4. Grand Total
+  let calculatedGrandTotal = finalTotal !== undefined && finalTotal !== null
     ? (typeof finalTotal === 'number' ? formatPakistaniPrice(finalTotal) : finalTotal)
     : (totalNumeric > 0 ? formattedTotal : pricing.effectivePriceString);
 
-  const message = `Hello ${businessName}! 👋\n\nI would like to place an order from your website catalog:\n\n📦 *PRODUCT ORDER DETAILS*:\n━━━━━━━━━━━━━━━━━━\n• Product: *${productHeading}*${brandLine}${categoryLine}${skuLine}${variantLine}${shadeLine}${colorLine}${sizeLine}${materialLine}\n\n📊 *PRICING & QUANTITY*:\n• Quantity: *${quantityDisplay}*\n• Unit Price: *${unitPriceText}*\n• Total Price: *${totalNumeric > 0 ? formattedTotal : pricing.effectivePriceString}*${deliverySection}\n\n💰 *ORDER TOTAL*: *${calculatedTotalDisplay}*\n━━━━━━━━━━━━━━━━━━${noteLine}\n\nPlease confirm availability, delivery timeframe, and dispatch schedule. Thank you!`;
+  if (appliedCoupon && (finalTotal === undefined || finalTotal === null)) {
+    calculatedGrandTotal = formatPakistaniPrice(appliedCoupon.finalTotal);
+  }
 
+  // Construct Full Message following exact required structure
+  const messageParts: string[] = [
+    `Hello, Assalam-o-Alaikum ${businessName || 'Zafar Sarwar Traders'},\nI want to order the following products:`,
+    `**Product Information**\n${productInfoLines.join('\n')}`,
+    `**Pricing Breakdown**\n\n${pricingBreakdownTable}`,
+    `**Delivery Details**\n${deliveryLines.join('\n')}`,
+    `**Grand Total**\n${calculatedGrandTotal}`
+  ];
+
+  if (customerNote && customerNote.trim()) {
+    messageParts.push(`**Customer Note**\n${customerNote.trim()}`);
+  }
+
+  const message = messageParts.join('\n\n');
   const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
 
   return {

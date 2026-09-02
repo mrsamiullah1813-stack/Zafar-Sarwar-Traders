@@ -28,13 +28,14 @@ import {
   AlertCircle,
   Play
 } from 'lucide-react';
-import { Product, BusinessConfig, ProductVariant, PaintShade } from '../types';
+import { Product, BusinessConfig, ProductVariant, PaintShade, AppliedCouponState } from '../types';
 import { VideoPlayer } from './VideoPlayer';
 import { ProductDeliveryEstimator, DeliveryDetailsPayload } from './ProductDeliveryEstimator';
 import { ProductSaleBadge } from './ProductSaleBadge';
 import { SaleCountdownTimer } from './SaleCountdownTimer';
 import { PaintShadeSelector } from './PaintShadeSelector';
 import { ProductMediaViewer, compileProductMediaList } from './ProductMediaViewer';
+import { CouponPromoBox } from './CouponPromoBox';
 import { 
   getProductPricingDetails, 
   getVariantPricingDetails, 
@@ -190,21 +191,19 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
     isValid: false
   });
   const [orderValidationError, setOrderValidationError] = useState<string | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCouponState | null>(null);
 
-  // Calculate final order total including delivery fee if fixed
-  const finalOrderTotalNumeric = (lineTotalNumeric > 0 ? lineTotalNumeric : 0) + (deliveryDetails.deliveryFeeType === 'fixed' ? deliveryDetails.deliveryFeeAmount : 0);
-  const finalOrderTotalString = finalOrderTotalNumeric > 0 ? formatPakistaniPrice(finalOrderTotalNumeric) : lineTotalString;
+  // Recalculate coupon discount if line total changes
+  const couponDiscountAmount = appliedCoupon ? Math.round((lineTotalNumeric * appliedCoupon.discountPercentage) / 100) : 0;
+  const discountedProductTotal = Math.max(0, lineTotalNumeric - couponDiscountAmount);
+  const deliveryFeeNumeric = deliveryDetails.deliveryFeeType === 'fixed' ? deliveryDetails.deliveryFeeAmount : 0;
+
+  // Calculate final order total including delivery fee if fixed and coupon discount
+  const finalOrderTotalNumeric = (appliedCoupon ? discountedProductTotal : (lineTotalNumeric > 0 ? lineTotalNumeric : 0)) + deliveryFeeNumeric;
+  const finalOrderTotalString = finalOrderTotalNumeric > 0 ? formatPakistaniPrice(finalOrderTotalNumeric) : (appliedCoupon ? formatPakistaniPrice(discountedProductTotal) : lineTotalString);
 
   // Pre-filled WhatsApp message format with all actual customer selections, quantity, unit price, delivery destination, and total price
   const handleWhatsAppOrder = () => {
-    if (!deliveryDetails.city || deliveryDetails.city.trim() === '') {
-      setOrderValidationError('Please select your delivery city.');
-      return;
-    }
-    if (!deliveryDetails.address || deliveryDetails.address.trim() === '') {
-      setOrderValidationError('Please enter your complete delivery address.');
-      return;
-    }
     setOrderValidationError(null);
 
     const result = buildProductWhatsAppOrderUrl({
@@ -220,11 +219,17 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
       selectedSize: selectedSize || undefined,
       selectedMaterial: selectedQuality || undefined,
       unitPricing: pricing,
-      deliveryCity: deliveryDetails.city,
-      deliveryAddress: deliveryDetails.address,
-      deliveryFee: deliveryDetails.deliveryFeeType === 'fixed' ? deliveryDetails.deliveryFeeAmount : deliveryDetails.deliveryFeeDisplay,
+      deliveryCity: deliveryDetails.city || undefined,
+      deliveryAddress: deliveryDetails.address || undefined,
+      deliveryFee: deliveryDetails.deliveryFeeType === 'fixed' ? deliveryDetails.deliveryFeeAmount : (deliveryDetails.deliveryFeeDisplay || 'Free / Standard'),
       finalTotal: finalOrderTotalNumeric > 0 ? finalOrderTotalNumeric : undefined,
-      isCustomCity: deliveryDetails.isCustomCity
+      isCustomCity: deliveryDetails.isCustomCity,
+      appliedCoupon: appliedCoupon ? {
+        ...appliedCoupon,
+        originalTotal: lineTotalNumeric,
+        discountAmount: couponDiscountAmount,
+        finalTotal: discountedProductTotal
+      } : null
     });
     window.open(result.url, '_blank');
   };
@@ -1075,6 +1080,21 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
               <span className="text-base font-extrabold text-emerald-400 font-mono">
                 {finalOrderTotalString}
               </span>
+            </div>
+
+            {/* OPTIONAL PROMO / COUPON CODE BOX */}
+            <div className="pt-1">
+              <CouponPromoBox
+                subtotalNumeric={lineTotalNumeric}
+                appliedCoupon={appliedCoupon ? {
+                  ...appliedCoupon,
+                  originalTotal: lineTotalNumeric,
+                  discountAmount: couponDiscountAmount,
+                  finalTotal: discountedProductTotal
+                } : null}
+                onApplyCoupon={setAppliedCoupon}
+                onRemoveCoupon={() => setAppliedCoupon(null)}
+              />
             </div>
 
             {orderValidationError && (

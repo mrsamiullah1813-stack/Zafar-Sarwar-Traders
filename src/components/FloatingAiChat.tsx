@@ -464,8 +464,10 @@ export const FloatingAiChat: React.FC<FloatingAiChatProps> = ({
   };
 
   const handleProductWhatsAppOrder = (prodName: string, prodPrice?: string) => {
-    const text = `Hello Zafar Sarwar Traders, I would like to order/inquire about: ${prodName} (${prodPrice || 'Price on Request'}). Please share stock & delivery details.`;
-    const waUrl = `https://wa.me/${(config.phone || '923108002863').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(text)}`;
+    const rawNumber = config.whatsapp || config.phone || '923108002863';
+    const targetPhone = rawNumber.replace(/[^0-9]/g, '') || '923108002863';
+    const text = `Hello ${config.name || 'Zafar Sarwar Traders'}, I would like to order/inquire about: ${prodName} (${prodPrice || 'Price on Request'}). Please share stock & delivery details.`;
+    const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(text)}`;
     window.open(waUrl, '_blank');
   };
 

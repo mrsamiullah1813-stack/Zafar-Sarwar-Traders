@@ -33,8 +33,10 @@ export const Footer: React.FC<FooterProps> = ({
   onOpenDeliveryAreas 
 }) => {
   const handleWhatsApp = () => {
-    const text = encodeURIComponent(`Hello ${config.name}, I am visiting your website footer.`);
-    window.open(`https://wa.me/${config.whatsapp.replace(/[^0-9]/g, '')}?text=${text}`, '_blank');
+    const rawNumber = config.whatsapp || config.phone || '923108002863';
+    const targetPhone = rawNumber.replace(/[^0-9]/g, '') || '923108002863';
+    const text = encodeURIComponent(`Hello ${config.name || 'Zafar Sarwar Traders'}, I am visiting your website and would like to inquire about your products.`);
+    window.open(`https://wa.me/${targetPhone}?text=${text}`, '_blank');
   };
 
   return (

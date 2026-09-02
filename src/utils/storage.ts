@@ -1,4 +1,4 @@
-import { BusinessConfig, Product, ProductCategory, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, CartItem, CustomerOrder, CheckoutSettings, DeliverySettings, CityDeliveryInfo, ThemeOption, ThemeSettings, AnnouncementBarSettings, AnnouncementItem, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig, PricingTypographySettings, defaultPricingTypography } from '../types';
+import { BusinessConfig, Product, ProductCategory, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, CartItem, CustomerOrder, CheckoutSettings, DeliverySettings, CityDeliveryInfo, ThemeOption, ThemeSettings, AnnouncementBarSettings, AnnouncementItem, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig, PricingTypographySettings, defaultPricingTypography, Coupon, CouponValidationResult, AppliedCouponState } from '../types';
 import { initialBusinessConfig, productCategories, featuredProducts, galleryItems, productBrands, defaultStatCounters } from '../data/storeData';
 import { defaultBathroomPlannerConfig } from '../data/defaultPlannerConfig';
 import { defaultBuildMaterialEstimatorConfig } from '../data/defaultEstimatorConfig';
@@ -58,6 +58,7 @@ const STORAGE_KEYS = {
   SMART_TOOLS: 'zst_smart_tools_settings_v1',
   FITTING_BUILDER: 'zst_fitting_builder_config_v1',
   PRICING_TYPOGRAPHY: 'zst_pricing_typography_v1',
+  COUPONS: 'zst_coupons_list',
 };
 
 export const defaultHeroSettings: HeroSettings = {
@@ -1387,36 +1388,50 @@ export const syncWithServerCMS = async (callbacks: {
 }) => {
   await initializeSupabaseRuntime();
   try {
-    console.log('🔄 [Supabase & Backend Sync] Syncing live data from Supabase & server proxy...');
-    
-    // 1. Fetch Categories
-    const categoriesFromDb = await fetchCategoriesFromSupabase();
-    if (categoriesFromDb && Array.isArray(categoriesFromDb) && categoriesFromDb.length > 0) {
-      if (callbacks.setCategories) callbacks.setCategories(categoriesFromDb);
-      safeSetLocalStorage(STORAGE_KEYS.CATEGORIES, categoriesFromDb);
-      console.log(`[Sync] Categories loaded into React state: ${categoriesFromDb.length}`);
+    console.log('🔄 [Supabase & Backend Sync] Starting fast prioritized parallel sync...');
+
+    // PRIORITY BATCH 1 (Core Store & Catalog): Run in parallel so products, categories, brands, hero and config load immediately
+    const [
+      catsResult,
+      brandsResult,
+      productsResult,
+      heroResult,
+      configResult,
+      pricingTypoResult
+    ] = await Promise.allSettled([
+      fetchCategoriesFromSupabase(),
+      fetchBrandsFromSupabase(),
+      fetchProductsFromSupabase(),
+      fetchHeroSettingsFromSupabase(),
+      fetchSiteSettingFromSupabase<BusinessConfig>(STORAGE_KEYS.CONFIG),
+      fetchSiteSettingFromSupabase<PricingTypographySettings>(STORAGE_KEYS.PRICING_TYPOGRAPHY)
+    ]);
+
+    // 1. Categories
+    if (catsResult.status === 'fulfilled' && catsResult.value && Array.isArray(catsResult.value) && catsResult.value.length > 0) {
+      if (callbacks.setCategories) callbacks.setCategories(catsResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.CATEGORIES, catsResult.value);
+      console.log(`[Sync] Categories loaded into React state: ${catsResult.value.length}`);
     } else {
       const fallbackCats = loadStoredCategories();
       if (callbacks.setCategories) callbacks.setCategories(fallbackCats);
     }
 
-    // 2. Fetch Brands
-    const brandsFromDb = await fetchBrandsFromSupabase();
-    if (brandsFromDb && Array.isArray(brandsFromDb) && brandsFromDb.length > 0) {
-      if (callbacks.setBrands) callbacks.setBrands(brandsFromDb);
-      safeSetLocalStorage(STORAGE_KEYS.BRANDS, brandsFromDb);
-      console.log(`[Sync] Brands loaded into React state: ${brandsFromDb.length}`);
+    // 2. Brands
+    if (brandsResult.status === 'fulfilled' && brandsResult.value && Array.isArray(brandsResult.value) && brandsResult.value.length > 0) {
+      if (callbacks.setBrands) callbacks.setBrands(brandsResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.BRANDS, brandsResult.value);
+      console.log(`[Sync] Brands loaded into React state: ${brandsResult.value.length}`);
     } else {
       const fallbackBrands = loadStoredBrands();
       if (callbacks.setBrands) callbacks.setBrands(fallbackBrands);
     }
 
-    // 3. Fetch Products
-    const productsFromDb = await fetchProductsFromSupabase();
-    if (productsFromDb && Array.isArray(productsFromDb) && productsFromDb.length > 0) {
-      console.log(`[Sync] Products loaded into React state: ${productsFromDb.length}`);
-      if (callbacks.setProducts) callbacks.setProducts(productsFromDb);
-      const sanitized = productsFromDb.map(sanitizeProductForLocalStorage);
+    // 3. Products
+    if (productsResult.status === 'fulfilled' && productsResult.value && Array.isArray(productsResult.value) && productsResult.value.length > 0) {
+      console.log(`[Sync] Products loaded into React state: ${productsResult.value.length}`);
+      if (callbacks.setProducts) callbacks.setProducts(productsResult.value);
+      const sanitized = productsResult.value.map(sanitizeProductForLocalStorage);
       safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, sanitized);
     } else {
       const stored = loadStoredProducts();
@@ -1426,169 +1441,190 @@ export const syncWithServerCMS = async (callbacks: {
       }
     }
 
-    // 4. Fetch Hero Settings
-    const heroFromDb = await fetchHeroSettingsFromSupabase();
-    if (heroFromDb) {
-      if (callbacks.setHeroSettings) callbacks.setHeroSettings(heroFromDb);
-      safeSetLocalStorage(STORAGE_KEYS.HERO_SETTINGS, heroFromDb);
+    // 4. Hero Settings
+    if (heroResult.status === 'fulfilled' && heroResult.value) {
+      if (callbacks.setHeroSettings) callbacks.setHeroSettings(heroResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.HERO_SETTINGS, heroResult.value);
       console.log('[Sync] Hero settings loaded into React state');
     } else {
       const fallbackHero = loadHeroSettings();
       if (callbacks.setHeroSettings) callbacks.setHeroSettings(fallbackHero);
     }
 
-    // 5. Fetch Orders for Customer or All (if Admin)
-    const ordersFromDb = await fetchOrdersFromSupabase(callbacks.customerId);
-    if (callbacks.setOrders && ordersFromDb !== null) {
-      callbacks.setOrders(ordersFromDb);
-      safeSetLocalStorage(STORAGE_KEYS.ORDERS, ordersFromDb);
-      console.log(`[Sync] Orders loaded into React state: ${ordersFromDb.length}`);
-    }
-
-    // 6. Fetch Delivery Cities
-    const deliveryCitiesFromDb = await fetchDeliveryCitiesFromSupabase();
-    if (deliveryCitiesFromDb && deliveryCitiesFromDb.length > 0) {
-      const currentDeliverySettings = loadDeliverySettings();
-      const updatedDeliverySettings = { ...currentDeliverySettings, cities: deliveryCitiesFromDb };
-      if (callbacks.setDeliverySettings) callbacks.setDeliverySettings(updatedDeliverySettings);
-      safeSetLocalStorage(STORAGE_KEYS.DELIVERY_SETTINGS, updatedDeliverySettings);
-      console.log(`[Sync] Delivery cities loaded into React state: ${deliveryCitiesFromDb.length}`);
-    }
-
-    // 7. Fetch Site Settings (Business Config, Announcement, Theme, Checkout, Delivery, Stats, Contacts, Gallery, Planner, AI Assistant)
-    const configDb = await fetchSiteSettingFromSupabase<BusinessConfig>(STORAGE_KEYS.CONFIG);
-    if (configDb && typeof configDb === 'object' && Object.keys(configDb).length > 0 && (('name' in configDb) || ('phone' in configDb) || ('whatsapp' in configDb) || ('address' in configDb))) {
-      const mergedConfig = { ...loadStoredConfig(), ...configDb };
+    // 5. Config
+    if (configResult.status === 'fulfilled' && configResult.value && typeof configResult.value === 'object' && Object.keys(configResult.value).length > 0) {
+      const mergedConfig = { ...loadStoredConfig(), ...configResult.value };
       if (callbacks.setConfig) callbacks.setConfig(mergedConfig);
       safeSetLocalStorage(STORAGE_KEYS.CONFIG, mergedConfig);
-      console.log(`[Sync] Business config loaded into React state: ${mergedConfig.name} | Phone: ${mergedConfig.phone} | WhatsApp: ${mergedConfig.whatsapp}`);
     } else {
       const fallbackConfig = loadStoredConfig();
       if (callbacks.setConfig) callbacks.setConfig(fallbackConfig);
     }
 
-    const announcementDb = await fetchSiteSettingFromSupabase<AnnouncementBarSettings>(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS);
-    if (announcementDb && typeof announcementDb === 'object' && ('enabled' in announcementDb || 'message' in announcementDb || 'items' in announcementDb)) {
-      if (callbacks.setAnnouncementSettings) callbacks.setAnnouncementSettings(announcementDb);
-      safeSetLocalStorage(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, announcementDb);
-    } else {
-      const fallbackAnn = loadAnnouncementSettings();
-      if (callbacks.setAnnouncementSettings) callbacks.setAnnouncementSettings(fallbackAnn);
-    }
-
-    const themeDb = await fetchSiteSettingFromSupabase<ThemeSettings>(STORAGE_KEYS.THEME_SETTINGS);
-    if (themeDb && typeof themeDb === 'object' && Object.keys(themeDb).length > 0 && ('primaryColor' in themeDb || 'availableThemes' in themeDb || 'defaultTheme' in themeDb)) {
-      if (callbacks.setThemeSettings) callbacks.setThemeSettings(themeDb);
-      safeSetLocalStorage(STORAGE_KEYS.THEME_SETTINGS, themeDb);
-    } else {
-      const fallbackTheme = loadThemeSettings();
-      if (callbacks.setThemeSettings) callbacks.setThemeSettings(fallbackTheme);
-    }
-
-    const checkoutDb = await fetchSiteSettingFromSupabase<CheckoutSettings>(STORAGE_KEYS.CHECKOUT_SETTINGS);
-    if (checkoutDb && typeof checkoutDb === 'object' && Object.keys(checkoutDb).length > 0 && ('deliveryFee' in checkoutDb || 'freeDeliveryThreshold' in checkoutDb || 'whatsappNumberOverride' in checkoutDb || 'enableTaxes' in checkoutDb)) {
-      if (callbacks.setCheckoutSettings) callbacks.setCheckoutSettings(checkoutDb);
-      safeSetLocalStorage(STORAGE_KEYS.CHECKOUT_SETTINGS, checkoutDb);
-    } else {
-      const fallbackCheckout = loadCheckoutSettings();
-      if (callbacks.setCheckoutSettings) callbacks.setCheckoutSettings(fallbackCheckout);
-    }
-
-    const deliveryDb = await fetchSiteSettingFromSupabase<DeliverySettings>(STORAGE_KEYS.DELIVERY_SETTINGS);
-    if (deliveryDb && typeof deliveryDb === 'object' && Array.isArray((deliveryDb as any).cities)) {
-      if (callbacks.setDeliverySettings) callbacks.setDeliverySettings(deliveryDb);
-      safeSetLocalStorage(STORAGE_KEYS.DELIVERY_SETTINGS, deliveryDb);
-    }
-
-    const statsDb = await fetchSiteSettingFromSupabase<StatCounter[]>(STORAGE_KEYS.STATS);
-    if (Array.isArray(statsDb) && statsDb.length > 0) {
-      if (callbacks.setStats) callbacks.setStats(statsDb);
-      safeSetLocalStorage(STORAGE_KEYS.STATS, statsDb);
-    } else {
-      const fallbackStats = loadStoredStats();
-      if (callbacks.setStats) callbacks.setStats(fallbackStats);
-    }
-
-    const contactsDb = await fetchSiteSettingFromSupabase<ContactPerson[]>(STORAGE_KEYS.CONTACTS);
-    if (Array.isArray(contactsDb) && contactsDb.length > 0) {
-      if (callbacks.setContacts) callbacks.setContacts(contactsDb);
-      safeSetLocalStorage(STORAGE_KEYS.CONTACTS, contactsDb);
-      console.log(`[Sync] Contacts loaded into React state: ${contactsDb.length}`);
-    } else {
-      const fallbackContacts = loadStoredContacts();
-      if (callbacks.setContacts) callbacks.setContacts(fallbackContacts);
-    }
-
-    const galleryDb = await fetchSiteSettingFromSupabase<GalleryItem[]>(STORAGE_KEYS.GALLERY);
-    if (Array.isArray(galleryDb) && galleryDb.length > 0) {
-      if (callbacks.setGallery) callbacks.setGallery(galleryDb);
-      safeSetLocalStorage(STORAGE_KEYS.GALLERY, galleryDb);
-    } else {
-      const fallbackGallery = loadStoredGallery();
-      if (callbacks.setGallery) callbacks.setGallery(fallbackGallery);
-    }
-
-    const plannerDb = await fetchSiteSettingFromSupabase<AiDesignerConfig>(STORAGE_KEYS.PLANNER);
-    if (plannerDb && typeof plannerDb === 'object' && (Array.isArray((plannerDb as any).roomTypes) || Array.isArray((plannerDb as any).rules))) {
-      if (callbacks.setPlannerConfig) callbacks.setPlannerConfig(plannerDb);
-      safeSetLocalStorage(STORAGE_KEYS.PLANNER, plannerDb);
-    } else {
-      const fallbackPlanner = loadPlannerConfig();
-      if (callbacks.setPlannerConfig) callbacks.setPlannerConfig(fallbackPlanner);
-    }
-
-    const estimatorDb = await fetchBuildMaterialEstimatorFromSupabase();
-    if (estimatorDb && typeof estimatorDb === 'object' && Array.isArray(estimatorDb.houseSizes)) {
-      if (callbacks.setEstimatorConfig) callbacks.setEstimatorConfig(estimatorDb);
-      safeSetLocalStorage(STORAGE_KEYS.ESTIMATOR, estimatorDb);
-    } else {
-      const fallbackEstimator = loadBuildMaterialEstimatorConfig();
-      if (callbacks.setEstimatorConfig) callbacks.setEstimatorConfig(fallbackEstimator);
-    }
-
-    const fittingBuilderDb = await fetchFittingBuilderConfigFromSupabase();
-    if (fittingBuilderDb && typeof fittingBuilderDb === 'object' && Array.isArray(fittingBuilderDb.items) && fittingBuilderDb.items.length > 0) {
-      if (callbacks.setFittingBuilderConfig) callbacks.setFittingBuilderConfig(fittingBuilderDb);
-      safeSetLocalStorage(STORAGE_KEYS.FITTING_BUILDER, fittingBuilderDb);
-      console.log(`[Sync] Fitting Builder loaded with ${fittingBuilderDb.items.length} items`);
-    } else {
-      const fallbackFitting = loadFittingBuilderConfig();
-      if (callbacks.setFittingBuilderConfig) callbacks.setFittingBuilderConfig(fallbackFitting);
-    }
-
-    // AI Assistant Config & Custom Knowledge Base
-    const aiAssistantDb = await fetchAiAssistantConfigFromSupabase();
-    if (aiAssistantDb && typeof aiAssistantDb === 'object' && ('isEnabled' in aiAssistantDb || 'aiName' in aiAssistantDb || 'customKnowledge' in aiAssistantDb || 'welcomeMessage' in aiAssistantDb)) {
-      if (callbacks.setAiAssistantConfig) callbacks.setAiAssistantConfig(aiAssistantDb);
-      safeSetLocalStorage(STORAGE_KEYS.AI_ASSISTANT, aiAssistantDb);
-      console.log(`[Sync] AI Assistant config and ${aiAssistantDb.customKnowledge?.length || 0} knowledge entries loaded into React state`);
-    } else {
-      const fallbackAi = loadAiAssistantConfig();
-      if (callbacks.setAiAssistantConfig) callbacks.setAiAssistantConfig(fallbackAi);
-    }
-
-    const smartToolsDb = await fetchSiteSettingFromSupabase<SmartToolsSettings>(STORAGE_KEYS.SMART_TOOLS);
-    if (smartToolsDb && typeof smartToolsDb === 'object' && Array.isArray(smartToolsDb.tools)) {
-      if (callbacks.setSmartToolsSettings) callbacks.setSmartToolsSettings(smartToolsDb);
-      safeSetLocalStorage(STORAGE_KEYS.SMART_TOOLS, smartToolsDb);
-    } else {
-      const fallbackTools = loadSmartToolsSettings();
-      if (callbacks.setSmartToolsSettings) callbacks.setSmartToolsSettings(fallbackTools);
-    }
-
-    const pricingTypoDb = await fetchSiteSettingFromSupabase<PricingTypographySettings>(STORAGE_KEYS.PRICING_TYPOGRAPHY);
-    if (pricingTypoDb && typeof pricingTypoDb === 'object' && pricingTypoDb.color) {
-      if (callbacks.setPricingTypography) callbacks.setPricingTypography(pricingTypoDb);
-      safeSetLocalStorage(STORAGE_KEYS.PRICING_TYPOGRAPHY, pricingTypoDb);
-      applyPricingTypographyToRoot(pricingTypoDb);
-      console.log(`[Sync] Pricing typography loaded into React state: color=${pricingTypoDb.color}, font=${pricingTypoDb.fontFamily}`);
+    // 6. Pricing Typography
+    if (pricingTypoResult.status === 'fulfilled' && pricingTypoResult.value && typeof pricingTypoResult.value === 'object' && pricingTypoResult.value.color) {
+      if (callbacks.setPricingTypography) callbacks.setPricingTypography(pricingTypoResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.PRICING_TYPOGRAPHY, pricingTypoResult.value);
+      applyPricingTypographyToRoot(pricingTypoResult.value);
     } else {
       const fallbackPricingTypo = loadPricingTypographySettings();
       if (callbacks.setPricingTypography) callbacks.setPricingTypography(fallbackPricingTypo);
       applyPricingTypographyToRoot(fallbackPricingTypo);
     }
 
-    console.log('✅ [Database & Backend Sync] Synchronization complete!');
+    // PRIORITY BATCH 2 (Secondary Tools & Admin Settings): Run concurrently in parallel
+    const [
+      ordersResult,
+      citiesResult,
+      announcementResult,
+      themeResult,
+      checkoutResult,
+      deliveryResult,
+      statsResult,
+      contactsResult,
+      galleryResult,
+      plannerResult,
+      estimatorResult,
+      fittingResult,
+      aiResult,
+      smartToolsResult
+    ] = await Promise.allSettled([
+      fetchOrdersFromSupabase(callbacks.customerId),
+      fetchDeliveryCitiesFromSupabase(),
+      fetchSiteSettingFromSupabase<AnnouncementBarSettings>(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS),
+      fetchSiteSettingFromSupabase<ThemeSettings>(STORAGE_KEYS.THEME_SETTINGS),
+      fetchSiteSettingFromSupabase<CheckoutSettings>(STORAGE_KEYS.CHECKOUT_SETTINGS),
+      fetchSiteSettingFromSupabase<DeliverySettings>(STORAGE_KEYS.DELIVERY_SETTINGS),
+      fetchSiteSettingFromSupabase<StatCounter[]>(STORAGE_KEYS.STATS),
+      fetchSiteSettingFromSupabase<ContactPerson[]>(STORAGE_KEYS.CONTACTS),
+      fetchSiteSettingFromSupabase<GalleryItem[]>(STORAGE_KEYS.GALLERY),
+      fetchSiteSettingFromSupabase<AiDesignerConfig>(STORAGE_KEYS.PLANNER),
+      fetchBuildMaterialEstimatorFromSupabase(),
+      fetchFittingBuilderConfigFromSupabase(),
+      fetchAiAssistantConfigFromSupabase(),
+      fetchSiteSettingFromSupabase<SmartToolsSettings>(STORAGE_KEYS.SMART_TOOLS)
+    ]);
+
+    // Orders
+    if (ordersResult.status === 'fulfilled' && ordersResult.value !== null && callbacks.setOrders) {
+      callbacks.setOrders(ordersResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.ORDERS, ordersResult.value);
+    }
+
+    // Delivery Cities
+    if (citiesResult.status === 'fulfilled' && citiesResult.value && citiesResult.value.length > 0) {
+      const currentDeliverySettings = loadDeliverySettings();
+      const updatedDeliverySettings = { ...currentDeliverySettings, cities: citiesResult.value };
+      if (callbacks.setDeliverySettings) callbacks.setDeliverySettings(updatedDeliverySettings);
+      safeSetLocalStorage(STORAGE_KEYS.DELIVERY_SETTINGS, updatedDeliverySettings);
+    }
+
+    // Announcements
+    if (announcementResult.status === 'fulfilled' && announcementResult.value && typeof announcementResult.value === 'object') {
+      if (callbacks.setAnnouncementSettings) callbacks.setAnnouncementSettings(announcementResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, announcementResult.value);
+    } else {
+      const fallbackAnn = loadAnnouncementSettings();
+      if (callbacks.setAnnouncementSettings) callbacks.setAnnouncementSettings(fallbackAnn);
+    }
+
+    // Theme
+    if (themeResult.status === 'fulfilled' && themeResult.value && typeof themeResult.value === 'object' && Object.keys(themeResult.value).length > 0) {
+      if (callbacks.setThemeSettings) callbacks.setThemeSettings(themeResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.THEME_SETTINGS, themeResult.value);
+    } else {
+      const fallbackTheme = loadThemeSettings();
+      if (callbacks.setThemeSettings) callbacks.setThemeSettings(fallbackTheme);
+    }
+
+    // Checkout
+    if (checkoutResult.status === 'fulfilled' && checkoutResult.value && typeof checkoutResult.value === 'object' && Object.keys(checkoutResult.value).length > 0) {
+      if (callbacks.setCheckoutSettings) callbacks.setCheckoutSettings(checkoutResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.CHECKOUT_SETTINGS, checkoutResult.value);
+    } else {
+      const fallbackCheckout = loadCheckoutSettings();
+      if (callbacks.setCheckoutSettings) callbacks.setCheckoutSettings(fallbackCheckout);
+    }
+
+    // Delivery
+    if (deliveryResult.status === 'fulfilled' && deliveryResult.value && typeof deliveryResult.value === 'object' && Array.isArray((deliveryResult.value as any).cities)) {
+      if (callbacks.setDeliverySettings) callbacks.setDeliverySettings(deliveryResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.DELIVERY_SETTINGS, deliveryResult.value);
+    }
+
+    // Stats
+    if (statsResult.status === 'fulfilled' && Array.isArray(statsResult.value) && statsResult.value.length > 0) {
+      if (callbacks.setStats) callbacks.setStats(statsResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.STATS, statsResult.value);
+    } else {
+      const fallbackStats = loadStoredStats();
+      if (callbacks.setStats) callbacks.setStats(fallbackStats);
+    }
+
+    // Contacts
+    if (contactsResult.status === 'fulfilled' && Array.isArray(contactsResult.value) && contactsResult.value.length > 0) {
+      if (callbacks.setContacts) callbacks.setContacts(contactsResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.CONTACTS, contactsResult.value);
+    } else {
+      const fallbackContacts = loadStoredContacts();
+      if (callbacks.setContacts) callbacks.setContacts(fallbackContacts);
+    }
+
+    // Gallery
+    if (galleryResult.status === 'fulfilled' && Array.isArray(galleryResult.value) && galleryResult.value.length > 0) {
+      if (callbacks.setGallery) callbacks.setGallery(galleryResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.GALLERY, galleryResult.value);
+    } else {
+      const fallbackGallery = loadStoredGallery();
+      if (callbacks.setGallery) callbacks.setGallery(fallbackGallery);
+    }
+
+    // Planner
+    if (plannerResult.status === 'fulfilled' && plannerResult.value && typeof plannerResult.value === 'object') {
+      if (callbacks.setPlannerConfig) callbacks.setPlannerConfig(plannerResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.PLANNER, plannerResult.value);
+    } else {
+      const fallbackPlanner = loadPlannerConfig();
+      if (callbacks.setPlannerConfig) callbacks.setPlannerConfig(fallbackPlanner);
+    }
+
+    // Material Estimator
+    if (estimatorResult.status === 'fulfilled' && estimatorResult.value && typeof estimatorResult.value === 'object') {
+      if (callbacks.setEstimatorConfig) callbacks.setEstimatorConfig(estimatorResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.ESTIMATOR, estimatorResult.value);
+    } else {
+      const fallbackEstimator = loadBuildMaterialEstimatorConfig();
+      if (callbacks.setEstimatorConfig) callbacks.setEstimatorConfig(fallbackEstimator);
+    }
+
+    // Fitting Builder
+    if (fittingResult.status === 'fulfilled' && fittingResult.value && typeof fittingResult.value === 'object' && Array.isArray(fittingResult.value.items) && fittingResult.value.items.length > 0) {
+      if (callbacks.setFittingBuilderConfig) callbacks.setFittingBuilderConfig(fittingResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.FITTING_BUILDER, fittingResult.value);
+    } else {
+      const fallbackFitting = loadFittingBuilderConfig();
+      if (callbacks.setFittingBuilderConfig) callbacks.setFittingBuilderConfig(fallbackFitting);
+    }
+
+    // AI Assistant
+    if (aiResult.status === 'fulfilled' && aiResult.value && typeof aiResult.value === 'object') {
+      if (callbacks.setAiAssistantConfig) callbacks.setAiAssistantConfig(aiResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.AI_ASSISTANT, aiResult.value);
+    } else {
+      const fallbackAi = loadAiAssistantConfig();
+      if (callbacks.setAiAssistantConfig) callbacks.setAiAssistantConfig(fallbackAi);
+    }
+
+    // Smart Tools
+    if (smartToolsResult.status === 'fulfilled' && smartToolsResult.value && typeof smartToolsResult.value === 'object') {
+      if (callbacks.setSmartToolsSettings) callbacks.setSmartToolsSettings(smartToolsResult.value);
+      safeSetLocalStorage(STORAGE_KEYS.SMART_TOOLS, smartToolsResult.value);
+    } else {
+      const fallbackTools = loadSmartToolsSettings();
+      if (callbacks.setSmartToolsSettings) callbacks.setSmartToolsSettings(fallbackTools);
+    }
+
+    console.log('✅ [Database & Backend Sync] Fast parallel synchronization complete!');
     return;
   } catch (err) {
     console.error('[Database & Backend Sync] Sync error, falling back to local cache:', err);
@@ -1768,5 +1804,212 @@ export const verifySecurityPinLocally = (pin: string): boolean => {
   if (cleanPin.length !== 4) return false;
   const validPins = getValidPakistanTimePins();
   return validPins.has(cleanPin);
+};
+
+// =========================================================
+// COUPONS & PROMO CODES MANAGEMENT & VALIDATION ENGINE
+// =========================================================
+
+export const defaultSeedCoupons: Coupon[] = [
+  {
+    id: "coupon-welcome10",
+    code: "WELCOME10",
+    discountPercentage: 10,
+    isEnabled: true,
+    description: "Welcome Discount for Customers",
+    minOrderAmount: 1000,
+    maxDiscountAmount: 5000,
+    usageCount: 0,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: "coupon-zst5",
+    code: "ZST5",
+    discountPercentage: 5,
+    isEnabled: true,
+    description: "Storewide Loyalty Discount",
+    minOrderAmount: 500,
+    usageCount: 0,
+    createdAt: new Date().toISOString()
+  }
+];
+
+export const loadCouponsFromStorage = (): Coupon[] => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.COUPONS);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.warn('Error loading coupons from localStorage:', e);
+  }
+  return defaultSeedCoupons;
+};
+
+export const fetchCouponsFromBackend = async (): Promise<Coupon[]> => {
+  try {
+    const res = await fetch('/api/coupons');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.coupons)) {
+        safeSetLocalStorage(STORAGE_KEYS.COUPONS, data.coupons);
+        return data.coupons;
+      }
+    }
+  } catch (e) {
+    console.warn('[Coupons] Backend fetch fallback to local storage:', e);
+  }
+  return loadCouponsFromStorage();
+};
+
+export const saveCouponsToStorage = async (coupons: Coupon[]): Promise<{ success: boolean; error?: string }> => {
+  try {
+    safeSetLocalStorage(STORAGE_KEYS.COUPONS, coupons);
+    saveToServerCMS(STORAGE_KEYS.COUPONS, coupons);
+
+    // Save to Supabase and server endpoints
+    const res = await fetch('/api/coupons/upsert', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${getAdminPin() || '8002'}`
+      },
+      body: JSON.stringify({ coupons })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success) {
+        return { success: true };
+      }
+    }
+
+    // Also sync to Supabase site_settings directly
+    await saveSiteSettingToSupabase(STORAGE_KEYS.COUPONS, coupons);
+    return { success: true };
+  } catch (e: any) {
+    console.error('Error saving coupons:', e);
+    return { success: false, error: e?.message || 'Failed to save coupons.' };
+  }
+};
+
+export const saveCouponSingle = async (coupon: Coupon): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const currentList = loadCouponsFromStorage();
+    const idx = currentList.findIndex(c => c.id === coupon.id);
+    let updatedList: Coupon[];
+    if (idx >= 0) {
+      updatedList = [...currentList];
+      updatedList[idx] = coupon;
+    } else {
+      updatedList = [coupon, ...currentList];
+    }
+    return await saveCouponsToStorage(updatedList);
+  } catch (e: any) {
+    return { success: false, error: e?.message || 'Failed to save coupon' };
+  }
+};
+
+export const deleteCouponFromStorage = async (id: string): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const currentList = loadCouponsFromStorage();
+    const filtered = currentList.filter(c => c.id !== id);
+    safeSetLocalStorage(STORAGE_KEYS.COUPONS, filtered);
+    saveToServerCMS(STORAGE_KEYS.COUPONS, filtered);
+
+    await fetch(`/api/coupons/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${getAdminPin() || '8002'}`
+      }
+    });
+
+    await saveSiteSettingToSupabase(STORAGE_KEYS.COUPONS, filtered);
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e?.message || 'Failed to delete coupon' };
+  }
+};
+
+/**
+ * Validates a coupon code securely against the backend endpoint without exposing the list of coupons.
+ */
+export const validateCouponCode = async (code: string, orderAmount: number): Promise<CouponValidationResult> => {
+  if (!code || !code.trim()) {
+    return { valid: false, error: 'Invalid or unavailable promo code.' };
+  }
+
+  const cleanCode = code.trim().toUpperCase();
+  const numAmount = Math.max(0, orderAmount || 0);
+
+  try {
+    const res = await fetch('/api/coupons/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: cleanCode, orderAmount: numAmount })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.valid && data.coupon) {
+        return {
+          valid: true,
+          coupon: data.coupon
+        };
+      } else {
+        return {
+          valid: false,
+          error: data?.error || 'Invalid or unavailable promo code.'
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[Coupon] Network error validating coupon, running local validation check:', err);
+  }
+
+  // Graceful local fallback if offline or server is temporarily unreachable
+  const storedList = loadCouponsFromStorage();
+  const matched = storedList.find(c => (c.code || '').trim().toUpperCase() === cleanCode);
+
+  if (!matched || matched.isEnabled === false) {
+    return { valid: false, error: 'Invalid or unavailable promo code.' };
+  }
+
+  if (matched.expiryDate) {
+    const exp = new Date(matched.expiryDate);
+    if (!isNaN(exp.getTime())) {
+      exp.setHours(23, 59, 59, 999);
+      if (Date.now() > exp.getTime()) {
+        return { valid: false, error: 'Invalid or unavailable promo code.' };
+      }
+    }
+  }
+
+  if (matched.minOrderAmount && matched.minOrderAmount > 0 && numAmount < matched.minOrderAmount) {
+    return { valid: false, error: 'Invalid or unavailable promo code.' };
+  }
+
+  const pct = Math.max(0, Math.min(100, matched.discountPercentage || 0));
+  let discountAmount = Math.round((numAmount * pct) / 100);
+  if (matched.maxDiscountAmount && matched.maxDiscountAmount > 0) {
+    discountAmount = Math.min(discountAmount, matched.maxDiscountAmount);
+  }
+  discountAmount = Math.min(discountAmount, numAmount);
+  const finalTotal = Math.max(0, numAmount - discountAmount);
+
+  return {
+    valid: true,
+    coupon: {
+      id: matched.id,
+      code: matched.code.trim().toUpperCase(),
+      discountPercentage: pct,
+      discountAmount,
+      originalTotal: numAmount,
+      finalTotal,
+      minOrderAmount: matched.minOrderAmount,
+      maxDiscountAmount: matched.maxDiscountAmount
+    }
+  };
 };
 

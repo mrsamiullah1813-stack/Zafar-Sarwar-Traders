@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, X, Filter, ArrowUpDown, Tag, Sparkles, ShoppingBag, Eye, Check, ChevronRight, SlidersHorizontal, RefreshCw } from 'lucide-react';
 import { Product, ProductCategory, ProductBrand } from '../types';
-import { filterProducts, parseNaturalLanguageQuery, getNumericPrice } from '../utils/searchUtils';
+import { filterProducts, parseNaturalLanguageQuery, getNumericPrice, getInstantSearchSuggestions } from '../utils/searchUtils';
 import { ProductSaleBadge } from './ProductSaleBadge';
 import { getProductPricingDetails } from '../utils/pricingUtils';
 
@@ -73,6 +73,9 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
       (p.availableFinishes || []).forEach(f => colorsSet.add(f));
       (p.availableMaterials || []).forEach(m => materialsSet.add(m));
       (p.availableSizes || []).forEach(s => sizesSet.add(s));
+      (p.variantsList || p.variantsConfig?.variants || []).forEach(v => {
+        if (v && v.name) sizesSet.add(v.name);
+      });
     });
 
     return {
@@ -84,37 +87,9 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
     };
   }, [products]);
 
-  // Extract instant search suggestions
+  // Extract instant search suggestions with intelligent variant awareness
   const suggestions = useMemo(() => {
-    if (!searchQuery.trim() || searchQuery.length < 2) return [];
-
-    const q = searchQuery.toLowerCase().trim();
-    const matches: { title: string; type: 'product' | 'category' | 'brand'; target?: any }[] = [];
-
-    // Categories
-    categories.forEach(c => {
-      if (c.name.toLowerCase().includes(q)) {
-        matches.push({ title: c.name, type: 'category', target: c });
-      }
-    });
-
-    // Brands
-    brands.forEach(b => {
-      if (b.name.toLowerCase().includes(q)) {
-        matches.push({ title: b.name, type: 'brand', target: b });
-      }
-    });
-
-    // Products
-    products.forEach(p => {
-      if (p.name.toLowerCase().includes(q) || (p.sku && p.sku.toLowerCase().includes(q))) {
-        if (matches.length < 8) {
-          matches.push({ title: p.name, type: 'product', target: p });
-        }
-      }
-    });
-
-    return matches.slice(0, 7);
+    return getInstantSearchSuggestions(searchQuery, products, categories, brands);
   }, [searchQuery, products, categories, brands]);
 
   // Natural Language parse summary
@@ -123,7 +98,7 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
     return parseNaturalLanguageQuery(debouncedQuery);
   }, [debouncedQuery]);
 
-  // Filtered Results
+  // Filtered Results with variant matching
   const filteredResults = useMemo(() => {
     return filterProducts(products, debouncedQuery, {
       categoryId: selectedCategory,
@@ -181,7 +156,7 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
                   Advanced Product Search & Filters
                 </h2>
                 <p className="text-[11px] text-slate-400">
-                  Search across names, brands, categories, SKUs, colors, materials & natural prices
+                  Search across names, variants, sizes (e.g. 32 mm, 16 liter), brands, categories, SKUs & natural prices
                 </p>
               </div>
             </div>
@@ -207,7 +182,7 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
                   setShowSuggestions(true);
                 }}
                 onFocus={() => setShowSuggestions(true)}
-                placeholder="Search products, brands, categories (e.g., 'shower under 15000', '10k basin', 'gold faucet')..."
+                placeholder="Search products, sizes, variants (e.g. '32 mm elbow', '16 liter paint', '1 inch socket', 'white paint')..."
                 className="w-full pl-12 pr-28 py-3.5 rounded-2xl bg-slate-800 border border-slate-700 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-medium transition-all shadow-inner"
               />
               {searchQuery && (
@@ -239,8 +214,11 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
                   <button
                     key={idx}
                     onClick={() => {
-                      if (s.type === 'product') {
+                      if (s.type === 'product' || s.type === 'variant') {
                         onSelectProduct(s.target);
+                        onClose();
+                      } else if (s.type === 'category' && onSelectCategory) {
+                        onSelectCategory(s.target);
                         onClose();
                       } else {
                         setSearchQuery(s.title);
@@ -249,12 +227,14 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
                     }}
                     className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800 text-xs font-semibold text-slate-200 flex items-center justify-between gap-2 transition-colors"
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <Search className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                      <span>{s.title}</span>
+                      <span className="truncate">{s.title}</span>
                     </div>
-                    <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-slate-800 text-slate-400">
-                      {s.type}
+                    <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded shrink-0 ${
+                      s.type === 'variant' ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'
+                    }`}>
+                      {s.type === 'variant' ? 'Variant Match' : s.type}
                     </span>
                   </button>
                 ))}
@@ -457,6 +437,9 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {filteredResults.map(product => {
                   const pricing = getProductPricingDetails(product);
+                  const hasMatchedVariants = Boolean(product.matchedVariants && product.matchedVariants.length > 0);
+                  const hasOptions = Boolean(product.allDisplayOptions && product.allDisplayOptions.length > 0);
+
                   return (
                     <div
                       key={product.id}
@@ -485,7 +468,7 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
                       </div>
 
                       {/* DETAILS */}
-                      <div className="p-3.5 flex-1 flex flex-col justify-between gap-3">
+                      <div className="p-3.5 flex-1 flex flex-col justify-between gap-2.5">
                         <div>
                           <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider font-mono">
                             {product.category}
@@ -496,11 +479,28 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
                           >
                             {product.name}
                           </h4>
-                          {product.sku && (
+                          
+                          {/* VARIANT / SIZE AVAILABILITY HIGHLIGHT */}
+                          {hasMatchedVariants ? (
+                            <div className="mt-1.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                                <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                                <span>
+                                  {product.matchedVariants!.length === 1 
+                                    ? `${product.matchedVariants![0]} Available` 
+                                    : `Available sizes: ${product.matchedVariants!.join(', ')}`}
+                                </span>
+                              </span>
+                            </div>
+                          ) : hasOptions ? (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[10px] text-slate-500 font-medium">
+                              <span>Sizes: {product.allDisplayOptions!.slice(0, 3).join(', ')}{product.allDisplayOptions!.length > 3 ? ` +${product.allDisplayOptions!.length - 3}` : ''}</span>
+                            </div>
+                          ) : product.sku ? (
                             <p className="text-[10px] text-slate-400 font-mono mt-0.5">
                               SKU: {product.sku}
                             </p>
-                          )}
+                          ) : null}
                         </div>
 
                         {/* PRICE & BUTTONS */}
@@ -606,7 +606,9 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
             )}
           </div>
         </div>
+
       </div>
     </div>
   );
 };
+

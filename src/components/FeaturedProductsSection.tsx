@@ -279,6 +279,8 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                     <img
                       src={product.image || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80'}
                       alt={`${product.name} - Luxury Sanitaryware & Bathroom Fittings Pakistan | Zafar Sarwar Traders`}
+                      loading="lazy"
+                      decoding="async"
                       onError={(e) => {
                         const target = e.currentTarget;
                         if (!target.src.includes('unsplash.com/photo-1584622650111')) {

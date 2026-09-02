@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { X, ShoppingBag, CheckCircle2, Truck, ShieldCheck, Phone, MapPin, User, FileText, Send, Building2, Info, Compass, Mail } from 'lucide-react';
-import { CartItem, BusinessConfig, CheckoutSettings, CustomerOrder, OrderItem, DeliverySettings } from '../types';
+import { CartItem, BusinessConfig, CheckoutSettings, CustomerOrder, OrderItem, DeliverySettings, AppliedCouponState } from '../types';
 import { loadDeliverySettings, generateNextOrderId } from '../utils/storage';
 import { getOrGenerateCustomerId } from '../utils/customerStorage';
 import { getProductPricingDetails, getVariantPricingDetails, getActiveProductPrice } from '../utils/pricingUtils';
+import { CouponPromoBox } from './CouponPromoBox';
 
 interface OrderCheckoutModalProps {
   isOpen: boolean;
@@ -43,6 +44,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCouponState | null>(null);
 
   if (!isOpen) return null;
 
@@ -79,21 +81,27 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
   const subtotal = calculateSubtotal();
 
+  const couponDiscountAmount = appliedCoupon 
+    ? Math.round((subtotal * appliedCoupon.discountPercentage) / 100) 
+    : 0;
+  const discountedSubtotal = Math.max(0, subtotal - couponDiscountAmount);
+  const effectiveSubtotal = appliedCoupon ? discountedSubtotal : subtotal;
+
   const isFreeDelivery = checkoutSettings.freeDeliveryThreshold 
-    ? subtotal >= checkoutSettings.freeDeliveryThreshold 
+    ? effectiveSubtotal >= checkoutSettings.freeDeliveryThreshold 
     : false;
 
   const cityDeliveryFee = isCustomCitySelected 
     ? (checkoutSettings.deliveryFee || 250)
     : (matchedCity ? matchedCity.deliveryFee : (checkoutSettings.deliveryFee || 250));
 
-  const deliveryCharges = subtotal > 0 ? (isFreeDelivery ? 0 : cityDeliveryFee) : 0;
+  const deliveryCharges = effectiveSubtotal > 0 ? (isFreeDelivery ? 0 : cityDeliveryFee) : 0;
   
   const taxAmount = checkoutSettings.enableTaxes && checkoutSettings.taxRatePercent > 0
-    ? Math.round((subtotal * checkoutSettings.taxRatePercent) / 100)
+    ? Math.round((effectiveSubtotal * checkoutSettings.taxRatePercent) / 100)
     : 0;
 
-  const grandTotal = subtotal + deliveryCharges + taxAmount;
+  const grandTotal = effectiveSubtotal + deliveryCharges + taxAmount;
 
   const validate = () => {
     const errs: Record<string, string> = {};
@@ -181,6 +189,9 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
       notes: notes.trim() || undefined,
       items: orderItems,
       subtotal,
+      appliedCouponCode: appliedCoupon?.code,
+      couponDiscountPercentage: appliedCoupon?.discountPercentage,
+      couponDiscountAmount: couponDiscountAmount,
       deliveryCharges,
       taxAmount,
       grandTotal,
@@ -191,77 +202,95 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
       estimatedDeliveryTime: '10:00 AM – 6:00 PM',
     };
 
-    // Construct formatted WhatsApp message
-    let msg = `NEW ORDER — ${(config.name || 'ZAFAR SARWAR TRADERS').toUpperCase()}\n\n`;
-    msg += `Order ID:\n#${orderId}\n\n`;
-
-    msg += `CUSTOMER\n`;
-    msg += `Name: ${customerName.trim()}\n`;
-    msg += `Phone: ${phoneNumber.trim()}\n\n`;
-
-    msg += `DELIVERY LOCATION\n`;
-    msg += `City: ${finalCityName}\n`;
-    msg += `Area: ${areaLocality.trim()}\n`;
-    msg += `Address: ${deliveryAddress.trim()}\n`;
-    if (postalCode.trim()) msg += `Postal Code: ${postalCode.trim()}\n`;
-    if (landmark.trim()) msg += `Landmark: ${landmark.trim()}\n`;
-    msg += `\n`;
-
-    msg += `DELIVERY\n`;
-    if (isCustomCitySelected) {
-      msg += `Estimated Delivery: ${deliverySettings.customCityNotice || 'Delivery time for this location will be confirmed by our team.'}\n\n`;
-    } else if (matchedCity) {
-      msg += `Estimated Delivery: ${matchedCity.estimatedDays}\n\n`;
-    } else {
-      msg += `Estimated Delivery: Standard Courier Delivery\n\n`;
-    }
-
-    msg += `ORDER ITEMS\n\n`;
+    // 1. Product Information Section
+    const productInfoSections: string[] = [];
     orderItems.forEach((item, index) => {
       const variantName = (item.selectedVariant || item.selectedVariantName || item.selectedSize || '').trim();
       const hasVariant = Boolean(variantName && variantName.length > 0);
-      const productTitle = hasVariant && !item.productName.toLowerCase().includes(variantName.toLowerCase())
-        ? `${item.productName} — ${variantName}`
-        : item.productName;
-
-      msg += `${index + 1}. ${productTitle}\n`;
-      msg += `Product: ${item.productName}\n`;
-      if (hasVariant) {
-        msg += `Size: ${variantName}\n`;
+      
+      const lines: string[] = [];
+      if (orderItems.length > 1) {
+        lines.push(`${index + 1}. Product Name: ${item.productName}`);
+      } else {
+        lines.push(`- Product Name: ${item.productName}`);
       }
-      msg += `Quantity: ${item.quantity}\n`;
-      if (item.selectedShade) msg += `Selected Shade: ${item.selectedShade}\n`;
-      if (item.selectedShadeCode) msg += `Shade Code: ${item.selectedShadeCode}\n`;
-      if (item.selectedColor && !item.selectedShade) msg += `Color: ${item.selectedColor}\n`;
-      if (item.selectedQuality) msg += `Quality: ${item.selectedQuality}\n`;
-      msg += `Unit Price: ${item.unitPrice}\n`;
-      msg += `Total Price: ${item.lineTotal > 0 ? `PKR ${item.lineTotal.toLocaleString('en-PK')}` : item.unitPrice}\n\n`;
+
+      if (item.brand && item.brand.trim()) {
+        lines.push(`- Brand: ${item.brand.trim()}`);
+      }
+      if (item.category && item.category.trim()) {
+        lines.push(`- Category: ${item.category.trim()}`);
+      }
+      if (hasVariant) {
+        lines.push(`- Size / Variant: ${variantName}`);
+      }
+      if (item.selectedShade) {
+        lines.push(`- Color / Finish: ${item.selectedShade}${item.selectedShadeCode ? ` (Code: ${item.selectedShadeCode})` : ''}`);
+      } else if (item.selectedColor) {
+        lines.push(`- Color / Finish: ${item.selectedColor}`);
+      }
+      if (item.selectedQuality) {
+        lines.push(`- Material: ${item.selectedQuality}`);
+      } else if (item.material && item.material.trim()) {
+        lines.push(`- Material: ${item.material.trim()}`);
+      }
+
+      productInfoSections.push(lines.join('\n'));
     });
 
-    msg += `--------------------------------\n`;
-    msg += `Subtotal: PKR ${subtotal.toLocaleString('en-PK')}\n`;
+    // 2. Pricing Breakdown Table
+    const tableRows = [
+      '| Item Name | Size / Variant | Quantity | Unit Price | Total Price |'
+    ];
+
+    orderItems.forEach(item => {
+      const variantOrSize = (item.selectedVariant || item.selectedVariantName || item.selectedSize || 'Standard').trim();
+      const lineTotalFormatted = item.lineTotal > 0 ? `Rs. ${item.lineTotal.toLocaleString('en-PK')}` : item.unitPrice;
+      tableRows.push(`| ${item.productName} | ${variantOrSize} | ${item.quantity} | ${item.unitPrice} | ${lineTotalFormatted} |`);
+    });
+
+    if (appliedCoupon) {
+      tableRows.push(`\n- Original Subtotal: Rs. ${subtotal.toLocaleString('en-PK')}`);
+      tableRows.push(`- Applied Coupon Code: ${appliedCoupon.code} (${appliedCoupon.discountPercentage}% OFF)`);
+      tableRows.push(`- Coupon Discount: -Rs. ${couponDiscountAmount.toLocaleString('en-PK')}`);
+      tableRows.push(`- Discounted Subtotal: Rs. ${discountedSubtotal.toLocaleString('en-PK')}`);
+    }
+
+    const pricingBreakdownTable = tableRows.join('\n');
+
+    // 3. Delivery Details Section
+    const deliveryLines: string[] = [];
+    deliveryLines.push(`- Delivery City: ${finalCityName}${isCustomCitySelected ? ' (Custom Location)' : ''}`);
+    deliveryLines.push(`- Delivery Address: ${deliveryAddress.trim()}${areaLocality.trim() ? `, ${areaLocality.trim()}` : ''}${landmark.trim() ? ` (Near: ${landmark.trim()})` : ''}`);
+    
+    let deliveryFeeText = 'FREE Delivery';
     if (isCustomCitySelected) {
-      msg += `Delivery Fee: Will be confirmed by team on WhatsApp\n`;
-    } else if (deliveryCharges === 0) {
-      msg += `Delivery Fee: FREE Delivery\n`;
-    } else {
-      msg += `Delivery Fee: PKR ${deliveryCharges.toLocaleString('en-PK')}\n`;
+      deliveryFeeText = 'Will be confirmed on WhatsApp';
+    } else if (deliveryCharges > 0) {
+      deliveryFeeText = `Rs. ${deliveryCharges.toLocaleString('en-PK')}`;
     }
-    if (taxAmount > 0) {
-      msg += `Tax (${checkoutSettings.taxRatePercent}%): PKR ${taxAmount.toLocaleString('en-PK')}\n`;
-    }
-    msg += `TOTAL: PKR ${grandTotal.toLocaleString('en-PK')}\n`;
-    msg += `--------------------------------\n\n`;
+    deliveryLines.push(`- Delivery Status / Delivery Charges: ${deliveryFeeText}`);
+
+    // 4. Grand Total
+    const grandTotalText = `Rs. ${grandTotal.toLocaleString('en-PK')}`;
+
+    // Construct Full Message adhering strictly to requested order format
+    const messageParts: string[] = [
+      `Hello, Assalam-o-Alaikum ${config.name || 'Zafar Sarwar Traders'},\nI want to order the following products:`,
+      `**Product Information**\n${productInfoSections.join('\n\n')}`,
+      `**Pricing Breakdown**\n\n${pricingBreakdownTable}`,
+      `**Delivery Details**\n${deliveryLines.join('\n')}`,
+      `**Grand Total**\n${grandTotalText}`
+    ];
 
     if (deliveryInstructions.trim()) {
-      msg += `Additional Instructions:\n${deliveryInstructions.trim()}\n\n`;
+      messageParts.push(`**Delivery Instructions**\n${deliveryInstructions.trim()}`);
     }
-
     if (notes.trim()) {
-      msg += `Special Notes:\n${notes.trim()}\n\n`;
+      messageParts.push(`**Customer Notes**\n${notes.trim()}`);
     }
 
-    msg += `Please confirm order availability and delivery.`;
+    const msg = messageParts.join('\n\n');
 
     // Save order
     await onOrderPlaced(newOrder);
@@ -601,6 +630,21 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                     {grandTotal > 0 ? `PKR ${grandTotal.toLocaleString('en-PK')}` : 'Price on Request'}
                   </span>
                 </div>
+              </div>
+
+              {/* Coupon / Promo Code Input Area */}
+              <div className="pt-1">
+                <CouponPromoBox
+                  subtotalNumeric={subtotal}
+                  appliedCoupon={appliedCoupon ? {
+                    ...appliedCoupon,
+                    originalTotal: subtotal,
+                    discountAmount: couponDiscountAmount,
+                    finalTotal: discountedSubtotal
+                  } : null}
+                  onApplyCoupon={setAppliedCoupon}
+                  onRemoveCoupon={() => setAppliedCoupon(null)}
+                />
               </div>
             </div>
 

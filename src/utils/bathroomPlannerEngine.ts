@@ -113,26 +113,13 @@ export function generateBathroomPackage(
 
         matchedProduct = bestCandidate;
       } else {
-        // Fallback: pick any available product
-        matchedProduct = visibleProducts[0] || null;
+        // Only pick an available product from the same category or relevant keywords, do NOT pick random or fabricate
+        matchedProduct = null;
       }
     }
 
     if (matchedProduct) {
-      let unitPrice = parseProductPrice(matchedProduct.price);
-      if (unitPrice === 0) {
-        // Estimate a realistic price based on fixture and budget multiplier
-        const baseEstimateMap: Record<string, number> = {
-          'toilet': 24500,
-          'basin': 16500,
-          'shower': 18500,
-          'muslim_shower': 4800,
-          'accessories': 8500,
-          'fittings': 6200
-        };
-        const base = baseEstimateMap[fixtureId] || 10000;
-        unitPrice = Math.round(base * budget.multiplier);
-      }
+      const unitPrice = parseProductPrice(matchedProduct.salePrice || matchedProduct.price);
 
       items.push({
         fixtureId,
@@ -141,8 +128,8 @@ export function generateBathroomPackage(
         product: matchedProduct,
         selectedColor: style.name,
         quantity: 1,
-        unitPrice,
-        totalPrice: unitPrice,
+        unitPrice: unitPrice > 0 ? unitPrice : 0,
+        totalPrice: unitPrice > 0 ? unitPrice : 0,
         isIncluded: true
       });
     }
@@ -163,43 +150,67 @@ export function generateBathroomPackage(
 }
 
 /**
- * Builds clean, friendly WhatsApp message for sharing and ordering package
+ * Builds clean, friendly WhatsApp message for sharing and ordering bathroom package
  */
 export function buildPlannerWhatsAppMessage(
   result: EasyBathroomPlannerResult,
   whatsappNumber: string = "923108002863",
-  customTemplate?: string
+  _customTemplate?: string
 ): string {
-  const itemsText = result.items
-    .filter(item => item.isIncluded)
-    .map((item, idx) => `${idx + 1}. *${item.fixtureName}* (${item.product.brand}): ${item.product.name} — ${formatPKR(item.totalPrice)}`)
-    .join('\n');
+  const activeItems = result.items.filter(item => item.isIncluded && item.product);
 
-  const template = customTemplate || `*ZAFAR SARWAR TRADERS — BATHROOM PACKAGE INQUIRY*
+  // 1. Product Information Section
+  const productInfoSections: string[] = [];
+  activeItems.forEach((item, index) => {
+    const lines: string[] = [];
+    lines.push(`${index + 1}. Product Name: ${item.product.name} (${item.fixtureName})`);
+    if (item.product.brand) {
+      lines.push(`- Brand: ${item.product.brand}`);
+    }
+    if (item.product.category) {
+      lines.push(`- Category: ${item.product.category}`);
+    }
+    if (item.selectedColor) {
+      lines.push(`- Color / Finish: ${item.selectedColor}`);
+    }
+    if (item.product.material) {
+      lines.push(`- Material: ${item.product.material}`);
+    }
+    productInfoSections.push(lines.join('\n'));
+  });
 
-Assalam-o-Alaikum,
-I selected a custom bathroom package on your website:
+  // 2. Pricing Breakdown Table
+  const tableRows = [
+    '| Item Name | Size / Variant | Quantity | Unit Price | Total Price |'
+  ];
 
-• *Bathroom Type:* {bathroomType}
-• *Style Finish:* {style}
-• *Budget Tier:* {budget}
-• *Total Fixtures:* {itemsCount} Items
+  activeItems.forEach(item => {
+    const unitFormatted = item.unitPrice > 0 ? `Rs. ${item.unitPrice.toLocaleString('en-PK')}` : item.product.price || 'Call for Price';
+    const totalFormatted = item.totalPrice > 0 ? `Rs. ${item.totalPrice.toLocaleString('en-PK')}` : unitFormatted;
+    tableRows.push(`| ${item.product.name} | ${item.selectedColor || 'Standard'} | ${item.quantity} | ${unitFormatted} | ${totalFormatted} |`);
+  });
 
-*PACKAGE ITEMS:*
-{itemsList}
+  const pricingBreakdownTable = tableRows.join('\n');
 
-*ESTIMATED PACKAGE TOTAL:* PKR {totalPrice}
+  // 3. Delivery Details Section
+  const deliveryLines = [
+    '- Delivery City: To be confirmed on WhatsApp',
+    '- Delivery Address: To be confirmed on WhatsApp',
+    '- Delivery Status / Delivery Charges: Free / Based on Location'
+  ];
 
-Please share final package price, available discounts & delivery to my location.`;
+  // 4. Grand Total
+  const grandTotalText = `Rs. ${Math.round(result.totalPackagePrice).toLocaleString('en-PK')}`;
 
-  const message = template
-    .replace('{bathroomType}', result.bathroomTypeName)
-    .replace('{style}', result.styleName)
-    .replace('{budget}', result.budgetTierName)
-    .replace('{itemsCount}', String(result.totalItemsCount))
-    .replace('{itemsList}', itemsText)
-    .replace('{totalPrice}', Math.round(result.totalPackagePrice).toLocaleString('en-PK'));
+  const messageParts: string[] = [
+    `Hello, Assalam-o-Alaikum Zafar Sarwar Traders,\nI want to order the following products from the Bathroom Planner (${result.bathroomTypeName} - ${result.styleName}):`,
+    `**Product Information**\n${productInfoSections.join('\n\n')}`,
+    `**Pricing Breakdown**\n\n${pricingBreakdownTable}`,
+    `**Delivery Details**\n${deliveryLines.join('\n')}`,
+    `**Grand Total**\n${grandTotalText}`
+  ];
 
-  const cleanPhone = whatsappNumber.replace(/[^0-9]/g, '');
+  const message = messageParts.join('\n\n');
+  const cleanPhone = whatsappNumber.replace(/[^0-9]/g, '') || '923108002863';
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
 }

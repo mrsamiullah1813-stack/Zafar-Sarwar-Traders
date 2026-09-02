@@ -54,9 +54,10 @@ export function PaintQuantityCalculator({
   }, [inputs, products, settings]);
 
   const handleWhatsAppInquiry = () => {
-    const phone = config.phone || "923108002863";
+    const rawPhone = config.whatsapp || config.phone || "923108002863";
+    const phone = rawPhone.replace(/[^0-9]/g, '') || "923108002863";
     const msg = buildPaintEstimateWhatsAppMessage(result);
-    window.open(`https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
   return (

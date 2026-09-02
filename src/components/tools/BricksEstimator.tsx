@@ -364,9 +364,10 @@ export function BricksEstimator({ config, settings }: BricksEstimatorProps) {
 
   // WhatsApp & Sharing Handlers
   const handleWhatsAppShare = () => {
-    const phone = config.phone || "923108002863";
+    const rawPhone = config.whatsapp || config.phone || "923108002863";
+    const phone = rawPhone.replace(/[^0-9]/g, '') || "923108002863";
     const msg = buildHouseBrickEstimateWhatsAppMessage(result, config.name);
-    window.open(`https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
   const handleCopySummary = () => {

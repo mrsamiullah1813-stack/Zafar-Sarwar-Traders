@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { Product, ProductCategory, ProductBrand, HeroSettings } from '../types';
 import { ProductSaleBadge } from './ProductSaleBadge';
-import { getProductPricingDetails } from '../utils/pricingUtils';
+import { getProductPricingDetails, buildProductWhatsAppOrderUrl } from '../utils/pricingUtils';
 import { loadStoredConfig } from '../utils/storage';
 
 interface HeroSectionProps {
@@ -206,15 +206,13 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
     const currentConfig = loadStoredConfig();
     const rawPhone = currentConfig?.whatsapp || currentConfig?.phone || '923108002863';
     const phone = rawPhone.replace(/[^0-9]/g, '');
-    const pricing = getProductPricingDetails(prod);
-    let priceText = pricing.effectivePriceString;
-    if (pricing.isSaleActive && pricing.discountPercentage > 0) {
-      priceText = `${pricing.formattedSalePrice} (Special Sale: ${pricing.discountPercentage}% OFF — Regular: ${pricing.formattedRegularPrice})`;
-    }
-    const text = encodeURIComponent(
-      `Assalam-o-Alaikum! I am interested in purchasing from ${currentConfig?.name || 'Zafar Sarwar Traders'}:\n\n*Product:* ${prod.name}\n*Price:* ${priceText}\n*SKU:* ${prod.sku || prod.id}\n\nPlease share availability and order confirmation.`
-    );
-    window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
+    const result = buildProductWhatsAppOrderUrl({
+      businessName: currentConfig?.name || 'Zafar Sarwar Traders',
+      whatsappNumber: phone,
+      product: prod,
+      quantity: 1
+    });
+    window.open(result.url, '_blank');
   };
 
   // Dynamic animation variants based on transition style

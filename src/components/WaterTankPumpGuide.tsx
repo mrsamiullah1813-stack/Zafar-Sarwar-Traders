@@ -63,7 +63,8 @@ export const WaterTankPumpGuide: React.FC<WaterTankPumpGuideProps> = ({
 
   const handleWhatsAppInquiry = () => {
     const text = buildWaterGuideWhatsAppMessage(result);
-    const targetNumber = (config.phone || "923108002863").replace(/[^0-9]/g, '');
+    const rawNumber = config.whatsapp || config.phone || "923108002863";
+    const targetNumber = rawNumber.replace(/[^0-9]/g, '') || "923108002863";
     window.open(`https://wa.me/${targetNumber}?text=${encodeURIComponent(text)}`, '_blank');
   };
 

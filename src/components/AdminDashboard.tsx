@@ -70,6 +70,7 @@ import { Megaphone, Palette, HardHat } from 'lucide-react';
 import { AdminThemeManager } from './AdminThemeManager';
 import { AdminPricingAppearanceManager } from './AdminPricingAppearanceManager';
 import { AdminSmartToolsManager } from './AdminSmartToolsManager';
+import { AdminCouponsManager } from './AdminCouponsManager';
 import { Product, ProductCategory, ProductVideo, BusinessConfig, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, ThemeSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig } from '../types';
 import { getAdminPin, setAdminPin, loadPlannerConfig, savePlannerConfig, loadBuildMaterialEstimatorConfig, saveBuildMaterialEstimatorConfig, loadAiAssistantConfig, saveAiAssistantConfig, loadThemeSettings, saveThemeSettings, loadHeroSettings, saveHeroSettings, loadSmartToolsSettings, saveSmartToolsSettings, loadFittingBuilderConfig, saveFittingBuilderConfig, deleteProductFromStorage, saveStoredProducts, saveStoredProductSingle, deleteCategoryFromStorage, saveStoredCategories, saveStoredCategorySingle, deleteBrandFromStorage, saveStoredBrands, saveStoredBrandSingle } from '../utils/storage';
 
@@ -122,7 +123,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onLogout,
   onClose
 }) => {
-  const [activeTab, setActiveTab] = useState<'analytics' | 'hero' | 'announcements' | 'orders' | 'customers' | 'delivery' | 'products' | 'categories' | 'brands' | 'contacts' | 'statistics' | 'banners_seo' | 'pricing_appearance' | 'gallery' | 'smart_tools' | 'construction_builder' | 'planner' | 'estimator' | 'ai_assistant' | 'themes'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'hero' | 'announcements' | 'orders' | 'customers' | 'coupons' | 'delivery' | 'products' | 'categories' | 'brands' | 'contacts' | 'statistics' | 'banners_seo' | 'pricing_appearance' | 'gallery' | 'smart_tools' | 'construction_builder' | 'planner' | 'estimator' | 'ai_assistant' | 'themes'>('analytics');
   const [plannerConfig, setPlannerConfig] = useState<AiDesignerConfig>(loadPlannerConfig());
   const [estimatorConfig, setEstimatorConfig] = useState<BuildMaterialEstimatorConfig>(loadBuildMaterialEstimatorConfig());
   const [fittingConfigState, setFittingConfigState] = useState<FittingBuilderConfig>(fittingBuilderConfig || loadFittingBuilderConfig());
@@ -814,6 +815,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('coupons')}
+              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all ${
+                activeTab === 'coupons'
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-950'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Tag className="w-4 h-4 text-amber-400" />
+                <span>Coupons & Promo Codes</span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-amber-950 text-[10px] text-amber-300 font-mono font-bold">
+                Discounts
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('delivery')}
               className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all ${
                 activeTab === 'delivery'
@@ -1191,6 +1209,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <AdminCustomersManager
               onShowToast={showToast}
             />
+          )}
+
+          {/* TAB: COUPONS & PROMO CODES MANAGER */}
+          {activeTab === 'coupons' && (
+            <AdminCouponsManager />
           )}
 
           {/* TAB: SMART DELIVERY ESTIMATION SYSTEM */}

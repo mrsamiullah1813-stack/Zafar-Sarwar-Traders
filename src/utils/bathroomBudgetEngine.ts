@@ -103,11 +103,13 @@ export function calculateBathroomBudgetPackage(
       bestProduct = sorted[0];
       itemPrice = parsePriceToNumber(bestProduct.salePrice || bestProduct.price);
     } else {
-      // Fallback estimated standard price for this fixture
-      itemPrice = Math.max(2500, Math.round(categoryAllocatedBudget));
+      bestProduct = undefined;
+      itemPrice = 0;
     }
 
-    totalPackagePrice += itemPrice;
+    if (itemPrice > 0) {
+      totalPackagePrice += itemPrice;
+    }
 
     items.push({
       categoryKey: fixtureKey,
@@ -150,22 +152,56 @@ export function calculateBathroomBudgetPackage(
 }
 
 export function buildBudgetMessageForWhatsApp(result: BathroomBudgetPackageResult, showroomPhone: string = "+92 310 8002863"): string {
-  const lines: string[] = [];
-  lines.push(`*ZAFAR SARWAR TRADERS — BATHROOM BUDGET INQUIRY*`);
-  lines.push(`----------------------------------------`);
-  lines.push(`*Bathroom Type:* ${result.inputs.bathroomType.toUpperCase()}`);
-  lines.push(`*Target Budget:* ${formatPricePKR(result.targetBudget)}`);
-  lines.push(`*Preferred Style:* ${result.inputs.preferredStyle.toUpperCase()}`);
-  lines.push(`*Estimated Package Total:* ${formatPricePKR(result.totalPackagePrice)}`);
-  lines.push(``);
-  lines.push(`*SELECTED ITEMS:*`);
+  const activeItems = result.items.filter(item => item.product && item.estimatedPrice > 0);
 
-  result.items.forEach((item, index) => {
-    const prodName = item.product ? item.product.name : item.categoryTitle;
-    lines.push(`${index + 1}. ${item.categoryTitle}: ${prodName} (${formatPricePKR(item.estimatedPrice)})`);
+  // 1. Product Information Section
+  const productInfoSections: string[] = [];
+  activeItems.forEach((item, index) => {
+    if (!item.product) return;
+    const lines: string[] = [];
+    lines.push(`${index + 1}. Product Name: ${item.product.name} (${item.categoryTitle})`);
+    if (item.product.brand) {
+      lines.push(`- Brand: ${item.product.brand}`);
+    }
+    if (item.product.category) {
+      lines.push(`- Category: ${item.product.category}`);
+    }
+    if (item.product.material) {
+      lines.push(`- Material: ${item.product.material}`);
+    }
+    productInfoSections.push(lines.join('\n'));
   });
 
-  lines.push(``);
-  lines.push(`Please confirm stock availability, wholesale discount, and delivery schedule.`);
-  return lines.join('\n');
+  // 2. Pricing Breakdown Table
+  const tableRows = [
+    '| Item Name | Size / Variant | Quantity | Unit Price | Total Price |'
+  ];
+
+  activeItems.forEach(item => {
+    if (!item.product) return;
+    const unitFormatted = item.estimatedPrice > 0 ? `Rs. ${item.estimatedPrice.toLocaleString('en-PK')}` : item.product.price || 'Call for Price';
+    tableRows.push(`| ${item.product.name} | Standard | 1 | ${unitFormatted} | ${unitFormatted} |`);
+  });
+
+  const pricingBreakdownTable = tableRows.join('\n');
+
+  // 3. Delivery Details Section
+  const deliveryLines = [
+    '- Delivery City: To be confirmed on WhatsApp',
+    '- Delivery Address: To be confirmed on WhatsApp',
+    '- Delivery Status / Delivery Charges: Free / Based on Location'
+  ];
+
+  // 4. Grand Total
+  const grandTotalText = `Rs. ${Math.round(result.totalPackagePrice).toLocaleString('en-PK')}`;
+
+  const messageParts: string[] = [
+    `Hello, Assalam-o-Alaikum Zafar Sarwar Traders,\nI want to order the following products from the Bathroom Budget Finder (${result.inputs.bathroomType.toUpperCase()} - Target: ${formatPricePKR(result.targetBudget)}):`,
+    `**Product Information**\n${productInfoSections.join('\n\n')}`,
+    `**Pricing Breakdown**\n\n${pricingBreakdownTable}`,
+    `**Delivery Details**\n${deliveryLines.join('\n')}`,
+    `**Grand Total**\n${grandTotalText}`
+  ];
+
+  return messageParts.join('\n\n');
 }

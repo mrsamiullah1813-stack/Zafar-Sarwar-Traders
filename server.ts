@@ -1033,6 +1033,254 @@ async function startServer() {
   });
 
   // =========================================================
+  // SECURE REAL-TIME COUPONS & PROMO CODES ENGINE
+  // =========================================================
+  const COUPONS_STORAGE_KEY = "zst_coupons_list";
+
+  // Helper to retrieve all coupons securely from Supabase / server CMS
+  async function getStoredCouponsList(): Promise<any[]> {
+    let coupons: any[] = [];
+    if (dbClient) {
+      try {
+        // Try site_settings key-value
+        const { data, error } = await dbClient.from("site_settings").select("value").eq("key", COUPONS_STORAGE_KEY).maybeSingle();
+        if (!error && Array.isArray(data?.value)) {
+          coupons = data.value;
+        } else {
+          // Check if a dedicated 'coupons' table exists
+          const { data: tableData, error: tableErr } = await dbClient.from("coupons").select("*");
+          if (!tableErr && Array.isArray(tableData) && tableData.length > 0) {
+            coupons = tableData;
+          }
+        }
+      } catch (err) {
+        console.warn("[Coupons DB] Failed to fetch from Supabase table/key:", err);
+      }
+    }
+
+    if (coupons.length === 0 && Array.isArray(cmsDataStore[COUPONS_STORAGE_KEY])) {
+      coupons = cmsDataStore[COUPONS_STORAGE_KEY];
+    }
+
+    // Default seeded initial coupons if completely empty
+    if (coupons.length === 0) {
+      coupons = [
+        {
+          id: "coupon-welcome10",
+          code: "WELCOME10",
+          discountPercentage: 10,
+          isEnabled: true,
+          description: "Welcome Discount for New Customers",
+          minOrderAmount: 1000,
+          maxDiscountAmount: 5000,
+          usageCount: 0,
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: "coupon-zst5",
+          code: "ZST5",
+          discountPercentage: 5,
+          isEnabled: true,
+          description: "Storewide Loyalty Discount",
+          minOrderAmount: 500,
+          usageCount: 0,
+          createdAt: new Date().toISOString()
+        }
+      ];
+      cmsDataStore[COUPONS_STORAGE_KEY] = coupons;
+      persistDataStoreToDisk().catch(() => {});
+    }
+
+    return coupons;
+  }
+
+  // Public secure validation endpoint - strictly checks rules without exposing database or other promo codes
+  app.post("/api/coupons/validate", async (req, res) => {
+    try {
+      const { code, orderAmount = 0 } = req.body;
+      if (!code || typeof code !== "string" || code.trim() === "") {
+        return res.json({
+          success: false,
+          valid: false,
+          error: "Invalid or unavailable promo code."
+        });
+      }
+
+      const cleanCode = code.trim().toUpperCase();
+      const numAmount = Math.max(0, parseFloat(String(orderAmount)) || 0);
+
+      const coupons = await getStoredCouponsList();
+      const matched = coupons.find(c => (c.code || "").trim().toUpperCase() === cleanCode);
+
+      if (!matched) {
+        return res.json({
+          success: false,
+          valid: false,
+          error: "Invalid or unavailable promo code."
+        });
+      }
+
+      // Check if disabled
+      if (matched.isEnabled === false) {
+        return res.json({
+          success: false,
+          valid: false,
+          error: "Invalid or unavailable promo code."
+        });
+      }
+
+      // Check expiry date if configured
+      if (matched.expiryDate) {
+        const expiry = new Date(matched.expiryDate);
+        // Include the entire expiry day up to 23:59:59.999
+        if (!isNaN(expiry.getTime())) {
+          expiry.setHours(23, 59, 59, 999);
+          if (Date.now() > expiry.getTime()) {
+            return res.json({
+              success: false,
+              valid: false,
+              error: "Invalid or unavailable promo code."
+            });
+          }
+        }
+      }
+
+      // Check minimum order amount if set
+      if (matched.minOrderAmount && matched.minOrderAmount > 0) {
+        if (numAmount < matched.minOrderAmount) {
+          return res.json({
+            success: false,
+            valid: false,
+            error: "Invalid or unavailable promo code."
+          });
+        }
+      }
+
+      // Compute exact percentage discount
+      const pct = Math.max(0, Math.min(100, parseFloat(String(matched.discountPercentage)) || 0));
+      let discountAmount = Math.round((numAmount * pct) / 100);
+
+      // Apply maximum discount cap if set
+      if (matched.maxDiscountAmount && matched.maxDiscountAmount > 0) {
+        discountAmount = Math.min(discountAmount, matched.maxDiscountAmount);
+      }
+
+      // Ensure discount does not exceed subtotal
+      discountAmount = Math.min(discountAmount, numAmount);
+      const finalTotal = Math.max(0, numAmount - discountAmount);
+
+      return res.json({
+        success: true,
+        valid: true,
+        coupon: {
+          id: matched.id,
+          code: matched.code.trim().toUpperCase(),
+          discountPercentage: pct,
+          discountAmount: discountAmount,
+          originalTotal: numAmount,
+          finalTotal: finalTotal,
+          minOrderAmount: matched.minOrderAmount || undefined,
+          maxDiscountAmount: matched.maxDiscountAmount || undefined
+        }
+      });
+    } catch (err: any) {
+      console.error("[Coupon Validation Error]:", err);
+      return res.status(500).json({
+        success: false,
+        valid: false,
+        error: "Invalid or unavailable promo code."
+      });
+    }
+  });
+
+  // Admin endpoint: List all coupons
+  app.get("/api/coupons", async (req, res) => {
+    try {
+      const coupons = await getStoredCouponsList();
+      return res.json({ success: true, coupons });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // Admin endpoint: Upsert coupons (Save full list or single coupon)
+  app.post("/api/coupons/upsert", requireAdminAuth, async (req, res) => {
+    try {
+      const { coupon, coupons } = req.body;
+      let currentList = await getStoredCouponsList();
+
+      if (Array.isArray(coupons)) {
+        currentList = coupons;
+      } else if (coupon && coupon.id) {
+        const idx = currentList.findIndex(c => c.id === coupon.id);
+        const updatedCoupon = {
+          ...coupon,
+          code: (coupon.code || "").trim().toUpperCase(),
+          discountPercentage: Math.max(0, Math.min(100, Number(coupon.discountPercentage) || 0)),
+          updatedAt: new Date().toISOString()
+        };
+        if (idx >= 0) {
+          currentList[idx] = updatedCoupon;
+        } else {
+          currentList.unshift(updatedCoupon);
+        }
+      } else {
+        return res.status(400).json({ success: false, error: "Invalid coupon data provided" });
+      }
+
+      // Save to disk & in-memory cache
+      cmsDataStore[COUPONS_STORAGE_KEY] = currentList;
+      await persistDataStoreToDisk();
+
+      // Persist permanently in Supabase
+      if (dbClient) {
+        try {
+          await dbClient.from("site_settings").upsert({
+            key: COUPONS_STORAGE_KEY,
+            value: currentList,
+            updated_at: new Date().toISOString()
+          }, { onConflict: "key" });
+        } catch (dbErr) {
+          console.warn("[Coupons DB Upsert Warning]:", dbErr);
+        }
+      }
+
+      return res.json({ success: true, coupons: currentList });
+    } catch (err: any) {
+      console.error("[Coupons Upsert Error]:", err);
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // Admin endpoint: Delete a coupon
+  app.delete("/api/coupons/:id", requireAdminAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      let currentList = await getStoredCouponsList();
+      currentList = currentList.filter(c => c.id !== id);
+
+      cmsDataStore[COUPONS_STORAGE_KEY] = currentList;
+      await persistDataStoreToDisk();
+
+      if (dbClient) {
+        try {
+          await dbClient.from("site_settings").upsert({
+            key: COUPONS_STORAGE_KEY,
+            value: currentList,
+            updated_at: new Date().toISOString()
+          }, { onConflict: "key" });
+        } catch (dbErr) {
+          console.warn("[Coupons DB Delete Warning]:", dbErr);
+        }
+      }
+
+      return res.json({ success: true, coupons: currentList });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // =========================================================
   // SMART FITTING BUILDER CONFIG PROXY (SUPABASE)
   // =========================================================
   app.get("/api/db/fitting-builder", async (req, res) => {

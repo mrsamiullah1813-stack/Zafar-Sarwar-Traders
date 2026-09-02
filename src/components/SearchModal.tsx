@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Search, X, MessageSquare, ArrowRight } from 'lucide-react';
+import { Search, X, MessageSquare, ArrowRight, Check } from 'lucide-react';
 import { Product, ProductCategory, BusinessConfig } from '../types';
+import { filterProducts } from '../utils/searchUtils';
 
 interface SearchModalProps {
   products: Product[];
@@ -26,13 +27,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const q = query.trim().toLowerCase();
 
   const matchedProducts = q
-    ? safeProducts.filter(
-        (p) =>
-          p &&
-          ((p.name || '').toLowerCase().includes(q) ||
-          (p.category || '').toLowerCase().includes(q) ||
-          (p.description || '').toLowerCase().includes(q))
-      )
+    ? filterProducts(safeProducts, query, { sortBy: 'relevance' })
     : [];
 
   const matchedCategories = q
@@ -62,7 +57,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search products, faucets, showers, pipes, cement..."
+            placeholder="Search products, sizes (e.g. 32 mm elbow, 16 liter paint)..."
             className="w-full pl-11 pr-4 py-3.5 rounded-2xl bg-slate-950 border border-blue-500/40 text-sm text-white placeholder-slate-500 focus:outline-none shadow-xl"
           />
           <Search className="w-5 h-5 text-blue-400 absolute left-4 top-4" />
@@ -74,7 +69,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             <div className="text-center py-8">
               <span className="text-xs font-semibold text-slate-400 block mb-3">Popular Searches:</span>
               <div className="flex flex-wrap justify-center gap-2">
-                {['Rain Shower', 'Designer Faucet', 'CPVC Pipe', 'Master Paint', 'Wall Hung WC', 'Cement'].map((term) => (
+                {['32 mm Elbow', '16 Liter Paint', 'Rain Shower', 'Designer Faucet', 'CPVC Pipe', 'Master Paint', 'Wall Hung WC', 'Cement'].map((term) => (
                   <button
                     key={term}
                     onClick={() => setQuery(term)}
@@ -135,11 +130,19 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                             <div className="text-white font-bold text-xs group-hover:text-blue-300">
                               {prod.name}
                             </div>
-                            <div className="text-slate-400 text-[10px]">{prod.category}</div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-slate-400 text-[10px]">{prod.category}</span>
+                              {prod.matchedVariants && prod.matchedVariants.length > 0 && (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-bold">
+                                  <Check className="w-3 h-3" />
+                                  <span>{prod.matchedVariants[0]} Available</span>
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
 
-                        <span className="text-[10px] text-blue-400 font-semibold px-2 py-1 rounded bg-blue-950 border border-blue-800">
+                        <span className="text-[10px] text-blue-400 font-semibold px-2 py-1 rounded bg-blue-950 border border-blue-800 shrink-0">
                           View Specs
                         </span>
                       </div>

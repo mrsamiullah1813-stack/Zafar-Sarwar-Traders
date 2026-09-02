@@ -510,6 +510,12 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                         <span>Subtotal:</span>
                         <span className="font-mono text-slate-200">PKR {order.subtotal?.toLocaleString('en-PK')}</span>
                       </div>
+                      {order.appliedCouponCode && (
+                        <div className="flex justify-between text-amber-400 font-semibold">
+                          <span>Coupon ({order.appliedCouponCode}{order.couponDiscountPercentage ? ` - ${order.couponDiscountPercentage}%` : ''}):</span>
+                          <span className="font-mono">-PKR {order.couponDiscountAmount?.toLocaleString('en-PK') || 0}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between text-slate-400">
                         <span>Delivery Fee:</span>
                         <span className="font-mono text-slate-200">
