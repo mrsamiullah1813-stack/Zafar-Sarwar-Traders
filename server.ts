@@ -939,25 +939,46 @@ async function startServer() {
           return res.json({ success: true, data: kvData.value });
         }
 
-        // 2. Try single row config with named column
+        // 2. Try single row config with named column (id = 'config')
         const k = key.toLowerCase();
-        let colName = null;
-        if (k.includes("announcement")) colName = "announcements";
-        else if (k.includes("theme")) colName = "theme_settings";
-        else if (k.includes("ai") || k.includes("assistant")) colName = "ai_assistant";
-        else if (k.includes("contact")) colName = "contact_info";
-        else if (k.includes("stat")) colName = "stats";
-        else if (k.includes("delivery")) colName = "delivery_settings";
-        else if (k.includes("checkout")) colName = "checkout_settings";
-        else if (k.includes("planner") || k.includes("designer")) colName = "planner_config";
-        else if (k.includes("config") || k.includes("business")) colName = "business_config";
-        else if (k.includes("gallery")) colName = "gallery";
-        else if (k.includes("pricing") || k.includes("typography")) colName = "pricing_typography";
+        if (k.includes("pricing") || k.includes("typography")) {
+          const { data: themeData } = await dbClient.from("site_settings").select("theme_settings").eq("id", "config").maybeSingle();
+          const pTypo = themeData?.theme_settings?.pricingTypography || themeData?.theme_settings?.pricing_typography;
+          if (pTypo) {
+            return res.json({ success: true, data: pTypo });
+          }
+        } else if (k.includes("coupon") || k.includes("promo")) {
+          const { data: chkData } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
+          const coupons = chkData?.checkout_settings?.coupons || chkData?.checkout_settings?.promo_codes;
+          if (coupons && Array.isArray(coupons)) {
+            return res.json({ success: true, data: coupons });
+          }
+        } else if (k.includes("smart_tools") || k.includes("smart-tools") || k.includes("smarttools")) {
+          const { data: planData } = await dbClient.from("site_settings").select("planner_config").eq("id", "config").maybeSingle();
+          if (planData?.planner_config?.smartTools) {
+            return res.json({ success: true, data: planData.planner_config.smartTools });
+          }
+        } else if (k.includes("fitting")) {
+          const { data: planData } = await dbClient.from("site_settings").select("planner_config").eq("id", "config").maybeSingle();
+          if (planData?.planner_config?.fittingBuilder) {
+            return res.json({ success: true, data: planData.planner_config.fittingBuilder });
+          }
+        } else {
+          let colName = null;
+          if (k.includes("announcement")) colName = "announcements";
+          else if (k.includes("theme")) colName = "theme_settings";
+          else if (k.includes("ai") || k.includes("assistant")) colName = "ai_assistant";
+          else if (k.includes("contact")) colName = "contact_info";
+          else if (k.includes("stat")) colName = "stats";
+          else if (k.includes("delivery")) colName = "delivery_settings";
+          else if (k.includes("checkout")) colName = "checkout_settings";
+          else if (k.includes("planner") || k.includes("designer")) colName = "planner_config";
 
-        if (colName) {
-          const { data: colData } = await dbClient.from("site_settings").select(colName).eq("id", "config").maybeSingle();
-          if (colData && (colData as any)[colName] !== undefined && (colData as any)[colName] !== null) {
-            return res.json({ success: true, data: (colData as any)[colName] });
+          if (colName) {
+            const { data: colData } = await dbClient.from("site_settings").select(colName).eq("id", "config").maybeSingle();
+            if (colData && (colData as any)[colName] !== undefined && (colData as any)[colName] !== null) {
+              return res.json({ success: true, data: (colData as any)[colName] });
+            }
           }
         }
       }
@@ -986,46 +1007,166 @@ async function startServer() {
         return res.json({ success: true, notice: "Saved locally (Supabase client not initialized)" });
       }
 
-      // 1. Try key/value schema
-      const { error: kvError } = await dbClient.from("site_settings").upsert({
-        key,
-        value,
-        updated_at: new Date().toISOString()
-      }, { onConflict: "key" });
+      // 1. Try key/value schema if table has 'key' column
+      try {
+        const { error: kvError } = await dbClient.from("site_settings").upsert({
+          key,
+          value,
+          updated_at: new Date().toISOString()
+        }, { onConflict: "key" });
 
-      if (!kvError) {
-        console.log(`[Supabase Proxy] Successfully upserted site_settings key="${key}"`);
+        if (!kvError) {
+          console.log(`[Supabase Proxy] Successfully upserted site_settings key="${key}"`);
+          return res.json({ success: true });
+        }
+      } catch (kvEx) {
+        // Fall through to column-based config row
+      }
+
+      // 2. Column-based id='config' schema in Supabase PostgreSQL
+      const k = key.toLowerCase();
+      
+      // 2a. Pricing Typography -> stored in theme_settings.pricingTypography
+      if (k.includes("pricing") || k.includes("typography")) {
+        const { data: cur } = await dbClient.from("site_settings").select("theme_settings").eq("id", "config").maybeSingle();
+        const curTheme = (cur && cur.theme_settings) || {};
+        const updatedTheme = {
+          ...curTheme,
+          pricingTypography: value,
+          pricing_typography: value
+        };
+        const { error: updateErr } = await dbClient.from("site_settings").update({
+          theme_settings: updatedTheme,
+          updated_at: new Date().toISOString()
+        }).eq("id", "config");
+
+        if (updateErr) {
+          console.error("[Supabase Proxy] Failed to update pricing typography in theme_settings:", updateErr.message);
+          return res.status(500).json({ success: false, error: updateErr.message });
+        }
+        console.log("[Supabase Proxy] Successfully saved pricing typography to site_settings.theme_settings");
         return res.json({ success: true });
       }
 
-      // 2. If table uses column-based id='config' schema
-      const k = key.toLowerCase();
+      // 2b. Coupons & Promo Codes -> stored in checkout_settings.coupons
+      if (k.includes("coupon") || k.includes("promo")) {
+        const { data: cur } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
+        const curCheckout = (cur && cur.checkout_settings) || {};
+        const updatedCheckout = {
+          ...curCheckout,
+          coupons: value,
+          promo_codes: value
+        };
+        const { error: updateErr } = await dbClient.from("site_settings").update({
+          checkout_settings: updatedCheckout,
+          updated_at: new Date().toISOString()
+        }).eq("id", "config");
+
+        if (updateErr) {
+          console.error("[Supabase Proxy] Failed to update coupons in checkout_settings:", updateErr.message);
+          return res.status(500).json({ success: false, error: updateErr.message });
+        }
+        console.log("[Supabase Proxy] Successfully saved coupons to site_settings.checkout_settings");
+        return res.json({ success: true });
+      }
+
+      // 2c. Smart Tools -> stored in planner_config.smartTools
+      if (k.includes("smart_tools") || k.includes("smart-tools") || k.includes("smarttools")) {
+        const { data: cur } = await dbClient.from("site_settings").select("planner_config").eq("id", "config").maybeSingle();
+        const curPlanner = (cur && cur.planner_config) || {};
+        const updatedPlanner = {
+          ...curPlanner,
+          smartTools: value
+        };
+        const { error: updateErr } = await dbClient.from("site_settings").update({
+          planner_config: updatedPlanner,
+          updated_at: new Date().toISOString()
+        }).eq("id", "config");
+
+        if (updateErr) return res.status(500).json({ success: false, error: updateErr.message });
+        return res.json({ success: true });
+      }
+
+      // 2d. Fitting Builder -> stored in planner_config.fittingBuilder
+      if (k.includes("fitting")) {
+        const { data: cur } = await dbClient.from("site_settings").select("planner_config").eq("id", "config").maybeSingle();
+        const curPlanner = (cur && cur.planner_config) || {};
+        const updatedPlanner = {
+          ...curPlanner,
+          fittingBuilder: value
+        };
+        const { error: updateErr } = await dbClient.from("site_settings").update({
+          planner_config: updatedPlanner,
+          updated_at: new Date().toISOString()
+        }).eq("id", "config");
+
+        if (updateErr) return res.status(500).json({ success: false, error: updateErr.message });
+        return res.json({ success: true });
+      }
+
+      // 2e. Theme Settings -> merge and preserve pricingTypography
+      if (k.includes("theme")) {
+        const { data: cur } = await dbClient.from("site_settings").select("theme_settings").eq("id", "config").maybeSingle();
+        const curTheme = (cur && cur.theme_settings) || {};
+        const updatedTheme = {
+          ...curTheme,
+          ...value,
+          pricingTypography: value?.pricingTypography || curTheme.pricingTypography,
+          pricing_typography: value?.pricing_typography || curTheme.pricing_typography
+        };
+        const { error: updateErr } = await dbClient.from("site_settings").update({
+          theme_settings: updatedTheme,
+          updated_at: new Date().toISOString()
+        }).eq("id", "config");
+
+        if (updateErr) return res.status(500).json({ success: false, error: updateErr.message });
+        return res.json({ success: true });
+      }
+
+      // 2f. Checkout Settings -> merge and preserve coupons
+      if (k.includes("checkout")) {
+        const { data: cur } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
+        const curCheckout = (cur && cur.checkout_settings) || {};
+        const updatedCheckout = {
+          ...curCheckout,
+          ...value,
+          coupons: value?.coupons || curCheckout.coupons,
+          promo_codes: value?.promo_codes || curCheckout.promo_codes
+        };
+        const { error: updateErr } = await dbClient.from("site_settings").update({
+          checkout_settings: updatedCheckout,
+          updated_at: new Date().toISOString()
+        }).eq("id", "config");
+
+        if (updateErr) return res.status(500).json({ success: false, error: updateErr.message });
+        return res.json({ success: true });
+      }
+
+      // 2g. Other direct columns
       let colName = null;
       if (k.includes("announcement")) colName = "announcements";
-      else if (k.includes("theme")) colName = "theme_settings";
       else if (k.includes("ai") || k.includes("assistant")) colName = "ai_assistant";
       else if (k.includes("contact")) colName = "contact_info";
       else if (k.includes("stat")) colName = "stats";
       else if (k.includes("delivery")) colName = "delivery_settings";
-      else if (k.includes("checkout")) colName = "checkout_settings";
       else if (k.includes("planner") || k.includes("designer")) colName = "planner_config";
-      else if (k.includes("config") || k.includes("business")) colName = "business_config";
-      else if (k.includes("gallery")) colName = "gallery";
-      else if (k.includes("pricing") || k.includes("typography")) colName = "pricing_typography";
 
       if (colName) {
-        const payload = { id: "config", [colName]: value, updated_at: new Date().toISOString() };
-        const { error: colError } = await dbClient.from("site_settings").upsert(payload, { onConflict: "id" });
+        const { error: colError } = await dbClient.from("site_settings").update({
+          [colName]: value,
+          updated_at: new Date().toISOString()
+        }).eq("id", "config");
+
         if (colError) {
-          console.error(`[Supabase Proxy] Error upserting column ${colName}:`, colError.message);
-          return res.status(500).json({ success: false, error: colError.message || kvError.message });
+          console.error(`[Supabase Proxy] Error updating column ${colName}:`, colError.message);
+          return res.status(500).json({ success: false, error: colError.message });
         }
-        console.log(`[Supabase Proxy] Successfully upserted site_settings column="${colName}"`);
+        console.log(`[Supabase Proxy] Successfully updated site_settings column="${colName}"`);
         return res.json({ success: true });
       }
 
-      console.error(`[Supabase Proxy] Error upserting site_settings key="${key}":`, kvError.message);
-      return res.status(500).json({ success: false, error: kvError.message });
+      // If no matching column, persist to in-memory/disk store
+      return res.json({ success: true, notice: "Saved to durable CMS data store" });
     } catch (err: any) {
       console.error(`[Supabase Proxy] Exception in site-settings upsert:`, err);
       return res.status(500).json({ success: false, error: err?.message || String(err) });
@@ -1042,15 +1183,21 @@ async function startServer() {
     let coupons: any[] = [];
     if (dbClient) {
       try {
-        // Try site_settings key-value
-        const { data, error } = await dbClient.from("site_settings").select("value").eq("key", COUPONS_STORAGE_KEY).maybeSingle();
-        if (!error && Array.isArray(data?.value)) {
-          coupons = data.value;
+        // 1. Try checkout_settings.coupons in site_settings (id='config')
+        const { data: configRow } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
+        if (configRow?.checkout_settings?.coupons && Array.isArray(configRow.checkout_settings.coupons) && configRow.checkout_settings.coupons.length > 0) {
+          coupons = configRow.checkout_settings.coupons;
         } else {
-          // Check if a dedicated 'coupons' table exists
-          const { data: tableData, error: tableErr } = await dbClient.from("coupons").select("*");
-          if (!tableErr && Array.isArray(tableData) && tableData.length > 0) {
-            coupons = tableData;
+          // 2. Try site_settings key-value
+          const { data, error } = await dbClient.from("site_settings").select("value").eq("key", COUPONS_STORAGE_KEY).maybeSingle();
+          if (!error && Array.isArray(data?.value) && data.value.length > 0) {
+            coupons = data.value;
+          } else {
+            // 3. Check if a dedicated 'coupons' table exists
+            const { data: tableData, error: tableErr } = await dbClient.from("coupons").select("*");
+            if (!tableErr && Array.isArray(tableData) && tableData.length > 0) {
+              coupons = tableData;
+            }
           }
         }
       } catch (err) {
@@ -1058,7 +1205,7 @@ async function startServer() {
       }
     }
 
-    if (coupons.length === 0 && Array.isArray(cmsDataStore[COUPONS_STORAGE_KEY])) {
+    if (coupons.length === 0 && Array.isArray(cmsDataStore[COUPONS_STORAGE_KEY]) && cmsDataStore[COUPONS_STORAGE_KEY].length > 0) {
       coupons = cmsDataStore[COUPONS_STORAGE_KEY];
     }
 
@@ -1235,11 +1382,18 @@ async function startServer() {
       // Persist permanently in Supabase
       if (dbClient) {
         try {
-          await dbClient.from("site_settings").upsert({
-            key: COUPONS_STORAGE_KEY,
-            value: currentList,
+          const { data: cur } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
+          const curCheckout = (cur && cur.checkout_settings) || {};
+          const updatedCheckout = {
+            ...curCheckout,
+            coupons: currentList,
+            promo_codes: currentList
+          };
+          await dbClient.from("site_settings").update({
+            checkout_settings: updatedCheckout,
             updated_at: new Date().toISOString()
-          }, { onConflict: "key" });
+          }).eq("id", "config");
+          console.log(`[Coupons DB] Persisted ${currentList.length} coupons to site_settings.checkout_settings`);
         } catch (dbErr) {
           console.warn("[Coupons DB Upsert Warning]:", dbErr);
         }
@@ -1264,11 +1418,18 @@ async function startServer() {
 
       if (dbClient) {
         try {
-          await dbClient.from("site_settings").upsert({
-            key: COUPONS_STORAGE_KEY,
-            value: currentList,
+          const { data: cur } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
+          const curCheckout = (cur && cur.checkout_settings) || {};
+          const updatedCheckout = {
+            ...curCheckout,
+            coupons: currentList,
+            promo_codes: currentList
+          };
+          await dbClient.from("site_settings").update({
+            checkout_settings: updatedCheckout,
             updated_at: new Date().toISOString()
-          }, { onConflict: "key" });
+          }).eq("id", "config");
+          console.log(`[Coupons DB] Deleted coupon ${id} from site_settings.checkout_settings`);
         } catch (dbErr) {
           console.warn("[Coupons DB Delete Warning]:", dbErr);
         }

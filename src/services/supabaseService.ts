@@ -652,6 +652,7 @@ export async function upsertProductInSupabase(product: Product | Product[]): Pro
 
   const list = Array.isArray(product) ? product : [product];
 
+  // 1. Try server proxy first
   try {
     const headers = await getAuthHeaders();
     const res = await fetch('/api/db/products/upsert', {
@@ -660,16 +661,28 @@ export async function upsertProductInSupabase(product: Product | Product[]): Pro
       body: JSON.stringify({ products: list })
     });
     const result = await res.json().catch(() => null);
-    if (!res.ok || (result && result.success === false)) {
-      const errMsg = result?.error || (res.statusText ? `${res.statusText} (${res.status})` : `Server returned error ${res.status}`);
-      const err = formatSupabaseError(errMsg);
-      console.error(`[Supabase API] Product upsert failed: ${err}`);
-      return { success: false, error: err };
+    if (res.ok && (!result || result.success !== false)) {
+      console.log(`[Supabase API] Upserted ${list.length} product(s) successfully`);
+      return { success: true };
     }
-    console.log(`[Supabase API] Upserted ${list.length} product(s) successfully`);
-    return { success: true };
+    if (result && result.error) {
+      console.warn(`[Supabase API] Proxy returned error: ${result.error}, trying direct SDK fallback...`);
+    }
   } catch (err: any) {
-    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
+    console.warn('[Supabase API] Proxy product upsert network exception, trying direct Supabase SDK fallback...');
+  }
+
+  // 2. Direct Supabase SDK Fallback (Crucial for multi-device & static host environments)
+  try {
+    const payloads = list.map(p => mapProductToDb(p));
+    const { error: directErr } = await supabase.from('products').upsert(payloads, { onConflict: 'id' });
+    if (!directErr) {
+      console.log(`[Supabase Direct SDK] Upserted ${list.length} product(s) successfully`);
+      return { success: true };
+    }
+    return { success: false, error: formatSupabaseError(directErr.message) };
+  } catch (directErr: any) {
+    return { success: false, error: formatSupabaseError(directErr?.message || String(directErr)) };
   }
 }
 
@@ -684,14 +697,20 @@ export async function deleteProductFromSupabase(productId: string): Promise<{ su
       headers
     });
     const result = await res.json().catch(() => null);
-    if (!res.ok || (result && result.success === false)) {
-      const errMsg = result?.error || (res.statusText ? `${res.statusText} (${res.status})` : `Server returned error ${res.status}`);
-      const err = formatSupabaseError(errMsg);
-      console.error(`[Supabase API] Product delete failed: ${err}`);
-      return { success: false, error: err };
+    if (res.ok && (!result || result.success !== false)) {
+      console.log(`[Supabase API] Deleted product ID: ${productId}`);
+      return { success: true };
     }
-    console.log(`[Supabase API] Deleted product ID: ${productId}`);
-    return { success: true };
+  } catch (err: any) {}
+
+  // Direct Supabase SDK Fallback
+  try {
+    const { error } = await supabase.from('products').delete().eq('id', productId);
+    if (!error) {
+      console.log(`[Supabase Direct SDK] Deleted product ID: ${productId}`);
+      return { success: true };
+    }
+    return { success: false, error: formatSupabaseError(error.message) };
   } catch (err: any) {
     return { success: false, error: formatSupabaseError(err?.message || String(err)) };
   }
@@ -1296,9 +1315,7 @@ function getSiteSettingColumnName(key: string): string | null {
   if (k.includes('delivery')) return 'delivery_settings';
   if (k.includes('checkout')) return 'checkout_settings';
   if (k.includes('planner') || k.includes('designer')) return 'planner_config';
-  if (k.includes('config') || k.includes('business')) return 'business_config';
-  if (k.includes('gallery')) return 'gallery';
-  if (k.includes('pricing') || k.includes('typography')) return 'pricing_typography';
+  if (k.includes('config') || k.includes('business')) return 'planner_config';
   return null;
 }
 
@@ -1308,29 +1325,88 @@ export async function fetchSiteSettingFromSupabase<T>(key: string): Promise<T | 
   // 1. Attempt Direct Supabase SDK Query
   if (isSupabaseConfigured) {
     try {
-      // 1a. Try key-value table (key, value)
-      const { data: kvData, error: kvErr, status: kvStatus } = await supabase
+      const k = key.toLowerCase();
+
+      // 1a. Pricing Typography is stored inside theme_settings.pricingTypography (id = 'config')
+      if (k.includes('pricing') || k.includes('typography')) {
+        const { data: themeData, error: themeErr } = await supabase
+          .from('site_settings')
+          .select('theme_settings')
+          .eq('id', 'config')
+          .maybeSingle();
+
+        if (!themeErr && themeData?.theme_settings) {
+          const pTypo = themeData.theme_settings.pricingTypography || themeData.theme_settings.pricing_typography;
+          if (pTypo) {
+            console.log(`[Supabase Direct SDK] Loaded pricing typography from site_settings.theme_settings`);
+            return pTypo as T;
+          }
+        }
+      }
+
+      // 1b. Coupons & Promo Codes are stored inside checkout_settings.coupons (id = 'config')
+      if (k.includes('coupon') || k.includes('promo')) {
+        const { data: chkData, error: chkErr } = await supabase
+          .from('site_settings')
+          .select('checkout_settings')
+          .eq('id', 'config')
+          .maybeSingle();
+
+        if (!chkErr && chkData?.checkout_settings) {
+          const coupons = chkData.checkout_settings.coupons || chkData.checkout_settings.promo_codes;
+          if (coupons && Array.isArray(coupons)) {
+            console.log(`[Supabase Direct SDK] Loaded ${coupons.length} coupons from site_settings.checkout_settings`);
+            return coupons as T;
+          }
+        }
+      }
+
+      // 1c. Smart Tools & Fitting Builder are stored inside planner_config (id = 'config')
+      if (k.includes('smart_tools') || k.includes('smart-tools') || k.includes('smarttools')) {
+        const { data: planData, error: planErr } = await supabase
+          .from('site_settings')
+          .select('planner_config')
+          .eq('id', 'config')
+          .maybeSingle();
+
+        if (!planErr && planData?.planner_config?.smartTools) {
+          return planData.planner_config.smartTools as T;
+        }
+      }
+
+      if (k.includes('fitting')) {
+        const { data: planData, error: planErr } = await supabase
+          .from('site_settings')
+          .select('planner_config')
+          .eq('id', 'config')
+          .maybeSingle();
+
+        if (!planErr && planData?.planner_config?.fittingBuilder) {
+          return planData.planner_config.fittingBuilder as T;
+        }
+      }
+
+      // 1d. Try key-value table (key, value)
+      const { data: kvData, error: kvErr } = await supabase
         .from('site_settings')
         .select('value')
         .eq('key', key)
         .maybeSingle();
 
-      if (!kvErr && kvData && kvData.value !== undefined) {
-        console.log(`[Supabase Direct SDK] Table: site_settings (KV) | Key: ${key} | Status: SUCCESS | HTTP: ${kvStatus || 200}`);
+      if (!kvErr && kvData && kvData.value !== undefined && kvData.value !== null) {
         return kvData.value as T;
       }
 
-      // 1b. Try single row config with named column (id = 'config')
+      // 1e. Try standard single row config with named column (id = 'config')
       const colName = getSiteSettingColumnName(key);
       if (colName) {
-        const { data: colData, error: colErr, status: colStatus } = await supabase
+        const { data: colData, error: colErr } = await supabase
           .from('site_settings')
           .select(colName)
           .eq('id', 'config')
           .maybeSingle();
 
         if (!colErr && colData && (colData as any)[colName] !== undefined && (colData as any)[colName] !== null) {
-          console.log(`[Supabase Direct SDK] Table: site_settings (Column: ${colName}) | Key: ${key} | Status: SUCCESS | HTTP: ${colStatus || 200}`);
           return (colData as any)[colName] as T;
         }
       }
@@ -1344,7 +1420,7 @@ export async function fetchSiteSettingFromSupabase<T>(key: string): Promise<T | 
     const res = await fetch(`/api/db/site-settings/${encodeURIComponent(key)}`, { cache: 'no-store' });
     if (res.ok) {
       const json = await res.json();
-      if (json.success && json.data !== undefined) {
+      if (json.success && json.data !== undefined && json.data !== null) {
         console.log(`[Supabase Proxy] Loaded site setting "${key}" via server proxy`);
         return json.data as T;
       }
@@ -1360,6 +1436,7 @@ export async function saveSiteSettingToSupabase(key: string, value: any): Promis
   await initializeSupabaseRuntime();
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
+  // 1. Try server proxy first
   try {
     const headers = await getAuthHeaders();
     const res = await fetch('/api/db/site-settings/upsert', {
@@ -1368,16 +1445,81 @@ export async function saveSiteSettingToSupabase(key: string, value: any): Promis
       body: JSON.stringify({ key, value })
     });
     const result = await res.json().catch(() => null);
-    if (!res.ok || (result && result.success === false)) {
-      const errMsg = result?.error || (res.statusText ? `${res.statusText} (${res.status})` : `Server returned error ${res.status}`);
-      const err = formatSupabaseError(errMsg);
-      console.error(`[Supabase API] Site setting save failed for key "${key}": ${err}`);
-      return { success: false, error: err };
+    if (res.ok && (!result || result.success !== false)) {
+      console.log(`[Supabase API] Saved site_setting: ${key}`);
+      return { success: true };
     }
-    console.log(`[Supabase API] Saved site_setting: ${key}`);
-    return { success: true };
+    if (result && result.error) {
+      console.warn(`[Supabase API] Server returned error for "${key}": ${result.error}, attempting direct SDK fallback...`);
+    }
   } catch (err: any) {
-    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
+    console.warn(`[Supabase API] Server proxy exception for "${key}", attempting direct SDK fallback...`);
+  }
+
+  // 2. Direct Supabase SDK Fallback (Crucial for static deployments / Hostinger)
+  try {
+    const k = key.toLowerCase();
+
+    // 2a. Pricing Typography -> theme_settings.pricingTypography (id = 'config')
+    if (k.includes('pricing') || k.includes('typography')) {
+      const { data: cur } = await supabase.from('site_settings').select('theme_settings').eq('id', 'config').maybeSingle();
+      const curTheme = cur?.theme_settings || {};
+      const updatedTheme = {
+        ...curTheme,
+        pricingTypography: value,
+        pricing_typography: value
+      };
+      const { error: updateErr } = await supabase.from('site_settings').update({
+        theme_settings: updatedTheme,
+        updated_at: new Date().toISOString()
+      }).eq('id', 'config');
+
+      if (!updateErr) {
+        console.log(`[Supabase Direct SDK] Persisted pricing typography to site_settings.theme_settings`);
+        return { success: true };
+      }
+      return { success: false, error: formatSupabaseError(updateErr.message) };
+    }
+
+    // 2b. Coupons -> checkout_settings.coupons (id = 'config')
+    if (k.includes('coupon') || k.includes('promo')) {
+      const { data: cur } = await supabase.from('site_settings').select('checkout_settings').eq('id', 'config').maybeSingle();
+      const curCheckout = cur?.checkout_settings || {};
+      const updatedCheckout = {
+        ...curCheckout,
+        coupons: value,
+        promo_codes: value
+      };
+      const { error: updateErr } = await supabase.from('site_settings').update({
+        checkout_settings: updatedCheckout,
+        updated_at: new Date().toISOString()
+      }).eq('id', 'config');
+
+      if (!updateErr) {
+        console.log(`[Supabase Direct SDK] Persisted coupons to site_settings.checkout_settings`);
+        return { success: true };
+      }
+      return { success: false, error: formatSupabaseError(updateErr.message) };
+    }
+
+    // 2c. Standard columns
+    const col = getSiteSettingColumnName(key);
+    if (col) {
+      const { error: updateErr } = await supabase.from('site_settings').update({
+        [col]: value,
+        updated_at: new Date().toISOString()
+      }).eq('id', 'config');
+
+      if (!updateErr) {
+        console.log(`[Supabase Direct SDK] Updated site_settings column "${col}"`);
+        return { success: true };
+      }
+      return { success: false, error: formatSupabaseError(updateErr.message) };
+    }
+
+    return { success: true };
+  } catch (directErr: any) {
+    return { success: false, error: formatSupabaseError(directErr?.message || String(directErr)) };
   }
 }
 

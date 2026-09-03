@@ -1,10 +1,11 @@
 {
   "zst_pricing_typography_v1": {
-    "color": "#e5a93d",
     "fontFamily": "Plus Jakarta Sans",
-    "fontWeight": "700",
-    "fontSizeScale": "md",
-    "letterSpacing": "normal"
+    "fontWeight": "800",
+    "fontSizeScale": "lg",
+    "color": "#e5a93d",
+    "letterSpacing": "tight",
+    "priceStyle": "bold"
   },
   "zst_brands_v1": [
     {
@@ -183,6 +184,38 @@
       "isFeatured": true,
       "isActive": true,
       "displayOrder": 8
+    }
+  ],
+  "zst_coupons_list": [
+    {
+      "id": "coupon-save20",
+      "code": "SAVE20",
+      "discountPercentage": 20,
+      "isEnabled": true,
+      "minOrderAmount": 1000,
+      "description": "Special 20% Off",
+      "updatedAt": "2026-09-03T07:10:09.788Z"
+    },
+    {
+      "id": "coupon-welcome10",
+      "code": "WELCOME10",
+      "createdAt": "2026-09-03T07:08:54.820Z",
+      "isEnabled": true,
+      "usageCount": 0,
+      "description": "Welcome Discount for New Customers",
+      "minOrderAmount": 1000,
+      "maxDiscountAmount": 5000,
+      "discountPercentage": 10
+    },
+    {
+      "id": "coupon-zst5",
+      "code": "ZST5",
+      "createdAt": "2026-09-03T07:08:54.820Z",
+      "isEnabled": true,
+      "usageCount": 0,
+      "description": "Storewide Loyalty Discount",
+      "minOrderAmount": 500,
+      "discountPercentage": 5
     }
   ]
 }

@@ -1487,7 +1487,8 @@ export const syncWithServerCMS = async (callbacks: {
       estimatorResult,
       fittingResult,
       aiResult,
-      smartToolsResult
+      smartToolsResult,
+      couponsResult
     ] = await Promise.allSettled([
       fetchOrdersFromSupabase(callbacks.customerId),
       fetchDeliveryCitiesFromSupabase(),
@@ -1502,7 +1503,8 @@ export const syncWithServerCMS = async (callbacks: {
       fetchBuildMaterialEstimatorFromSupabase(),
       fetchFittingBuilderConfigFromSupabase(),
       fetchAiAssistantConfigFromSupabase(),
-      fetchSiteSettingFromSupabase<SmartToolsSettings>(STORAGE_KEYS.SMART_TOOLS)
+      fetchSiteSettingFromSupabase<SmartToolsSettings>(STORAGE_KEYS.SMART_TOOLS),
+      fetchSiteSettingFromSupabase<Coupon[]>(STORAGE_KEYS.COUPONS)
     ]);
 
     // Orders
@@ -1537,13 +1539,21 @@ export const syncWithServerCMS = async (callbacks: {
       if (callbacks.setThemeSettings) callbacks.setThemeSettings(fallbackTheme);
     }
 
-    // Checkout
+    // Checkout & Coupons
     if (checkoutResult.status === 'fulfilled' && checkoutResult.value && typeof checkoutResult.value === 'object' && Object.keys(checkoutResult.value).length > 0) {
       if (callbacks.setCheckoutSettings) callbacks.setCheckoutSettings(checkoutResult.value);
       safeSetLocalStorage(STORAGE_KEYS.CHECKOUT_SETTINGS, checkoutResult.value);
+      if (Array.isArray((checkoutResult.value as any).coupons) && (checkoutResult.value as any).coupons.length > 0) {
+        safeSetLocalStorage(STORAGE_KEYS.COUPONS, (checkoutResult.value as any).coupons);
+      }
     } else {
       const fallbackCheckout = loadCheckoutSettings();
       if (callbacks.setCheckoutSettings) callbacks.setCheckoutSettings(fallbackCheckout);
+    }
+
+    if (couponsResult.status === 'fulfilled' && Array.isArray(couponsResult.value) && couponsResult.value.length > 0) {
+      safeSetLocalStorage(STORAGE_KEYS.COUPONS, couponsResult.value);
+      console.log(`[Sync] Coupons synced from Supabase: ${couponsResult.value.length}`);
     }
 
     // Delivery
@@ -1968,9 +1978,22 @@ export const validateCouponCode = async (code: string, orderAmount: number): Pro
     console.warn('[Coupon] Network error validating coupon, running local validation check:', err);
   }
 
-  // Graceful local fallback if offline or server is temporarily unreachable
+  // Graceful fallback if offline, static hosting, or server is temporarily unreachable
   const storedList = loadCouponsFromStorage();
-  const matched = storedList.find(c => (c.code || '').trim().toUpperCase() === cleanCode);
+  let matched = storedList.find(c => (c.code || '').trim().toUpperCase() === cleanCode);
+
+  // If not found in local storage, query Supabase directly (ensures fresh multi-device verification)
+  if (!matched) {
+    try {
+      const liveCoupons = await fetchSiteSettingFromSupabase<Coupon[]>(STORAGE_KEYS.COUPONS);
+      if (Array.isArray(liveCoupons) && liveCoupons.length > 0) {
+        safeSetLocalStorage(STORAGE_KEYS.COUPONS, liveCoupons);
+        matched = liveCoupons.find(c => (c.code || '').trim().toUpperCase() === cleanCode);
+      }
+    } catch (e) {
+      console.warn('[Coupon] Live Supabase query fallback notice:', e);
+    }
+  }
 
   if (!matched || matched.isEnabled === false) {
     return { valid: false, error: 'Invalid or unavailable promo code.' };
@@ -1981,13 +2004,16 @@ export const validateCouponCode = async (code: string, orderAmount: number): Pro
     if (!isNaN(exp.getTime())) {
       exp.setHours(23, 59, 59, 999);
       if (Date.now() > exp.getTime()) {
-        return { valid: false, error: 'Invalid or unavailable promo code.' };
+        return { valid: false, error: 'This promo code has expired.' };
       }
     }
   }
 
   if (matched.minOrderAmount && matched.minOrderAmount > 0 && numAmount < matched.minOrderAmount) {
-    return { valid: false, error: 'Invalid or unavailable promo code.' };
+    return { 
+      valid: false, 
+      error: `Minimum order amount for this coupon is Rs. ${matched.minOrderAmount.toLocaleString('en-PK')}.` 
+    };
   }
 
   const pct = Math.max(0, Math.min(100, matched.discountPercentage || 0));
