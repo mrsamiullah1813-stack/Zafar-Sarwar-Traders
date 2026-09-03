@@ -224,7 +224,7 @@ export default function App() {
   // Keyboard shortcut Ctrl+Shift+A or Cmd+Shift+A to trigger Admin Login discreetly
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a' || e.code === 'KeyA')) {
         e.preventDefault();
         setAdminLoginOpen(true);
       }
@@ -567,17 +567,9 @@ export default function App() {
           const el = document.getElementById('products');
           if (el) el.scrollIntoView({ behavior: 'smooth' });
         }}
-        onOpenAdminLogin={() => setAdminLoginOpen(true)}
         onLogoutAdmin={handleAdminLogout}
         onOpenAdminDashboard={() => setAdminDashboardOpen(true)}
         onOpenAiConsultant={() => setAiModalOpen(true)}
-        onOpenConfigModal={() => {
-          if (isAdmin) {
-            setConfigModalOpen(true);
-          } else {
-            setAdminLoginOpen(true);
-          }
-        }}
         onSearchClick={() => setSearchModalOpen(true)}
         onOpenOrderTracking={() => setOrderTrackingOpen(true)}
         onSelectCategory={handleSelectCategory}
@@ -699,7 +691,6 @@ export default function App() {
       <Footer
         config={config}
         onSelectCategory={handleSelectCategory}
-        onOpenAdminLogin={() => setAdminLoginOpen(true)}
         onReplayIntro={() => setShowIntro(true)}
         onOpenThemeModal={() => setThemeModalOpen(true)}
         onOpenDeliveryChecker={() => setDeliveryCheckerOpen(true)}
@@ -835,6 +826,10 @@ export default function App() {
         onLoginSuccess={handleAdminLoginSuccess}
         onLogout={handleAdminLogout}
         onClose={() => setAdminLoginOpen(false)}
+        onOpenDashboard={() => {
+          setAdminLoginOpen(false);
+          setAdminDashboardOpen(true);
+        }}
       />
 
       {/* Full Admin Content Management System (CMS) Dashboard */}

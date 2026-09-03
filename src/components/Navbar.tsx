@@ -34,11 +34,9 @@ interface NavbarProps {
   onOpenWishlist?: () => void;
   onOpenCompare?: () => void;
   onOpenThemeModal?: () => void;
-  onOpenAdminLogin: () => void;
   onLogoutAdmin: () => void;
   onOpenAdminDashboard?: () => void;
   onOpenAiConsultant: () => void;
-  onOpenConfigModal: () => void;
   onSearchClick: () => void;
   onOpenOrderTracking?: () => void;
   onSelectCategory: (categoryId: string) => void;
@@ -59,11 +57,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenWishlist,
   onOpenCompare,
   onOpenThemeModal,
-  onOpenAdminLogin,
   onLogoutAdmin,
   onOpenAdminDashboard,
   onOpenAiConsultant,
-  onOpenConfigModal,
   onSearchClick,
   onOpenOrderTracking,
   onSelectCategory,
@@ -224,7 +220,6 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex items-center gap-3">
           <a
             href="#hero"
-            onDoubleClick={onOpenAdminLogin}
             className="flex items-center gap-3 group"
             title="ZAFAR SARWAR TRADERS"
           >

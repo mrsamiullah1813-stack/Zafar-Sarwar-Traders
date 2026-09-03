@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ShieldCheck, Lock, X, Mail, Key, AlertCircle, CheckCircle, Loader2, LogOut, Volume2, VolumeX, Sparkles, ArrowLeft } from 'lucide-react';
+import { ShieldCheck, Lock, X, Mail, Key, AlertCircle, CheckCircle, Loader2, LogOut, Volume2, VolumeX, Sparkles, ArrowLeft, LayoutDashboard } from 'lucide-react';
 import { setAdminAuthToken, setIsAdminLoggedIn, getAdminPin } from '../utils/storage';
 import { supabase, initializeSupabaseRuntime } from '../lib/supabase';
 import { speakAdminVoice, getAdminVoicePreference, setAdminVoicePreference } from '../utils/adminVoice';
@@ -12,6 +12,7 @@ interface AdminLoginModalProps {
   onLoginSuccess: () => void;
   onLogout: () => void;
   onClose: () => void;
+  onOpenDashboard?: () => void;
 }
 
 // =========================================================
@@ -93,7 +94,8 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   isAdmin,
   onLoginSuccess,
   onLogout,
-  onClose
+  onClose,
+  onOpenDashboard
 }) => {
   const [step, setStep] = useState<'credentials' | 'pin'>('credentials');
   const [email, setEmail] = useState('');
@@ -487,16 +489,33 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                     </div>
                   </div>
 
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={handleSignOut}
-                    disabled={loading}
-                    className="w-full py-3.5 px-4 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 transition-all duration-300 shadow-lg shadow-rose-950/60 flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
-                    <span>Exit Admin Mode (Sign Out)</span>
-                  </motion.button>
+                  <div className="space-y-3">
+                    {onOpenDashboard && (
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => {
+                          onClose();
+                          onOpenDashboard();
+                        }}
+                        className="w-full py-3.5 px-4 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 transition-all duration-300 shadow-lg shadow-blue-950/60 flex items-center justify-center gap-2"
+                      >
+                        <LayoutDashboard className="w-4 h-4" />
+                        <span>Open Admin Dashboard (CMS)</span>
+                      </motion.button>
+                    )}
+
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={handleSignOut}
+                      disabled={loading}
+                      className="w-full py-3 px-4 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-slate-800/80 hover:bg-rose-900/60 border border-slate-700 hover:border-rose-700/50 transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4 text-rose-400" />}
+                      <span>Exit Admin Mode (Sign Out)</span>
+                    </motion.button>
+                  </div>
                 </motion.div>
               ) : step === 'pin' ? (
                 <motion.div

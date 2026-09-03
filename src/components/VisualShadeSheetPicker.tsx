@@ -383,7 +383,7 @@ export const VisualShadeSheetPicker: React.FC<VisualShadeSheetPickerProps> = ({
                 <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto" />
                 <h4 className="text-sm font-bold text-white">Could Not Load Shade Sheet Image</h4>
                 <p className="text-xs text-slate-400">
-                  Please verify that the uploaded image URL is accessible or re-upload your shade card image in the admin panel.
+                  Please verify that the shade sheet image is accessible or contact customer support for assistance.
                 </p>
               </div>
             ) : !imageLoaded ? (
