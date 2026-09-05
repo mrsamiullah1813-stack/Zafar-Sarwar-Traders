@@ -1158,13 +1158,11 @@ export const addOrderToStorage = async (order: CustomerOrder): Promise<{ success
     const updated = [order, ...existing.filter(o => o.id !== order.id)];
     saveStoredOrders(updated);
 
-    // 2. Sync to Supabase PostgreSQL database if configured
-    if (isSupabaseConfigured) {
-      const res = await createOrderInSupabase(order);
-      if (!res.success) {
-        console.warn('[Storage] Order saved locally and to backend CMS, but Supabase sync reported a notice:', res.error);
-        return { success: true, orderId: order.id, error: res.error };
-      }
+    // 2. Sync to Backend server API and Supabase PostgreSQL database
+    const res = await createOrderInSupabase(order);
+    if (!res.success) {
+      console.warn('[Storage] Order saved locally and to backend CMS, but database sync reported a notice:', res.error);
+      return { success: true, orderId: order.id, error: res.error };
     }
     return { success: true, orderId: order.id };
   } catch (err: any) {
@@ -1190,9 +1188,7 @@ export const updateOrderStatusInStorage = async (orderId: string, status: Custom
       window.dispatchEvent(new CustomEvent('zst_order_status_updated', { detail: { orderId, status, note } }));
     } catch {}
 
-    if (isSupabaseConfigured) {
-      await updateOrderStatusInSupabase(orderId, status, note);
-    }
+    await updateOrderStatusInSupabase(orderId, status, note);
     return true;
   } catch (err) {
     console.error('Error updating order status:', err);
@@ -1239,9 +1235,7 @@ export const updateOrderPaymentStatusInStorage = async (
       window.dispatchEvent(new CustomEvent('zst_order_status_updated', { detail: { orderId, paymentStatus, orderStatus } }));
     } catch {}
 
-    if (isSupabaseConfigured) {
-      await updateOrderPaymentStatusInSupabase(orderId, paymentStatus, orderStatus, note, rejectionReason, 'Admin');
-    }
+    await updateOrderPaymentStatusInSupabase(orderId, paymentStatus, orderStatus, note, rejectionReason, 'Admin');
     return true;
   } catch (err) {
     console.error('Error updating order payment status:', err);

@@ -158,21 +158,19 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
       });
 
       // 2. Fetch authoritative database / server CMS orders
-      if (isSupabaseConfigured) {
-        const dbOrders = await fetchOrdersFromSupabase();
-        if (dbOrders !== null && Array.isArray(dbOrders)) {
-          dbOrders.forEach(o => {
-            if (o && o.id) {
-              const existing = orderMap.get(String(o.id));
-              // Merge cleanly, preserving complete item descriptions, variant details, and customer info
-              orderMap.set(String(o.id), {
-                ...(existing || {}),
-                ...o,
-                items: (Array.isArray(o.items) && o.items.length > 0) ? o.items : (existing?.items || [])
-              });
-            }
-          });
-        }
+      const dbOrders = await fetchOrdersFromSupabase();
+      if (dbOrders !== null && Array.isArray(dbOrders)) {
+        dbOrders.forEach(o => {
+          if (o && o.id) {
+            const existing = orderMap.get(String(o.id));
+            // Merge cleanly, preserving complete item descriptions, variant details, and customer info
+            orderMap.set(String(o.id), {
+              ...(existing || {}),
+              ...o,
+              items: (Array.isArray(o.items) && o.items.length > 0) ? o.items : (existing?.items || [])
+            });
+          }
+        });
       }
 
       const merged = Array.from(orderMap.values()).sort((a, b) => {
@@ -240,12 +238,9 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
     if (isApproval) {
       await updateOrderPaymentStatusInStorage(orderId, 'Payment Verified', newStatus as any, note);
     } else {
-      if (isSupabaseConfigured) {
-        const res = await updateOrderStatusInSupabase(orderId, newStatus as any, note);
-        if (!res.success) {
-          onShowToast(`Failed to update order in Supabase: ${res.error || 'Database error'}`);
-          return;
-        }
+      const res = await updateOrderStatusInSupabase(orderId, newStatus as any, note);
+      if (!res.success) {
+        console.warn('[Admin Orders] Status update notice from server/database:', res.error);
       }
     }
 

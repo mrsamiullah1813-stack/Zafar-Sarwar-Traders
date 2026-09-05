@@ -217,5 +217,452 @@
       "minOrderAmount": 500,
       "discountPercentage": 5
     }
+  ],
+  "zst_orders_v1": [
+    {
+      "id": "ZST-00001",
+      "orderNumber": "ZST-00001",
+      "customerName": "Sami",
+      "phoneNumber": "03276223556",
+      "city": "Chiniot",
+      "areaLocality": "Chiniot",
+      "deliveryAddress": "Mohallah noor wala jhnag road",
+      "items": [
+        {
+          "productId": "prod-1788272427332",
+          "productName": "Best Aisa Soft Green Colour Premium Basin ",
+          "image": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/project%20media/uploads/1788272559380-x87son-1788272554575-0jimry4.jpeg",
+          "unitPrice": "6000",
+          "numericPrice": 6000,
+          "quantity": 1,
+          "lineTotal": 6000
+        }
+      ],
+      "subtotal": 6000,
+      "deliveryCharges": 150,
+      "taxAmount": 0,
+      "grandTotal": 6150,
+      "createdAt": "2026-09-05T06:38:18.386Z",
+      "status": "Delivered",
+      "statusHistory": [
+        {
+          "status": "Payment Verification Pending",
+          "timestamp": "2026-09-05T06:38:18.389Z"
+        },
+        {
+          "status": "Confirmed",
+          "timestamp": "2026-09-05T07:06:24.077Z"
+        },
+        {
+          "status": "Payment Verified",
+          "timestamp": "2026-09-05T07:06:36.458Z",
+          "note": "Payment proof verified and approved by Admin",
+          "updatedBy": "Admin"
+        },
+        {
+          "status": "Payment Verified",
+          "timestamp": "2026-09-05T07:06:37.863Z",
+          "note": "Payment proof verified and approved by Admin"
+        },
+        {
+          "status": "Preparing",
+          "timestamp": "2026-09-05T07:07:36.706Z"
+        },
+        {
+          "status": "Delivered",
+          "timestamp": "2026-09-05T07:30:23.974Z"
+        }
+      ],
+      "estimatedDeliveryDays": "Same Day / Next Working Day",
+      "estimatedDeliveryDate": "Same Day / Next Working Day",
+      "estimatedDeliveryTime": "10:00 AM – 6:00 PM",
+      "isDelayed": false,
+      "paymentMethodName": "Easypaisa Mobile Account",
+      "paymentProofUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/project%20media/uploads/1788590296220-yag89h-1788590292243-x7y6glh.png",
+      "paymentStatus": "Payment Verified",
+      "isAdvancePayment": false,
+      "updatedAt": "2026-09-05T07:30:23.974Z",
+      "paymentVerifiedAt": "2026-09-05T07:06:36.458Z",
+      "paymentNotes": "Payment proof verified and approved by Admin"
+    }
+  ],
+  "zst_checkout_settings_v1": {
+    "deliveryFee": 250,
+    "taxRatePercent": 0,
+    "enableTaxes": false,
+    "freeDeliveryThreshold": 50000,
+    "whatsappNumberOverride": "",
+    "codAdvanceRequired": true,
+    "codAdvancePercentage": 30,
+    "codAdvanceMinAmount": 500,
+    "codAdvanceInstructions": "To confirm Cash on Delivery, a 30% advance payment is required. The remaining 70% balance is payable in cash upon doorstep delivery.",
+    "businessOwnerWhatsapp": "+92 300 6603063",
+    "coupons": [
+      {
+        "id": "coupon-save20",
+        "code": "SAVE20",
+        "createdAt": "2026-09-03T07:30:42.862Z",
+        "isEnabled": false,
+        "updatedAt": "2026-09-03T11:07:02.679Z",
+        "usageCount": 0,
+        "description": "Special 20% Off",
+        "minOrderAmount": 1000,
+        "discountPercentage": 20
+      },
+      {
+        "id": "coupon-welcome10",
+        "code": "ZST2863",
+        "createdAt": "2026-09-03T07:08:54.820Z",
+        "isEnabled": true,
+        "updatedAt": "2026-09-03T07:33:16.263Z",
+        "expiryDate": "2026-09-10",
+        "usageCount": 0,
+        "description": "Welcome Discount for New Customers",
+        "minOrderAmount": 5000,
+        "maxDiscountAmount": 1000,
+        "discountPercentage": 5
+      },
+      {
+        "id": "coupon-zst5",
+        "code": "ZST5",
+        "createdAt": "2026-09-03T07:08:54.820Z",
+        "isEnabled": false,
+        "updatedAt": "2026-09-03T07:33:22.209Z",
+        "usageCount": 0,
+        "description": "Storewide Loyalty Discount",
+        "minOrderAmount": 500,
+        "discountPercentage": 5
+      }
+    ],
+    "promo_codes": [
+      {
+        "id": "coupon-save20",
+        "code": "SAVE20",
+        "createdAt": "2026-09-03T07:30:42.862Z",
+        "isEnabled": false,
+        "updatedAt": "2026-09-03T11:07:02.679Z",
+        "usageCount": 0,
+        "description": "Special 20% Off",
+        "minOrderAmount": 1000,
+        "discountPercentage": 20
+      },
+      {
+        "id": "coupon-welcome10",
+        "code": "ZST2863",
+        "createdAt": "2026-09-03T07:08:54.820Z",
+        "isEnabled": true,
+        "updatedAt": "2026-09-03T07:33:16.263Z",
+        "expiryDate": "2026-09-10",
+        "usageCount": 0,
+        "description": "Welcome Discount for New Customers",
+        "minOrderAmount": 5000,
+        "maxDiscountAmount": 1000,
+        "discountPercentage": 5
+      },
+      {
+        "id": "coupon-zst5",
+        "code": "ZST5",
+        "createdAt": "2026-09-03T07:08:54.820Z",
+        "isEnabled": false,
+        "updatedAt": "2026-09-03T07:33:22.209Z",
+        "usageCount": 0,
+        "description": "Storewide Loyalty Discount",
+        "minOrderAmount": 500,
+        "discountPercentage": 5
+      }
+    ]
+  },
+  "zst_payment_methods_v1": [
+    {
+      "id": "cod",
+      "type": "cod",
+      "name": "Cash on Delivery (COD)",
+      "isEnabled": true,
+      "requiresProof": false,
+      "displayOrder": 1,
+      "badgeText": "Pay on Delivery",
+      "instructions": "Pay conveniently with cash when your package is delivered to your doorstep. Please keep the exact amount ready upon delivery.",
+      "whatsappNumber": "+92 310 8002863"
+    },
+    {
+      "id": "bank_transfer",
+      "type": "bank_transfer",
+      "name": "Bank Transfer (UBL Bank Limited)",
+      "isEnabled": true,
+      "accountTitle": "Zafar Abbas",
+      "accountNumber": "02010108920192",
+      "bankName": "UBL Bank Ltd.",
+      "iban": "PK64MEZN0002010108920192",
+      "instructions": "Please transfer the exact order total to our Meezan Bank account via mobile banking or ATM. After transferring, take a clear screenshot of the transaction receipt and upload it below.",
+      "whatsappNumber": "+92 310 8002863",
+      "displayOrder": 2,
+      "requiresProof": true,
+      "badgeText": "Online Banking / ATM"
+    },
+    {
+      "id": "easypaisa",
+      "type": "easypaisa",
+      "name": "Easypaisa Mobile Account",
+      "isEnabled": true,
+      "accountTitle": "Basit Ali",
+      "accountNumber": "03108002863",
+      "bankName": "Easypaisa",
+      "instructions": "Send the bill amount via Easypaisa App or dial *786#. After successful transfer, upload the confirmation receipt screenshot below to submit proof.",
+      "whatsappNumber": "+92 3108002863",
+      "displayOrder": 3,
+      "requiresProof": true,
+      "badgeText": "Instant Transfer"
+    },
+    {
+      "id": "jazzcash",
+      "type": "jazzcash",
+      "name": "JazzCash Mobile Account",
+      "isEnabled": false,
+      "requiresProof": true,
+      "displayOrder": 4,
+      "badgeText": "Instant Transfer",
+      "bankName": "Mobilink Microfinance Bank",
+      "accountTitle": "Zafar Sarwar",
+      "accountNumber": "03006603063",
+      "instructions": "Send money via the JazzCash App or dial *786#. Upload the transaction confirmation screenshot below to submit proof.",
+      "whatsappNumber": "+92 310 8002863"
+    }
+  ],
+  "zst_orders": [
+    {
+      "id": "ZST-00001",
+      "customer_id": null,
+      "customer_name": "Sami",
+      "customer_phone": "03276223556",
+      "whatsapp_number": null,
+      "shipping_city": "Chiniot",
+      "shipping_area": "Chiniot",
+      "shipping_address": "Mohallah noor wala jhnag road",
+      "postal_code": null,
+      "landmark": null,
+      "delivery_instructions": null,
+      "notes": null,
+      "subtotal": 6000,
+      "delivery_fee": 150,
+      "tax_amount": 0,
+      "total_amount": 6150,
+      "status": "Delivered",
+      "status_history": [
+        {
+          "status": "Payment Verification Pending",
+          "timestamp": "2026-09-05T06:38:18.389Z"
+        },
+        {
+          "status": "Confirmed",
+          "timestamp": "2026-09-05T07:06:24.077Z"
+        },
+        {
+          "status": "Payment Verified",
+          "timestamp": "2026-09-05T07:06:36.458Z",
+          "note": "Payment proof verified and approved by Admin",
+          "updatedBy": "Admin"
+        },
+        {
+          "status": "Payment Verified",
+          "timestamp": "2026-09-05T07:06:37.863Z",
+          "note": "Payment proof verified and approved by Admin"
+        },
+        {
+          "status": "Preparing",
+          "timestamp": "2026-09-05T07:07:36.706Z"
+        },
+        {
+          "status": "Delivered",
+          "timestamp": "2026-09-05T07:30:23.974Z"
+        }
+      ],
+      "estimated_delivery_days": "Same Day / Next Working Day",
+      "estimated_delivery_date": "Same Day / Next Working Day",
+      "estimated_delivery_time": "10:00 AM – 6:00 PM",
+      "created_at": "2026-09-05T06:38:18.386Z",
+      "coupon_code": null,
+      "discount_amount": 0,
+      "payment_method": "Easypaisa Mobile Account",
+      "payment_status": "Payment Verified",
+      "payment_proof_url": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/project%20media/uploads/1788590296220-yag89h-1788590292243-x7y6glh.png",
+      "transaction_reference": null,
+      "payment_notes": "Payment proof verified and approved by Admin",
+      "is_advance_payment": false,
+      "advance_percentage": null,
+      "advance_amount_required": null,
+      "advance_paid_amount": null,
+      "remaining_cod_amount": null,
+      "items": [
+        {
+          "id": "ZST-00001-prod-1788272427332",
+          "order_id": "ZST-00001",
+          "product_id": "prod-1788272427332",
+          "product_title": "Best Aisa Soft Green Colour Premium Basin ",
+          "product_image": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/project%20media/uploads/1788272559380-x87son-1788272554575-0jimry4.jpeg",
+          "unit_price": 6000,
+          "quantity": 1,
+          "total_price": 6000,
+          "selected_color": null,
+          "selected_size": null,
+          "selected_quality": null,
+          "selected_variant": null,
+          "selected_shade": null,
+          "selected_shade_code": null
+        }
+      ],
+      "order_items": [
+        {
+          "id": "ZST-00001-prod-1788272427332",
+          "order_id": "ZST-00001",
+          "product_id": "prod-1788272427332",
+          "product_title": "Best Aisa Soft Green Colour Premium Basin ",
+          "product_image": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/project%20media/uploads/1788272559380-x87son-1788272554575-0jimry4.jpeg",
+          "unit_price": 6000,
+          "quantity": 1,
+          "total_price": 6000,
+          "selected_color": null,
+          "selected_size": null,
+          "selected_quality": null,
+          "selected_variant": null,
+          "selected_shade": null,
+          "selected_shade_code": null
+        }
+      ],
+      "statusHistory": [
+        {
+          "status": "Payment Verification Pending",
+          "timestamp": "2026-09-05T06:38:18.389Z"
+        },
+        {
+          "status": "Confirmed",
+          "timestamp": "2026-09-05T07:06:24.077Z"
+        },
+        {
+          "status": "Payment Verified",
+          "timestamp": "2026-09-05T07:06:36.458Z",
+          "note": "Payment proof verified and approved by Admin",
+          "updatedBy": "Admin"
+        },
+        {
+          "status": "Payment Verified",
+          "timestamp": "2026-09-05T07:06:37.863Z",
+          "note": "Payment proof verified and approved by Admin"
+        },
+        {
+          "status": "Preparing",
+          "timestamp": "2026-09-05T07:07:36.706Z"
+        },
+        {
+          "status": "Delivered",
+          "timestamp": "2026-09-05T07:30:23.974Z"
+        }
+      ],
+      "updatedAt": "2026-09-05T07:30:23.974Z",
+      "updated_at": "2026-09-05T07:30:23.974Z",
+      "paymentStatus": "Payment Verified",
+      "paymentNotes": "Payment proof verified and approved by Admin",
+      "paymentVerifiedAt": "2026-09-05T07:06:36.458Z",
+      "payment_verified_at": "2026-09-05T07:06:36.458Z"
+    }
+  ],
+  "zst_how_to_order_guide_v1": {
+    "isEnabled": true,
+    "buttonLabel": "Learn how to order",
+    "title": "Step-by-Step Guide: How to Place Your Order",
+    "subtitle": "Follow these quick steps to order sanitary ware, water pumps, CP fittings, and plumbing materials with ease.",
+    "supportPhone": "+92 310 8002863",
+    "supportWhatsapp": "+92 310 8002863",
+    "customNote": "All orders are verified by our team prior to dispatch. Need assistance? Tap the WhatsApp button to chat with our product specialist.",
+    "steps": [
+      {
+        "id": "step-1",
+        "stepNumber": 1,
+        "title": "Browse & Add Items to Cart",
+        "description": "Explore our catalog of luxury CP fittings, wash basins, sanitary ware, water pumps, and plumbing pipes. Select your desired color/variants and click \"Add to Cart\".",
+        "tip": "You can review quantities and apply coupon promo codes directly on the Cart review step.",
+        "icon": "cart"
+      },
+      {
+        "id": "step-2",
+        "stepNumber": 2,
+        "title": "Enter Customer Contact Information",
+        "description": "Provide your full name and active mobile number. Please ensure your WhatsApp number is accurate so we can send your instant order confirmation and tracking alerts.",
+        "tip": "Existing customers can click \"Auto-fill Contact\" to instantly load saved profile details.",
+        "icon": "user"
+      },
+      {
+        "id": "step-3",
+        "stepNumber": 3,
+        "title": "Provide Accurate Delivery Address",
+        "description": "Select your delivery city (Chiniot, Lahore, Faisalabad, Islamabad, Karachi, etc.) and enter your detailed street address and nearby landmark for courier dispatch.",
+        "tip": "Delivery charges and estimated transit time are automatically calculated based on your city.",
+        "icon": "map-pin"
+      },
+      {
+        "id": "step-4",
+        "stepNumber": 4,
+        "title": "Select Your Preferred Payment Method",
+        "description": "Choose between Cash on Delivery (COD), Meezan Bank Direct Transfer, EasyPaisa, or JazzCash.",
+        "tip": "For COD on bulk or special orders, a small advance payment may be required to confirm dispatch.",
+        "icon": "credit-card"
+      },
+      {
+        "id": "step-5",
+        "stepNumber": 5,
+        "title": "Upload Payment Receipt (Online / Advance)",
+        "description": "If you selected Bank Transfer, EasyPaisa, or JazzCash, transfer the required amount to our official account details displayed on screen and attach a screenshot receipt.",
+        "tip": "You can take a screenshot on your mobile banking app and upload the image directly.",
+        "icon": "upload"
+      },
+      {
+        "id": "step-6",
+        "stepNumber": 6,
+        "title": "Instant Order Confirmation & Live Tracking",
+        "description": "Once submitted, you will receive a unique Order ID (e.g. ZST-00001). Our accounts team verifies the payment proof and dispatches your order with real-time tracking.",
+        "tip": "You can track your parcel live anytime using the Track Order button or through WhatsApp.",
+        "icon": "check-circle"
+      },
+      {
+        "id": "step_1788593232526",
+        "stepNumber": 7,
+        "title": "Step 7: Direct Whatsapp Tracking ",
+        "description": "After Submitting Proof and When Order Placed Click on Live Tracking Whatsapp option to Send Direct Whatsapp Details of Order.",
+        "tip": "Pro tip or helpful advice for the customer (optional).",
+        "icon": "cart"
+      }
+    ],
+    "updatedAt": "2026-09-05T07:28:48.394Z"
+  },
+  "zst_optimized_orders": [
+    {
+      "id": "ZST-00002",
+      "orderNumber": "ZFT-ZST-00002",
+      "customerName": "Test Public Customer",
+      "phoneNumber": "03001234567",
+      "city": "Lahore",
+      "areaLocality": "",
+      "deliveryAddress": "123 Main St",
+      "subtotal": 4800,
+      "deliveryCharges": 200,
+      "taxAmount": 0,
+      "grandTotal": 5000,
+      "createdAt": "2026-09-05T08:35:00.000Z",
+      "status": "Delivered",
+      "paymentStatus": "Payment Verified",
+      "paymentMethodName": "Cash on Delivery",
+      "isStorageOptimized": true,
+      "storageOptimizedAt": "2026-09-05T08:35:07.986Z",
+      "deliveredAt": "2026-09-05T08:35:07.986Z",
+      "items": [
+        {
+          "productId": "prod1",
+          "productName": "Sanitaryware Tap",
+          "quantity": 1,
+          "unitPrice": "4800",
+          "numericPrice": 4800,
+          "lineTotal": 4800
+        }
+      ]
+    }
   ]
 }

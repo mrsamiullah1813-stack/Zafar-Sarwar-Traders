@@ -1356,7 +1356,6 @@ function mapDbOrderToCustomerOrder(r: any): CustomerOrder {
 
 export async function createOrderInSupabase(order: CustomerOrder): Promise<{ success: boolean; error?: string }> {
   await initializeSupabaseRuntime();
-  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
   const orderPayload: Record<string, any> = {
     id: order.id,
@@ -1464,6 +1463,10 @@ export async function createOrderInSupabase(order: CustomerOrder): Promise<{ suc
   }
 
   // 2. Direct Supabase SDK Fallback (with automatic schema negotiation and missing column stripping)
+  if (!isSupabaseConfigured) {
+    return { success: false, error: 'Server proxy failed and direct Supabase SDK is not configured' };
+  }
+
   try {
     const orderResult = await robustDirectSupabaseUpsert('orders', [orderPayload], { onConflict: 'id' });
     if (!orderResult.success) {
@@ -1486,7 +1489,6 @@ export async function createOrderInSupabase(order: CustomerOrder): Promise<{ suc
 
 export async function updateOrderStatusInSupabase(orderId: string, status: CustomerOrder['status'], note?: string): Promise<{ success: boolean; error?: string }> {
   await initializeSupabaseRuntime();
-  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
   try {
     const headers = await getAuthHeaders();
@@ -1518,7 +1520,6 @@ export async function updateOrderPaymentStatusInSupabase(
   verifiedBy?: string
 ): Promise<{ success: boolean; error?: string }> {
   await initializeSupabaseRuntime();
-  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
   try {
     const headers = await getAuthHeaders();
