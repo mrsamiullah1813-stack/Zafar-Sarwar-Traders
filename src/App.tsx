@@ -141,6 +141,7 @@ export default function App() {
 
   // Cart, Wishlist, Compare
   const [cartItems, setCartItems] = useState<CartItem[]>(() => loadStoredCart());
+  const [directCheckoutItem, setDirectCheckoutItem] = useState<CartItem | null>(null);
   const [checkoutSettings, setCheckoutSettings] = useState<CheckoutSettings>(() => loadCheckoutSettings());
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
@@ -170,13 +171,18 @@ export default function App() {
     }
   }, [products]);
 
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+  const isFullyAuthenticated = (): boolean => {
     try {
-      return getIsAdminLoggedIn() && sessionStorage.getItem('zst_admin_time_pin_verified') === 'true';
+      const hasToken = getIsAdminLoggedIn();
+      const hasPin = sessionStorage.getItem('zst_admin_time_pin_verified') === 'true';
+      const hasPattern = sessionStorage.getItem('zst_admin_pattern_verified') === 'true';
+      return Boolean(hasToken && hasPin && hasPattern);
     } catch {
       return false;
     }
-  });
+  };
+
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => isFullyAuthenticated());
   const [adminLoginOpen, setAdminLoginOpen] = useState(false);
   const [adminDashboardOpen, setAdminDashboardOpen] = useState(false);
   const [adminProductModalOpen, setAdminProductModalOpen] = useState(false);
@@ -193,6 +199,22 @@ export default function App() {
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [deliveryCheckerOpen, setDeliveryCheckerOpen] = useState(false);
   const [viewDeliveryAreasPage, setViewDeliveryAreasPage] = useState(false);
+
+  // Real-time synchronization of customer orders when updated in admin or tracking
+  useEffect(() => {
+    const handleOrderStatusUpdated = () => {
+      setCustomerOrders(loadStoredOrders());
+    };
+    window.addEventListener('zst_order_status_updated', handleOrderStatusUpdated);
+    return () => window.removeEventListener('zst_order_status_updated', handleOrderStatusUpdated);
+  }, []);
+
+  // When order tracking modal is opened, refresh stored orders
+  useEffect(() => {
+    if (orderTrackingOpen) {
+      setCustomerOrders(loadStoredOrders());
+    }
+  }, [orderTrackingOpen]);
 
   // Diagnostic tracking for React categories state hydration
   useEffect(() => {
@@ -240,8 +262,7 @@ export default function App() {
       supabase.auth.getSession().then(({ data }) => {
         if (isMounted) {
           if (data?.session?.user) {
-            const isPinVerified = sessionStorage.getItem('zst_admin_time_pin_verified') === 'true';
-            if (isPinVerified) {
+            if (isFullyAuthenticated()) {
               setIsAdmin(true);
               setIsAdminLoggedIn(true);
             }
@@ -257,11 +278,11 @@ export default function App() {
           setIsAdminLoggedIn(false);
           try {
             sessionStorage.removeItem('zst_admin_time_pin_verified');
+            sessionStorage.removeItem('zst_admin_pattern_verified');
             localStorage.removeItem('zst_admin_token');
           } catch {}
         } else if (session?.user) {
-          const isPinVerified = sessionStorage.getItem('zst_admin_time_pin_verified') === 'true';
-          if (isPinVerified) {
+          if (isFullyAuthenticated()) {
             setIsAdmin(true);
             setIsAdminLoggedIn(true);
           }
@@ -341,6 +362,47 @@ export default function App() {
       ];
     });
     setCartOpen(true);
+  };
+
+  // Buy Now: Creates a direct isolated checkout containing ONLY the selected product without touching or altering existing cart items
+  const handleBuyNow = (
+    product: Product,
+    quantity: number = 1,
+    selectedColor?: string,
+    selectedSize?: string,
+    selectedQuality?: string,
+    selectedVariant?: string,
+    selectedShade?: { name: string; id?: string; code?: string; colorHex?: string; image?: string; priceAdjustment?: number },
+    selectedVariantObj?: ProductVariant
+  ) => {
+    const activePricing = getActiveProductPrice(product, selectedVariantObj || selectedVariant);
+    const finalVariant = activePricing.activeVariant || selectedVariantObj;
+    const finalVariantName = finalVariant ? finalVariant.name : selectedVariant;
+
+    const directItem: CartItem = {
+      product,
+      quantity: quantity || 1,
+      selectedColor,
+      selectedSize,
+      selectedQuality,
+      selectedVariant: finalVariantName,
+      selectedVariantId: finalVariant?.id,
+      selectedVariantName: finalVariant?.name || finalVariantName,
+      selectedOptionName: product.optionName || product.variantsConfig?.optionName || 'Option',
+      selectedVariantPrice: activePricing.effectivePriceNumeric,
+      selectedVariantSku: finalVariant?.sku,
+      selectedShade: selectedShade?.name,
+      selectedShadeId: selectedShade?.id,
+      selectedShadeCode: selectedShade?.code,
+      selectedShadeColor: selectedShade?.colorHex,
+      selectedShadeImage: selectedShade?.image,
+      selectedShadePriceAdjustment: selectedShade?.priceAdjustment
+    };
+
+    setDirectCheckoutItem(directItem);
+    setCartOpen(false);
+    setSelectedProduct(null);
+    setCheckoutModalOpen(true);
   };
 
   const handleUpdateCartQty = (cartIndex: number, delta: number) => {
@@ -449,6 +511,8 @@ export default function App() {
     }
     try {
       sessionStorage.removeItem('zst_admin_time_pin_verified');
+      sessionStorage.removeItem('zst_admin_pattern_verified');
+      localStorage.removeItem('zst_admin_token');
     } catch {}
     setIsAdmin(false);
     setIsAdminLoggedIn(false);
@@ -597,6 +661,7 @@ export default function App() {
             heroSettings={heroSettings}
             onSelectProduct={(prod) => setSelectedProduct(prod)}
             onAddToCart={handleAddToCart}
+            onBuyNow={handleBuyNow}
             onOpenAiConsultant={() => setAiModalOpen(true)}
           />
 
@@ -628,6 +693,7 @@ export default function App() {
             compareIds={compareIds}
             onQuickView={handleQuickViewProduct}
             onAddToCart={handleAddToCart}
+            onBuyNow={handleBuyNow}
             onToggleWishlist={handleToggleWishlist}
             onToggleCompare={handleToggleCompare}
             onAddProduct={handleOpenAddProduct}
@@ -717,18 +783,27 @@ export default function App() {
       <OrderCheckoutModal
         isOpen={checkoutModalOpen}
         cartItems={cartItems}
+        directItem={directCheckoutItem}
         config={config}
         checkoutSettings={checkoutSettings}
-        onClose={() => setCheckoutModalOpen(false)}
+        onClose={() => {
+          setCheckoutModalOpen(false);
+          setDirectCheckoutItem(null);
+        }}
         onOrderPlaced={async (newOrder) => {
           const res = await addOrderToStorage(newOrder);
           if (!res.success) {
-            alert(`Could not save order: ${res.error || 'Database error'}`);
-            return;
+            console.error(`Could not save order: ${res.error || 'Database error'}`);
           }
-          setCartItems([]);
-          saveStoredCart([]);
-          setCheckoutModalOpen(false);
+          
+          // If this was a normal cart checkout, clear cart; if it was Buy Now, leave normal cart untouched!
+          if (!directCheckoutItem) {
+            setCartItems([]);
+            saveStoredCart([]);
+          } else {
+            setDirectCheckoutItem(null);
+          }
+
           const currentOrders = loadStoredOrders();
           setCustomerOrders(currentOrders);
 
@@ -741,9 +816,6 @@ export default function App() {
           if (!updatedProf.completeAddress && newOrder.deliveryAddress) updatedProf.completeAddress = newOrder.deliveryAddress;
           setCustomerProfile(updatedProf);
           saveCustomerProfile(updatedProf);
-
-          // Automatically open order tracking portal
-          setOrderTrackingOpen(true);
         }}
       />
 
@@ -759,6 +831,9 @@ export default function App() {
           onSelectProduct={(prod) => setSelectedProduct(prod)}
           onAddToCart={(prod, qty, color, size, quality, variant, shade) => {
             handleAddToCart(prod, qty, color, size, quality, variant, shade);
+          }}
+          onBuyNow={(prod, qty, color, size, quality, variant, shade, variantObj) => {
+            handleBuyNow(prod, qty, color, size, quality, variant, shade, variantObj);
           }}
           onClose={() => setSelectedProduct(null)}
         />
@@ -935,6 +1010,10 @@ export default function App() {
         onClose={() => setActiveToolId(null)}
         onOpenQuickView={(prod) => setSelectedProduct(prod)}
         onAddToCart={handleAddToCart}
+        onBuyNow={(prod, qty, color) => {
+          setActiveToolId(null);
+          handleBuyNow(prod, qty, color);
+        }}
       />
       {/* Delivery Checker Modal Across Pakistan */}
       <DeliveryCheckerModal

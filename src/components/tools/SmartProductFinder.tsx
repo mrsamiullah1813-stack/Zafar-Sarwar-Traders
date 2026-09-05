@@ -11,7 +11,8 @@ import {
   Send, 
   Layers,
   ArrowRight,
-  ShieldCheck
+  ShieldCheck,
+  Zap
 } from 'lucide-react';
 import { Product, BusinessConfig, SmartToolsSettings } from '../../types';
 
@@ -20,6 +21,7 @@ interface SmartProductFinderProps {
   config: BusinessConfig;
   settings?: SmartToolsSettings;
   onAddToCart: (product: Product, quantity?: number) => void;
+  onBuyNow?: (product: Product, quantity?: number) => void;
   onViewProduct: (product: Product) => void;
 }
 
@@ -28,6 +30,7 @@ export function SmartProductFinder({
   config,
   settings,
   onAddToCart,
+  onBuyNow,
   onViewProduct
 }: SmartProductFinderProps) {
   const [lookingFor, setLookingFor] = useState<string>('all');
@@ -405,10 +408,17 @@ export function SmartProductFinder({
                 </div>
 
                 <button
-                  onClick={() => handleWhatsAppProduct(prod)}
-                  className="w-full flex items-center justify-center gap-1.5 py-1 text-[10px] text-emerald-400 hover:text-emerald-300 transition-colors font-semibold"
+                  type="button"
+                  onClick={() => {
+                    if (onBuyNow) {
+                      onBuyNow(prod, 1);
+                    } else {
+                      onAddToCart(prod, 1);
+                    }
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-blue-600/20 hover:bg-blue-600 border border-blue-500/30 text-blue-300 hover:text-white transition-all text-[11px] font-bold cursor-pointer"
                 >
-                  <Send className="w-3 h-3" /> Order on WhatsApp
+                  <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" /> Buy Now
                 </button>
               </div>
             </div>

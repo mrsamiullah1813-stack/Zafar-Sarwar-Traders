@@ -19,7 +19,8 @@ import {
   Sparkle,
   SlidersHorizontal,
   Volume2,
-  VolumeX
+  VolumeX,
+  Zap
 } from 'lucide-react';
 import { Product, ProductCategory, ProductBrand, HeroSettings } from '../types';
 import { ProductSaleBadge } from './ProductSaleBadge';
@@ -33,6 +34,7 @@ interface HeroSectionProps {
   heroSettings: HeroSettings;
   onSelectProduct: (product: Product) => void;
   onAddToCart?: (product: Product, quantity?: number) => void;
+  onBuyNow?: (product: Product, quantity?: number) => void;
   onOpenAiConsultant: () => void;
 }
 
@@ -43,6 +45,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   heroSettings,
   onSelectProduct,
   onAddToCart,
+  onBuyNow,
   onOpenAiConsultant,
 }) => {
   // Filter and order products for the Hero Section based on settings and database
@@ -507,13 +510,20 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                     <span>Add to Cart</span>
                   </button>
 
-                  {/* Button 3: Order on WhatsApp */}
+                  {/* Button 3: Buy Now */}
                   <button
-                    onClick={(e) => handleWhatsAppOrder(e, currentProduct)}
-                    className="px-5 py-3.5 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/70 text-emerald-300 font-bold text-xs sm:text-sm border border-emerald-500/30 backdrop-blur-md transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] flex items-center gap-2 shadow-lg hover:border-emerald-400/50"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onBuyNow) {
+                        onBuyNow(currentProduct, 1);
+                      } else if (onAddToCart) {
+                        onAddToCart(currentProduct, 1);
+                      }
+                    }}
+                    className="px-6 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm border border-blue-400/40 backdrop-blur-md transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] flex items-center gap-2 shadow-lg shadow-blue-600/25 cursor-pointer"
                   >
-                    <MessageCircle className="w-4 h-4 text-emerald-400" />
-                    <span>Order on WhatsApp</span>
+                    <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
+                    <span>Buy Now</span>
                   </button>
                 </>
               ) : (

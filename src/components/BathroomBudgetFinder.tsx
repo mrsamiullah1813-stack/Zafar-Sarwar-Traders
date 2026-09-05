@@ -16,7 +16,8 @@ import {
   Plus,
   Minus,
   CheckCircle2,
-  ExternalLink
+  ExternalLink,
+  Zap
 } from 'lucide-react';
 import { Product, BusinessConfig, BathroomBudgetInputs, BathroomBudgetPackageResult } from '../types';
 import { 
@@ -31,6 +32,7 @@ interface BathroomBudgetFinderProps {
   products: Product[];
   config: BusinessConfig;
   onAddToCart?: (product: Product, quantity: number) => void;
+  onBuyNow?: (product: Product, quantity: number) => void;
   onViewProduct?: (product: Product) => void;
   onClose?: () => void;
 }
@@ -39,6 +41,7 @@ export const BathroomBudgetFinder: React.FC<BathroomBudgetFinderProps> = ({
   products = [],
   config,
   onAddToCart,
+  onBuyNow,
   onViewProduct,
   onClose
 }) => {
@@ -95,6 +98,20 @@ export const BathroomBudgetFinder: React.FC<BathroomBudgetFinderProps> = ({
     });
     setAddedNotice(`Added ${count} items to your shopping cart!`);
     setTimeout(() => setAddedNotice(null), 3000);
+  };
+
+  const handleBuyNow = () => {
+    const validProducts = result.items.filter(item => item.product).map(item => item.product!);
+    if (validProducts.length > 0) {
+      validProducts.forEach((p, idx) => {
+        if (idx === validProducts.length - 1 && onBuyNow) {
+          onBuyNow(p, 1);
+        } else if (onAddToCart) {
+          onAddToCart(p, 1);
+        }
+      });
+      if (onClose) onClose();
+    }
   };
 
   return (
@@ -387,11 +404,11 @@ export const BathroomBudgetFinder: React.FC<BathroomBudgetFinderProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={handleWhatsAppInquiry}
-                  className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-lg shadow-emerald-600/20"
+                  onClick={handleBuyNow}
+                  className="py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-lg shadow-blue-600/25 cursor-pointer"
                 >
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  <span>Order on WhatsApp</span>
+                  <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                  <span>Buy Now</span>
                 </button>
 
                 <button

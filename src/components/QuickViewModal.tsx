@@ -26,7 +26,8 @@ import {
   Timer,
   Boxes,
   AlertCircle,
-  Play
+  Play,
+  Zap
 } from 'lucide-react';
 import { Product, BusinessConfig, ProductVariant, PaintShade, AppliedCouponState } from '../types';
 import { VideoPlayer } from './VideoPlayer';
@@ -67,6 +68,16 @@ interface QuickViewModalProps {
     selectedShade?: PaintShade,
     selectedVariantObj?: ProductVariant
   ) => void;
+  onBuyNow?: (
+    product: Product, 
+    quantity: number, 
+    selectedColor?: string, 
+    selectedSize?: string, 
+    selectedQuality?: string, 
+    selectedVariant?: string,
+    selectedShade?: PaintShade,
+    selectedVariantObj?: ProductVariant
+  ) => void;
   onClose: () => void;
 }
 
@@ -79,6 +90,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
   onDeleteProduct,
   onSelectProduct,
   onAddToCart,
+  onBuyNow,
   onClose
 }) => {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
@@ -232,6 +244,42 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
       } : null
     });
     window.open(result.url, '_blank');
+  };
+
+  // Buy Now: adds item with all selected options to cart and triggers checkout modal
+  const handleBuyNow = () => {
+    setOrderValidationError(null);
+    if (isPaintShadesActive && !selectedShade) {
+      setOrderValidationError('Please select a paint color shade first.');
+      return;
+    }
+
+    const finalVariantName = selectedVariantObj ? selectedVariantObj.name : selectedVariant;
+    if (onBuyNow) {
+      onBuyNow(
+        product,
+        quantity,
+        selectedColor,
+        selectedSize,
+        selectedQuality,
+        finalVariantName,
+        isPaintShadesActive && selectedShade ? selectedShade : undefined,
+        selectedVariantObj || undefined
+      );
+      onClose();
+    } else if (onAddToCart) {
+      onAddToCart(
+        product,
+        quantity,
+        selectedColor,
+        selectedSize,
+        selectedQuality,
+        finalVariantName,
+        isPaintShadesActive && selectedShade ? selectedShade : undefined,
+        selectedVariantObj || undefined
+      );
+      onClose();
+    }
   };
 
   const hasVideos = product.videos && product.videos.length > 0;
@@ -1017,7 +1065,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                 Order Summary
               </span>
               <span className="text-[11px] text-slate-400 font-medium">
-                Review & Order on WhatsApp
+                Review & Instant Checkout
               </span>
             </div>
 
@@ -1171,10 +1219,15 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                 )}
               </div>
 
-              {/* Add to Cart button */}
+              {/* Action Buttons: Add to Cart & Buy Now */}
               {onAddToCart && (
                 <button
+                  type="button"
                   onClick={() => {
+                    if (isPaintShadesActive && !selectedShade) {
+                      setOrderValidationError('Please select a paint color shade first.');
+                      return;
+                    }
                     const finalVariantName = selectedVariantObj ? selectedVariantObj.name : selectedVariant;
                     onAddToCart(
                       product,
@@ -1187,25 +1240,26 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                       selectedVariantObj || undefined
                     );
                   }}
-                  className="flex-1 py-3.5 px-5 rounded-2xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-all duration-200 shadow-xl shadow-blue-950/50 flex items-center justify-center gap-2.5 active:scale-98 border border-blue-400/30"
+                  className="flex-1 py-3.5 px-5 rounded-2xl text-sm font-bold text-slate-200 bg-slate-900 hover:bg-slate-800 hover:text-white transition-all duration-200 shadow-xl flex items-center justify-center gap-2.5 active:scale-98 border border-slate-700 cursor-pointer"
                 >
-                  <ShoppingBag className="w-5 h-5" />
-                  <span>Add to Shopping Cart</span>
+                  <ShoppingBag className="w-5 h-5 text-blue-400" />
+                  <span>Add to Cart</span>
                 </button>
               )}
-            </div>
 
-            {/* Direct WhatsApp Order button */}
-            <button
-              onClick={handleWhatsAppOrder}
-              className="w-full py-3.5 px-6 rounded-2xl text-xs sm:text-sm font-bold text-white bg-slate-900 hover:bg-emerald-700 transition-all duration-300 shadow-xl flex items-center justify-center gap-2.5 border border-slate-800 hover:border-emerald-500"
-            >
-              <MessageSquare className="w-4 h-4 text-emerald-400" />
-              <span>
-                Order via WhatsApp Directly ({displayPhone})
-                {quantity > 1 ? ` • ${quantity} ${effectiveUnit}` : ''}
-              </span>
-            </button>
+              <button
+                type="button"
+                onClick={handleBuyNow}
+                className="flex-1 py-3.5 px-6 rounded-2xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-all duration-200 shadow-xl shadow-blue-600/30 flex items-center justify-center gap-2.5 active:scale-98 border border-blue-400/30 cursor-pointer"
+              >
+                <Zap className="w-5 h-5 text-amber-300 fill-amber-300" />
+                <span>
+                  Buy Now
+                  {quantity > 1 ? ` (${quantity} ${effectiveUnit})` : ''}
+                </span>
+                <ArrowRight className="w-4 h-4 ml-0.5" />
+              </button>
+            </div>
           </div>
 
           {/* YOU MAY ALSO LIKE (SIMILAR PRODUCTS) */}

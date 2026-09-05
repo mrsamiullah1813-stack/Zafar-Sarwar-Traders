@@ -10,6 +10,7 @@ import { VisitorAnalyticsDashboard } from './VisitorAnalyticsDashboard';
 import { AdminOrdersManager } from './AdminOrdersManager';
 import { AdminCustomersManager } from './AdminCustomersManager';
 import { AdminDeliveryManager } from './AdminDeliveryManager';
+import { AdminPaymentMethodsManager } from './AdminPaymentMethodsManager';
 import { 
   X, 
   Plus, 
@@ -24,6 +25,7 @@ import {
   Layers, 
   Package, 
   ShoppingBag, 
+  CreditCard,
   Truck,
   Sparkles, 
   Globe, 
@@ -71,6 +73,8 @@ import { AdminThemeManager } from './AdminThemeManager';
 import { AdminPricingAppearanceManager } from './AdminPricingAppearanceManager';
 import { AdminSmartToolsManager } from './AdminSmartToolsManager';
 import { AdminCouponsManager } from './AdminCouponsManager';
+import { PatternLock } from './PatternLock';
+import { getPatternLockStatus, savePatternLock, togglePatternLock } from '../services/patternLockService';
 import { Product, ProductCategory, ProductVideo, BusinessConfig, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, ThemeSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig } from '../types';
 import { getAdminPin, setAdminPin, loadPlannerConfig, savePlannerConfig, loadBuildMaterialEstimatorConfig, saveBuildMaterialEstimatorConfig, loadAiAssistantConfig, saveAiAssistantConfig, loadThemeSettings, saveThemeSettings, loadHeroSettings, saveHeroSettings, loadSmartToolsSettings, saveSmartToolsSettings, loadFittingBuilderConfig, saveFittingBuilderConfig, deleteProductFromStorage, saveStoredProducts, saveStoredProductSingle, deleteCategoryFromStorage, saveStoredCategories, saveStoredCategorySingle, deleteBrandFromStorage, saveStoredBrands, saveStoredBrandSingle } from '../utils/storage';
 
@@ -123,7 +127,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onLogout,
   onClose
 }) => {
-  const [activeTab, setActiveTab] = useState<'analytics' | 'hero' | 'announcements' | 'orders' | 'customers' | 'coupons' | 'delivery' | 'products' | 'categories' | 'brands' | 'contacts' | 'statistics' | 'banners_seo' | 'pricing_appearance' | 'gallery' | 'smart_tools' | 'construction_builder' | 'planner' | 'estimator' | 'ai_assistant' | 'themes'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'hero' | 'announcements' | 'orders' | 'payments' | 'customers' | 'coupons' | 'delivery' | 'products' | 'categories' | 'brands' | 'contacts' | 'statistics' | 'banners_seo' | 'pricing_appearance' | 'gallery' | 'smart_tools' | 'construction_builder' | 'planner' | 'estimator' | 'ai_assistant' | 'themes'>('analytics');
   const [plannerConfig, setPlannerConfig] = useState<AiDesignerConfig>(loadPlannerConfig());
   const [estimatorConfig, setEstimatorConfig] = useState<BuildMaterialEstimatorConfig>(loadBuildMaterialEstimatorConfig());
   const [fittingConfigState, setFittingConfigState] = useState<FittingBuilderConfig>(fittingBuilderConfig || loadFittingBuilderConfig());
@@ -179,6 +183,149 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [configForm, setConfigForm] = useState<BusinessConfig>({ ...config });
   const [newPin, setNewPin] = useState(getAdminPin());
   const [configSuccessMsg, setConfigSuccessMsg] = useState('');
+
+  // Pattern Lock Management (Security Layer 3) - DISABLED BY DEFAULT
+  const [patternLockEnabled, setPatternLockEnabled] = useState(false);
+  const [patternLockConfigured, setPatternLockConfigured] = useState(true);
+  const [patternLoading, setPatternLoading] = useState(false);
+  const [patternMode, setPatternMode] = useState<'idle' | 'drawing_new' | 'confirming'>('idle');
+  const [firstPatternDraft, setFirstPatternDraft] = useState<number[] | null>(null);
+  const [patternStatusMessage, setPatternStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [patternLockStatusState, setPatternLockStatusState] = useState<'idle' | 'drawing' | 'error' | 'success' | 'verifying'>('idle');
+
+  // Load pattern lock status from server
+  const refreshPatternStatus = async () => {
+    try {
+      const status = await getPatternLockStatus();
+      setPatternLockEnabled(Boolean(status.enabled));
+      setPatternLockConfigured(status.isConfigured !== false);
+    } catch (err) {
+      console.warn('[Pattern Lock Admin] Status check warn:', err);
+    }
+  };
+
+  useEffect(() => {
+    refreshPatternStatus();
+  }, []);
+
+  const handleTogglePatternLock = async () => {
+    setPatternLoading(true);
+    const targetState = !patternLockEnabled;
+    try {
+      const res = await togglePatternLock(targetState);
+      if (res.success) {
+        setPatternLockEnabled(targetState);
+        showToast(targetState ? 'Security Pattern Lock Enabled' : 'Security Pattern Lock Disabled');
+        setPatternStatusMessage({
+          type: 'success',
+          text: targetState ? 'Pattern Lock is ENABLED as Security Layer 3.' : 'Pattern Lock is DISABLED. Login will require Email/Password + PIN.'
+        });
+      } else {
+        showToast(res.error || 'Failed to toggle Pattern Lock');
+        setPatternStatusMessage({ type: 'error', text: res.error || 'Failed to update pattern lock setting.' });
+      }
+    } catch (err: any) {
+      showToast('Error updating pattern lock');
+      setPatternStatusMessage({ type: 'error', text: 'Connection error updating pattern lock.' });
+    } finally {
+      setPatternLoading(false);
+    }
+  };
+
+  const handleStartSetPattern = () => {
+    setPatternMode('drawing_new');
+    setFirstPatternDraft(null);
+    setPatternLockStatusState('idle');
+    setPatternStatusMessage({
+      type: 'info',
+      text: 'Step 1 of 2: Draw your new 3×3 pattern lock (connect at least 4 dots)'
+    });
+  };
+
+  const handleCancelSetPattern = () => {
+    setPatternMode('idle');
+    setFirstPatternDraft(null);
+    setPatternLockStatusState('idle');
+    setPatternStatusMessage(null);
+  };
+
+  const handlePatternComplete = async (drawnPattern: number[]) => {
+    if (drawnPattern.length < 4) {
+      setPatternLockStatusState('error');
+      setPatternStatusMessage({
+        type: 'error',
+        text: 'Pattern too short! Connect at least 4 dots.'
+      });
+      return;
+    }
+
+    if (patternMode === 'drawing_new') {
+      // Step 1 done -> Move to Step 2 confirmation
+      setFirstPatternDraft(drawnPattern);
+      setPatternMode('confirming');
+      setPatternLockStatusState('idle');
+      setPatternStatusMessage({
+        type: 'info',
+        text: 'Step 2 of 2: Re-draw the same pattern to confirm'
+      });
+    } else if (patternMode === 'confirming') {
+      // Step 2 verification
+      if (!firstPatternDraft) {
+        handleStartSetPattern();
+        return;
+      }
+
+      const isMatch = firstPatternDraft.length === drawnPattern.length &&
+        firstPatternDraft.every((val, idx) => val === drawnPattern[idx]);
+
+      if (isMatch) {
+        setPatternLoading(true);
+        setPatternLockStatusState('verifying');
+        try {
+          const res = await savePatternLock(drawnPattern, patternLockEnabled);
+          if (res.success) {
+            setPatternLockStatusState('success');
+            setPatternLockConfigured(true);
+            setPatternMode('idle');
+            setFirstPatternDraft(null); // Clear temporary draft from memory immediately
+            showToast('New Security Pattern Lock saved successfully!');
+            setPatternStatusMessage({
+              type: 'success',
+              text: patternLockEnabled
+                ? 'Security Pattern Lock updated. Active for administrative logins!'
+                : 'Security Pattern Lock saved! Note: Pattern Lock is currently DISABLED. Click "Enable Pattern Lock" to activate Layer 3.'
+            });
+          } else {
+            setPatternLockStatusState('error');
+            setPatternStatusMessage({
+              type: 'error',
+              text: res.error || 'Server error saving pattern lock.'
+            });
+          }
+        } catch (err: any) {
+          setPatternLockStatusState('error');
+          setPatternStatusMessage({
+            type: 'error',
+            text: 'Connection error while saving pattern lock.'
+          });
+        } finally {
+          setPatternLoading(false);
+        }
+      } else {
+        // Mismatch!
+        setPatternLockStatusState('error');
+        setPatternStatusMessage({
+          type: 'error',
+          text: 'Patterns do not match! Please draw again from Step 1.'
+        });
+        setTimeout(() => {
+          setPatternMode('drawing_new');
+          setFirstPatternDraft(null);
+          setPatternLockStatusState('idle');
+        }, 1400);
+      }
+    }
+  };
 
   // Keep configForm synchronized when parent config updates
   useEffect(() => {
@@ -798,6 +945,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('payments')}
+              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all ${
+                activeTab === 'payments'
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-950'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <CreditCard className="w-4 h-4 text-emerald-400" />
+                <span>Payment Methods</span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-[10px] text-emerald-300 font-mono font-bold">
+                Accounts
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('customers')}
               className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all ${
                 activeTab === 'customers'
@@ -1201,6 +1365,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeTab === 'orders' && (
             <AdminOrdersManager
               onShowToast={showToast}
+            />
+          )}
+
+          {/* TAB: PAYMENT METHODS & ACCOUNTS MANAGER */}
+          {activeTab === 'payments' && (
+            <AdminPaymentMethodsManager
+              onSaveNotice={showToast}
             />
           )}
 
@@ -2551,6 +2722,124 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <Key className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
                     </div>
                   </div>
+                </div>
+
+                {/* 3RD SECURITY LAYER: PATTERN LOCK MANAGEMENT */}
+                <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-cyan-400" />
+                        <span>Admin Security Layer 3: Pattern Lock</span>
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Android-style 3×3 pattern lock for administrative multi-layer protection.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-semibold border ${
+                        patternLockEnabled
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                          : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                      }`}>
+                        {patternLockEnabled ? 'Pattern Lock Active' : 'Pattern Lock Disabled'}
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={handleTogglePatternLock}
+                        disabled={patternLoading || patternMode !== 'idle'}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 disabled:opacity-50 ${
+                          patternLockEnabled
+                            ? 'bg-rose-950/40 border-rose-800/60 text-rose-300 hover:bg-rose-900/60'
+                            : 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300 hover:bg-emerald-900/60'
+                        }`}
+                      >
+                        {patternLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+                        <span>{patternLockEnabled ? 'Disable Pattern Lock' : 'Enable Pattern Lock'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Status & Feedback */}
+                  {patternStatusMessage && (
+                    <div className={`p-3 rounded-xl text-xs flex items-start gap-2 border ${
+                      patternStatusMessage.type === 'success'
+                        ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-300'
+                        : patternStatusMessage.type === 'error'
+                        ? 'bg-rose-950/50 border-rose-500/40 text-rose-300'
+                        : 'bg-cyan-950/50 border-cyan-500/40 text-cyan-300'
+                    }`}>
+                      {patternStatusMessage.type === 'success' ? (
+                        <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                      ) : patternStatusMessage.type === 'error' ? (
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+                      ) : (
+                        <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-cyan-400" />
+                      )}
+                      <span>{patternStatusMessage.text}</span>
+                    </div>
+                  )}
+
+                  {patternMode === 'idle' ? (
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-950/60 border border-slate-800/70">
+                      <div>
+                        <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Multi-Layer Authentication Chain</span>
+                        </h4>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Flow: 1. Email + Password → 2. Security PIN → 3. Pattern Lock → Dashboard
+                        </p>
+                        <p className="text-[10px] text-slate-500 mt-0.5 font-mono">
+                          Security: Salted SHA-256 hash stored in Supabase with constant-time verification.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleStartSetPattern}
+                          className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs shadow-md shadow-cyan-950 transition-all flex items-center gap-1.5"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>{patternLockConfigured ? 'Change Pattern Lock' : 'Set New Pattern Lock'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-xl bg-slate-950/90 border border-cyan-800/50 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-400 font-mono">
+                            {patternMode === 'drawing_new' ? 'Step 1 of 2: Set New Pattern' : 'Step 2 of 2: Confirm Pattern'}
+                          </span>
+                          <p className="text-xs text-slate-300 mt-0.5 font-medium">
+                            {patternMode === 'drawing_new' 
+                              ? 'Draw the pattern you want to use (connect at least 4 dots)' 
+                              : 'Re-draw the identical pattern to confirm and save'}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleCancelSetPattern}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+
+                      <PatternLock
+                        onComplete={handlePatternComplete}
+                        status={patternLockStatusState}
+                        disabled={patternLoading}
+                        title={patternMode === 'drawing_new' ? 'Draw Pattern' : 'Confirm Pattern'}
+                        subtitle={patternMode === 'drawing_new' ? 'Connect minimum 4 dots' : 'Must match Step 1'}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-2">

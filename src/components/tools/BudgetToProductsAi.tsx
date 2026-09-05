@@ -12,7 +12,8 @@ import {
   RotateCcw,
   Layers,
   ArrowRight,
-  ShieldCheck
+  ShieldCheck,
+  Zap
 } from 'lucide-react';
 import { 
   Product, 
@@ -30,6 +31,7 @@ interface BudgetToProductsAiProps {
   config: BusinessConfig;
   settings?: SmartToolsSettings;
   onAddToCart: (product: Product, quantity?: number) => void;
+  onBuyNow?: (product: Product, quantity?: number) => void;
   onViewProduct: (product: Product) => void;
 }
 
@@ -38,6 +40,7 @@ export function BudgetToProductsAi({
   config,
   settings,
   onAddToCart,
+  onBuyNow,
   onViewProduct
 }: BudgetToProductsAiProps) {
   const [inputs, setInputs] = useState<BudgetProductsAiInputs>({
@@ -85,6 +88,18 @@ export function BudgetToProductsAi({
     });
     setAddedAllSuccess(true);
     setTimeout(() => setAddedAllSuccess(false), 3000);
+  };
+
+  const handleBuyNow = () => {
+    if (result.recommendations.length > 0) {
+      result.recommendations.forEach((rec, idx) => {
+        if (idx === result.recommendations.length - 1 && onBuyNow) {
+          onBuyNow(rec.product, rec.quantity);
+        } else {
+          onAddToCart(rec.product, rec.quantity);
+        }
+      });
+    }
   };
 
   const handleWhatsAppOrder = () => {
@@ -315,11 +330,12 @@ export function BudgetToProductsAi({
               </button>
 
               <button
-                onClick={handleWhatsAppOrder}
-                className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md"
+                type="button"
+                onClick={handleBuyNow}
+                className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer"
               >
-                <Send className="w-3.5 h-3.5" />
-                Order List on WhatsApp
+                <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                Buy Now (Instant Checkout)
               </button>
             </div>
           </div>

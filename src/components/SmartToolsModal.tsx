@@ -203,6 +203,7 @@ interface SmartToolsModalProps {
   onSelectTool?: (id: SmartToolId) => void;
   onOpenQuickView?: (product: Product) => void;
   onAddToCart?: (product: Product, quantity?: number, color?: string) => void;
+  onBuyNow?: (product: Product, quantity?: number, color?: string) => void;
   onAddPackageToCart?: (items: { product: Product; quantity: number; selectedVariantName?: string; price: number }[]) => void;
 }
 
@@ -218,6 +219,7 @@ export const SmartToolsModal: React.FC<SmartToolsModalProps> = ({
   onSelectTool,
   onOpenQuickView,
   onAddToCart,
+  onBuyNow,
   onAddPackageToCart
 }) => {
   const [activeToolId, setActiveToolId] = useState<SmartToolId | 'hub' | null>(() => normalizeSmartToolId(toolId));
@@ -334,6 +336,7 @@ export const SmartToolsModal: React.FC<SmartToolsModalProps> = ({
             config={plannerConfig}
             whatsappNumber={config.phone || "923108002863"}
             onAddToCart={onAddToCart}
+            onBuyNow={onBuyNow}
             onViewProduct={onOpenQuickView}
           />
         );
@@ -345,6 +348,7 @@ export const SmartToolsModal: React.FC<SmartToolsModalProps> = ({
             config={config}
             settings={currentSettings}
             onAddToCart={(p, qty) => onAddToCart && onAddToCart(p, qty || 1)}
+            onBuyNow={(p, qty) => onBuyNow && onBuyNow(p, qty || 1)}
             onViewProduct={(p) => onOpenQuickView && onOpenQuickView(p)}
           />
         );
@@ -364,6 +368,7 @@ export const SmartToolsModal: React.FC<SmartToolsModalProps> = ({
             config={config}
             settings={currentSettings}
             onAddToCart={(p, qty) => onAddToCart && onAddToCart(p, qty || 1)}
+            onBuyNow={(p, qty) => onBuyNow && onBuyNow(p, qty || 1)}
             onViewProduct={(p) => onOpenQuickView && onOpenQuickView(p)}
           />
         );
@@ -394,6 +399,7 @@ export const SmartToolsModal: React.FC<SmartToolsModalProps> = ({
             config={config}
             settings={currentSettings}
             onAddToCart={(p, qty, shade) => onAddToCart && onAddToCart(p, qty || 1, shade)}
+            onBuyNow={(p, qty, shade) => onBuyNow && onBuyNow(p, qty || 1, shade)}
             onViewProduct={(p) => onOpenQuickView && onOpenQuickView(p)}
           />
         );
@@ -404,6 +410,7 @@ export const SmartToolsModal: React.FC<SmartToolsModalProps> = ({
             products={products}
             config={config}
             onAddToCart={onAddToCart}
+            onBuyNow={(p, qty) => onBuyNow && onBuyNow(p, qty || 1)}
             onViewProduct={onOpenQuickView}
             onClose={onClose}
           />

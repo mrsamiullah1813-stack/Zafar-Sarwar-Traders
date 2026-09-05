@@ -16,7 +16,8 @@ import {
   Flame,
   Percent,
   Timer,
-  Boxes
+  Boxes,
+  Zap
 } from 'lucide-react';
 import { Product, BusinessConfig, ProductCategory } from '../types';
 import { ProductSaleBadge } from './ProductSaleBadge';
@@ -32,6 +33,7 @@ interface FeaturedProductsProps {
   compareIds?: string[];
   onQuickView: (product: Product) => void;
   onAddToCart?: (product: Product) => void;
+  onBuyNow?: (product: Product) => void;
   onToggleWishlist?: (productId: string) => void;
   onToggleCompare?: (productId: string) => void;
   onAddProduct?: () => void;
@@ -49,6 +51,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
   compareIds = [],
   onQuickView,
   onAddToCart,
+  onBuyNow,
   onToggleWishlist,
   onToggleCompare,
   onAddProduct,
@@ -154,7 +157,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
               Best Selling Sanitaryware & Materials
             </h2>
             <p className="mt-2 text-slate-600 text-xs sm:text-sm max-w-xl font-normal">
-              Explore products from Master, Dura Max, Faisal, and Nippon Paints. Order directly on WhatsApp or add to cart.
+              Explore products from Master, Dura Max, Faisal, and Nippon Paints. Instant online checkout or add to cart.
             </p>
           </div>
 
@@ -476,11 +479,18 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
 
                       <button
                         type="button"
-                        onClick={(e) => handleWhatsAppProduct(e, product)}
-                        className="py-2.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm shadow-emerald-600/10 active:scale-95"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onBuyNow) {
+                            onBuyNow(product);
+                          } else if (onAddToCart) {
+                            onAddToCart(product);
+                          }
+                        }}
+                        className="py-2.5 px-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm shadow-blue-600/20 active:scale-95 cursor-pointer"
                       >
-                        <MessageSquare className="w-3.5 h-3.5" />
-                        <span>WhatsApp</span>
+                        <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                        <span>Buy Now</span>
                       </button>
                     </div>
 

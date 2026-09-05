@@ -17,7 +17,9 @@ import {
   ProductVariantsConfig,
   PaintShade,
   PaintShadesConfig,
-  FittingBuilderConfig
+  FittingBuilderConfig,
+  PaymentMethodConfig,
+  HowToOrderConfig
 } from '../types';
 import { defaultFittingBuilderConfig } from '../data/defaultFittingBuilderData';
 import { parseNumericPrice } from '../utils/pricingUtils';
@@ -46,7 +48,7 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 // =========================================================
-// ERROR FORMATTER
+// ERROR FORMATTER & ROBUST DIRECT SUPABASE UPSERT
 // =========================================================
 
 export function formatSupabaseError(error: any): string {
@@ -66,6 +68,106 @@ export function formatSupabaseError(error: any): string {
     return 'Network connection issue: Unable to connect to Supabase PostgreSQL database. Please check your internet connection.';
   }
   return msg;
+}
+
+// In-memory cache of columns known to be missing from the remote database schema per table
+const clientKnownInvalidColumnsByTable = new Map<string, Set<string>>();
+
+export async function robustDirectSupabaseUpsert(
+  table: string, 
+  payloads: any[], 
+  options: { onConflict?: string } = { onConflict: 'id' }
+): Promise<{ success: boolean; data?: any; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) {
+    return { success: false, error: 'Supabase client not configured' };
+  }
+  if (!payloads || payloads.length === 0) return { success: true };
+
+  const badCols = clientKnownInvalidColumnsByTable.get(table);
+  let currentPayloads = payloads.map(p => {
+    const copy = { ...p };
+    if (badCols && badCols.size > 0) {
+      badCols.forEach(col => delete copy[col]);
+    }
+    return copy;
+  });
+
+  const maxRetries = 50;
+  let attempts = 0;
+  let lastError: any = null;
+
+  while (attempts < maxRetries) {
+    attempts++;
+    const { data, error } = await supabase.from(table).upsert(currentPayloads, options);
+    if (!error) {
+      if (attempts > 1) {
+        console.log(`[Supabase Direct SDK] Table "${table}": Successfully saved after ${attempts} schema adaptation attempt(s).`);
+      }
+      return { success: true, data };
+    }
+
+    lastError = error;
+    const errMsg = String(error.message || '');
+
+    // 1. Missing Column Error (PostgREST schema cache or relation missing column)
+    const colMatch =
+      errMsg.match(/Could not find the '([^']+)' column/i) ||
+      errMsg.match(/Could not find the "([^"]+)" column/i) ||
+      errMsg.match(/column "([^"]+)" of relation/i) ||
+      errMsg.match(/column '([^']+)' of relation/i) ||
+      errMsg.match(/column "([^"]+)" does not exist/i) ||
+      errMsg.match(/column '([^']+)' does not exist/i) ||
+      errMsg.match(/column ([a-zA-Z0-9_]+) does not exist/i) ||
+      errMsg.match(/has no column named '([^']+)'/i) ||
+      errMsg.match(/has no column named "([^"]+)"/i) ||
+      errMsg.match(/has no column named ([a-zA-Z0-9_]+)/i);
+
+    if (colMatch && colMatch[1]) {
+      const badCol = colMatch[1];
+      if (!clientKnownInvalidColumnsByTable.has(table)) {
+        clientKnownInvalidColumnsByTable.set(table, new Set());
+      }
+      clientKnownInvalidColumnsByTable.get(table)!.add(badCol);
+      console.warn(`[Supabase Direct SDK] Table "${table}": Column "${badCol}" not found in schema cache. Stripping column and retrying (attempt ${attempts})...`);
+      currentPayloads = currentPayloads.map(item => {
+        const copy = { ...item };
+        delete copy[badCol];
+        return copy;
+      });
+      continue;
+    }
+
+    // 2. Foreign Key Constraint Violation (e.g. category_id, brand_id, product_id, customer_id)
+    if (error.code === '23503' || errMsg.toLowerCase().includes('foreign key') || errMsg.toLowerCase().includes('violates foreign key')) {
+      console.warn(`[Supabase Direct SDK] Table "${table}": Foreign key constraint violation (${errMsg}). Nullifying relation fields and retrying (attempt ${attempts})...`);
+      currentPayloads = currentPayloads.map(item => {
+        const copy = { ...item };
+        if ('category_id' in copy) copy.category_id = null;
+        if ('brand_id' in copy) copy.brand_id = null;
+        if ('product_id' in copy) copy.product_id = null;
+        if ('customer_id' in copy) copy.customer_id = null;
+        if ('order_id' in copy) copy.order_id = null;
+        return copy;
+      });
+      continue;
+    }
+
+    // 3. Unique Constraint Violation on slug
+    if (error.code === '23505' && (errMsg.toLowerCase().includes('slug') || errMsg.toLowerCase().includes('unique'))) {
+      currentPayloads = currentPayloads.map((item, i) => {
+        const copy = { ...item };
+        if (copy.slug) {
+          copy.slug = `${copy.slug}-${Date.now().toString(36).slice(-4)}${i + 1}`;
+        }
+        return copy;
+      });
+      continue;
+    }
+
+    break;
+  }
+
+  return { success: false, error: formatSupabaseError(lastError?.message || 'Database upsert failed after schema negotiation') };
 }
 
 // =========================================================
@@ -675,12 +777,12 @@ export async function upsertProductInSupabase(product: Product | Product[]): Pro
   // 2. Direct Supabase SDK Fallback (Crucial for multi-device & static host environments)
   try {
     const payloads = list.map(p => mapProductToDb(p));
-    const { error: directErr } = await supabase.from('products').upsert(payloads, { onConflict: 'id' });
-    if (!directErr) {
+    const directResult = await robustDirectSupabaseUpsert('products', payloads, { onConflict: 'id' });
+    if (directResult.success) {
       console.log(`[Supabase Direct SDK] Upserted ${list.length} product(s) successfully`);
       return { success: true };
     }
-    return { success: false, error: formatSupabaseError(directErr.message) };
+    return { success: false, error: directResult.error };
   } catch (directErr: any) {
     return { success: false, error: formatSupabaseError(directErr?.message || String(directErr)) };
   }
@@ -1017,8 +1119,29 @@ const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4
 export async function fetchOrdersFromSupabase(customerId?: string): Promise<CustomerOrder[] | null> {
   await initializeSupabaseRuntime();
 
-  // 1. Attempt Direct Supabase SDK Query
-  if (isSupabaseConfigured) {
+  let ordersList: CustomerOrder[] | null = null;
+
+  // 1. Attempt Server Proxy First (has service-role bypass, avoids RLS blocks, and includes server CMS disk cache)
+  try {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('zst_admin_token') : null;
+    const url = `/api/db/orders${customerId ? `?customerId=${encodeURIComponent(customerId)}` : ''}`;
+    const res = await fetch(url, {
+      cache: 'no-store',
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        console.log(`[Supabase Proxy] Loaded ${json.data.length} orders via server proxy`);
+        ordersList = json.data.map(mapDbOrderToCustomerOrder);
+      }
+    }
+  } catch (proxyErr) {
+    console.warn('[Supabase Proxy] Server proxy fetch error, attempting direct SDK:', proxyErr);
+  }
+
+  // 2. Direct Supabase SDK Query (if proxy yielded no orders or wasn't reachable)
+  if (isSupabaseConfigured && (!ordersList || ordersList.length === 0)) {
     try {
       let query = supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false });
       if (customerId) {
@@ -1030,84 +1153,204 @@ export async function fetchOrdersFromSupabase(customerId?: string): Promise<Cust
       }
       let { data, error, status } = await query;
 
-      if (error && (error.code === '42703' || error.message?.toLowerCase().includes('column'))) {
-        const fallbackRes = await supabase.from('orders').select('*');
+      // If relationship error or column error, fallback to flat orders select
+      if (error) {
+        console.warn('[Supabase Direct SDK] Orders joined query warning, trying fallback select(*)...', error.message);
+        let fallbackQuery = supabase.from('orders').select('*').order('created_at', { ascending: false });
+        if (customerId) {
+          if (isUUID(customerId)) {
+            fallbackQuery = fallbackQuery.eq('customer_id', customerId);
+          } else {
+            fallbackQuery = fallbackQuery.or(`customer_phone.eq.${customerId},id.eq.${customerId}`);
+          }
+        }
+        const fallbackRes = await fallbackQuery;
         data = fallbackRes.data;
         error = fallbackRes.error;
       }
 
-      if (!error && Array.isArray(data)) {
+      if (!error && Array.isArray(data) && data.length > 0) {
         console.log(`[Supabase Direct SDK] Table: orders | Status: SUCCESS | Records: ${data.length} | HTTP: ${status || 200}`);
-        return data.map(mapDbOrderToCustomerOrder);
+        const sdkOrders = data.map(mapDbOrderToCustomerOrder);
+        ordersList = sdkOrders;
       }
-      console.warn(`[Supabase Direct SDK] Direct orders fetch failed (HTTP ${status || 0}), attempting server proxy fallback...`);
     } catch (err: any) {
-      console.warn('[Supabase Direct SDK] Direct orders fetch network exception, attempting server proxy fallback...');
+      console.warn('[Supabase Direct SDK] Direct orders fetch network exception:', err?.message || err);
     }
   }
 
-  // 2. Server Proxy Fallback
+  return ordersList;
+}
+
+export async function fetchSingleOrderFromSupabase(orderId: string): Promise<CustomerOrder | null> {
+  await initializeSupabaseRuntime();
+  const cleanId = orderId.trim().replace(/^#/, '');
+
+  // 1. Attempt Server Proxy First (has service-role bypass, merges CMS disk store and Supabase DB)
   try {
-    const url = `/api/db/orders${customerId ? `?customerId=${encodeURIComponent(customerId)}` : ''}`;
-    const res = await fetch(url, { cache: 'no-store' });
+    const token = typeof window !== 'undefined' ? localStorage.getItem('zst_admin_token') : null;
+    const res = await fetch(`/api/db/orders/${encodeURIComponent(cleanId)}`, {
+      cache: 'no-store',
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+    });
     if (res.ok) {
       const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        console.log(`[Supabase Proxy] Loaded ${json.data.length} orders via server proxy`);
-        return json.data.map(mapDbOrderToCustomerOrder);
+      if (json.success && json.data) {
+        return mapDbOrderToCustomerOrder(json.data);
       }
     }
   } catch (proxyErr) {
-    // offline or static host fallback
+    console.warn('[Supabase Proxy] Single order fetch error, falling back to direct SDK:', proxyErr);
   }
+
+  // 2. Direct Supabase SDK Query
+  if (isSupabaseConfigured) {
+    try {
+      let { data, error } = await supabase
+        .from('orders')
+        .select('*, order_items(*)')
+        .or(`id.eq.${cleanId},id.ilike.%${cleanId}%`)
+        .maybeSingle();
+
+      if (error) {
+        const fallbackRes = await supabase
+          .from('orders')
+          .select('*')
+          .or(`id.eq.${cleanId},id.ilike.%${cleanId}%`)
+          .maybeSingle();
+        data = fallbackRes.data;
+      }
+
+      if (data) {
+        return mapDbOrderToCustomerOrder(data);
+      }
+    } catch (dbErr) {
+      console.warn('[Supabase Direct SDK] Single order query exception:', dbErr);
+    }
+  }
+
+  // 3. Fallback: Search in full orders list if direct single lookup didn't match
+  try {
+    const all = await fetchOrdersFromSupabase();
+    if (all && all.length > 0) {
+      const found = all.find(o => 
+        o.id.toLowerCase() === cleanId.toLowerCase() || 
+        o.id.toLowerCase().includes(cleanId.toLowerCase())
+      );
+      if (found) return found;
+    }
+  } catch {}
 
   return null;
 }
 
 function mapDbOrderToCustomerOrder(r: any): CustomerOrder {
+  const rawItems = Array.isArray(r.order_items) && r.order_items.length > 0
+    ? r.order_items
+    : (Array.isArray(r.items) && r.items.length > 0 ? r.items : []);
+
+  // Check if order was verified at any point in history or record
+  const historyList = Array.isArray(r.status_history) ? r.status_history : (Array.isArray(r.statusHistory) ? r.statusHistory : []);
+  const hasVerifiedInHistory = historyList.some((h: any) => 
+    h?.status === 'Payment Verified' || 
+    h?.status === 'Payment Confirmed' || 
+    h?.status === 'Approved' ||
+    (typeof h?.note === 'string' && h.note.toLowerCase().includes('verified'))
+  );
+
+  const isEverVerified = 
+    r.payment_status === 'Payment Verified' || 
+    r.paymentStatus === 'Payment Verified' || 
+    r.payment_status === 'Payment Confirmed' || 
+    r.paymentStatus === 'Payment Confirmed' || 
+    r.status === 'Payment Verified' ||
+    r.status === 'Payment Confirmed' ||
+    r.payment_status === 'Paid' || 
+    r.paymentStatus === 'Paid' || 
+    Boolean(r.payment_verified_at) || 
+    Boolean(r.paymentVerifiedAt) || 
+    hasVerifiedInHistory;
+
+  const isExplicitlyRejected = 
+    r.payment_status === 'Payment Rejected' || 
+    r.paymentStatus === 'Payment Rejected' || 
+    r.status === 'Payment Rejected';
+
+  const resolvedPaymentStatus = isEverVerified 
+    ? 'Payment Verified' 
+    : isExplicitlyRejected 
+    ? 'Payment Rejected' 
+    : (r.payment_status || r.paymentStatus || (r.is_advance_payment ? 'Advance Payment Under Review' : (r.payment_proof_url ? 'Payment Proof Submitted' : (r.payment_method?.toLowerCase().includes('cash') ? 'Cash on Delivery' : undefined))));
+
   return {
     id: String(r.id),
-    orderNumber: r.id || r.order_number,
-    customerId: r.customer_id || undefined,
-    customerName: r.customer_name,
-    phoneNumber: r.customer_phone || r.phone_number || '',
-    whatsappNumber: r.whatsapp_number || undefined,
+    orderNumber: r.order_number || r.orderNumber || r.id,
+    customerId: r.customer_id || r.customerId || undefined,
+    customerName: r.customer_name || r.customerName || '',
+    phoneNumber: r.customer_phone || r.phoneNumber || r.phone_number || '',
+    whatsappNumber: r.whatsapp_number || r.whatsappNumber || undefined,
     city: r.shipping_city || r.city || '',
-    areaLocality: r.shipping_area || r.area_locality || undefined,
-    deliveryAddress: r.shipping_address || r.delivery_address || '',
-    postalCode: r.postal_code || undefined,
+    areaLocality: r.shipping_area || r.area_locality || r.areaLocality || undefined,
+    deliveryAddress: r.shipping_address || r.delivery_address || r.deliveryAddress || '',
+    postalCode: r.postal_code || r.postalCode || undefined,
     landmark: r.landmark || undefined,
-    deliveryInstructions: r.delivery_instructions || undefined,
+    deliveryInstructions: r.delivery_instructions || r.deliveryInstructions || undefined,
     notes: r.notes || undefined,
-    items: Array.isArray(r.order_items) ? r.order_items.map((item: any) => ({
-      productId: String(item.product_id),
-      productName: item.product_title || item.product_name || '',
+    items: rawItems.map((item: any) => ({
+      productId: String(item.product_id || item.productId || ''),
+      productName: item.product_title || item.product_name || item.productName || 'Product',
       image: item.product_image || item.image || '',
-      unitPrice: String(item.unit_price ?? 0),
-      numericPrice: Number(item.unit_price ?? 0),
+      unitPrice: String(item.unit_price ?? item.unitPrice ?? 0),
+      numericPrice: Number(item.numeric_price ?? item.numericPrice ?? item.unit_price ?? item.unitPrice ?? 0),
       quantity: Number(item.quantity ?? 1),
-      selectedColor: item.selected_color || undefined,
-      selectedSize: item.selected_size || undefined,
-      selectedQuality: item.selected_quality || undefined,
-      selectedVariant: item.selected_variant || undefined,
-      lineTotal: Number(item.total_price ?? ((item.unit_price || 0) * (item.quantity || 1)))
-    })) : [],
+      selectedColor: item.selected_color || item.selectedColor || undefined,
+      selectedSize: item.selected_size || item.selectedSize || undefined,
+      selectedQuality: item.selected_quality || item.selectedQuality || undefined,
+      selectedVariant: item.selected_variant || item.selectedVariant || undefined,
+      selectedShade: item.selected_shade || item.selectedShade || undefined,
+      selectedShadeCode: item.selected_shade_code || item.selectedShadeCode || undefined,
+      lineTotal: Number(item.total_price ?? item.lineTotal ?? ((item.numeric_price || item.unit_price || item.unitPrice || 0) * (item.quantity || 1)))
+    })),
     subtotal: Number(r.subtotal ?? 0),
-    deliveryCharges: Number(r.delivery_fee ?? r.delivery_charges ?? 0),
-    taxAmount: Number(r.tax_amount ?? 0),
-    grandTotal: Number(r.total_amount ?? r.grand_total ?? 0),
-    createdAt: r.created_at,
-    updatedAt: r.updated_at || undefined,
+    deliveryCharges: Number(r.delivery_fee ?? r.delivery_charges ?? r.deliveryCharges ?? 0),
+    taxAmount: Number(r.tax_amount ?? r.taxAmount ?? 0),
+    grandTotal: Number(r.total_amount ?? r.grand_total ?? r.grandTotal ?? 0),
+    createdAt: r.created_at || r.createdAt || new Date().toISOString(),
+    updatedAt: r.updated_at || r.updatedAt || undefined,
     status: r.status || 'Order Received',
-    statusHistory: Array.isArray(r.status_history) ? r.status_history : [],
-    estimatedDeliveryDays: r.estimated_delivery_days || undefined,
-    estimatedDeliveryDate: r.estimated_delivery_date || undefined,
-    estimatedDeliveryTime: r.estimated_delivery_time || undefined,
-    isDelayed: Boolean(r.is_delayed),
-    delayReason: r.delay_reason || undefined,
-    trackingReference: r.tracking_reference || undefined,
-    adminNotes: r.admin_notes || undefined,
-    deliveryDelayNote: r.delivery_delay_note || undefined
+    statusHistory: Array.isArray(r.status_history) ? r.status_history : (Array.isArray(r.statusHistory) ? r.statusHistory : []),
+    estimatedDeliveryDays: r.estimated_delivery_days || r.estimatedDeliveryDays || undefined,
+    estimatedDeliveryDate: r.estimated_delivery_date || r.estimatedDeliveryDate || undefined,
+    estimatedDeliveryTime: r.estimated_delivery_time || r.estimatedDeliveryTime || undefined,
+    isDelayed: Boolean(r.is_delayed || r.isDelayed),
+    delayReason: r.delay_reason || r.delayReason || undefined,
+    trackingReference: r.tracking_reference || r.trackingReference || undefined,
+    adminNotes: r.admin_notes || r.adminNotes || undefined,
+    deliveryDelayNote: r.delivery_delay_note || r.deliveryDelayNote || undefined,
+    // Coupon Details
+    couponCode: r.coupon_code || r.couponCode || undefined,
+    appliedCouponCode: r.applied_coupon_code || r.appliedCouponCode || r.coupon_code || r.couponCode || undefined,
+    discountAmount: r.discount_amount ? Number(r.discount_amount) : (r.discountAmount ? Number(r.discountAmount) : undefined),
+    couponDiscountAmount: r.coupon_discount_amount ? Number(r.coupon_discount_amount) : (r.couponDiscountAmount ? Number(r.couponDiscountAmount) : (r.discount_amount ? Number(r.discount_amount) : undefined)),
+    // Payment Details & Proof
+    paymentMethodId: r.payment_method_id || r.paymentMethodId || undefined,
+    paymentMethodName: r.payment_method_name || r.paymentMethodName || r.payment_method || undefined,
+    paymentType: r.payment_type || r.paymentType || undefined,
+    paymentProofUrl: r.payment_proof_url || r.paymentProofUrl || undefined,
+    paymentProofFileName: r.payment_proof_file_name || r.paymentProofFileName || undefined,
+    paymentProofUploadedAt: r.payment_proof_uploaded_at || r.paymentProofUploadedAt || undefined,
+    transactionReference: r.transaction_reference || r.transactionReference || undefined,
+    paymentStatus: resolvedPaymentStatus,
+    paymentNotes: r.payment_notes || r.paymentNotes || undefined,
+    paymentVerifiedAt: r.payment_verified_at || r.paymentVerifiedAt || undefined,
+    paymentVerifiedBy: r.payment_verified_by || r.paymentVerifiedBy || undefined,
+    paymentRejectionReason: r.payment_rejection_reason || r.paymentRejectionReason || undefined,
+    // Advance Payment details
+    isAdvancePayment: Boolean(r.is_advance_payment ?? r.isAdvancePayment),
+    advancePercentage: r.advance_percentage ? Number(r.advance_percentage) : (r.advancePercentage ? Number(r.advancePercentage) : undefined),
+    advanceAmountRequired: r.advance_amount_required ? Number(r.advance_amount_required) : (r.advanceAmountRequired ? Number(r.advanceAmountRequired) : undefined),
+    advancePaidAmount: r.advance_paid_amount ? Number(r.advance_paid_amount) : (r.advancePaidAmount ? Number(r.advancePaidAmount) : undefined),
+    remainingCodAmount: r.remaining_cod_amount ? Number(r.remaining_cod_amount) : (r.remainingCodAmount ? Number(r.remainingCodAmount) : undefined)
   };
 }
 
@@ -1115,7 +1358,7 @@ export async function createOrderInSupabase(order: CustomerOrder): Promise<{ suc
   await initializeSupabaseRuntime();
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
-  const orderPayload = {
+  const orderPayload: Record<string, any> = {
     id: order.id,
     customer_id: (order.customerId && isUUID(order.customerId)) ? order.customerId : null,
     customer_name: order.customerName,
@@ -1137,7 +1380,22 @@ export async function createOrderInSupabase(order: CustomerOrder): Promise<{ suc
     estimated_delivery_days: order.estimatedDeliveryDays || null,
     estimated_delivery_date: order.estimatedDeliveryDate || null,
     estimated_delivery_time: order.estimatedDeliveryTime || null,
-    created_at: order.createdAt || new Date().toISOString()
+    created_at: order.createdAt || new Date().toISOString(),
+    // Coupon fields
+    coupon_code: order.appliedCouponCode || order.couponCode || null,
+    discount_amount: order.couponDiscountAmount || order.discountAmount || 0,
+    // Payment fields
+    payment_method: order.paymentMethodName || order.paymentMethodId || (order.paymentProofUrl ? 'Online Transfer' : 'Cash on Delivery'),
+    payment_status: order.paymentStatus || (order.paymentProofUrl ? 'Payment Proof Submitted' : 'Cash on Delivery'),
+    payment_proof_url: order.paymentProofUrl || null,
+    transaction_reference: order.transactionReference || null,
+    payment_notes: order.paymentNotes || null,
+    // Advance Payment fields
+    is_advance_payment: Boolean(order.isAdvancePayment),
+    advance_percentage: order.advancePercentage || null,
+    advance_amount_required: order.advanceAmountRequired || null,
+    advance_paid_amount: order.advancePaidAmount || null,
+    remaining_cod_amount: order.remainingCodAmount || null
   };
 
   const itemsPayload = (Array.isArray(order.items) ? order.items : []).map(item => ({
@@ -1152,26 +1410,45 @@ export async function createOrderInSupabase(order: CustomerOrder): Promise<{ suc
     selected_color: item.selectedColor || null,
     selected_size: item.selectedSize || null,
     selected_quality: item.selectedQuality || null,
-    selected_variant: item.selectedVariant || null
+    selected_variant: item.selectedVariant || null,
+    selected_shade: item.selectedShade || null,
+    selected_shade_code: item.selectedShadeCode || null
   }));
 
+  // 1. Try server proxy first (with robustUpsert column fallback)
   try {
-    const { error: orderErr } = await supabase.from('orders').upsert(orderPayload, { onConflict: 'id' });
-    if (orderErr) {
-      console.error(`[Supabase Direct SDK] Order creation failed: ${orderErr.message}`);
-      return { success: false, error: orderErr.message };
+    const res = await fetch('/api/db/orders/upsert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: orderPayload, items: itemsPayload })
+    });
+    const json = await res.json().catch(() => null);
+    if (res.ok && json?.success) {
+      console.log(`[Supabase Proxy] Successfully created order: ${order.id}`);
+      return { success: true };
+    }
+  } catch (proxyErr) {
+    console.warn('[Supabase Proxy] Order creation proxy attempt failed, falling back to direct SDK:', proxyErr);
+  }
+
+  // 2. Direct Supabase SDK Fallback (with automatic schema negotiation and missing column stripping)
+  try {
+    const orderResult = await robustDirectSupabaseUpsert('orders', [orderPayload], { onConflict: 'id' });
+    if (!orderResult.success) {
+      console.error(`[Supabase Direct SDK] Order creation failed: ${orderResult.error}`);
+      return { success: false, error: orderResult.error };
     }
 
     if (itemsPayload.length > 0) {
-      const { error: itemsErr } = await supabase.from('order_items').upsert(itemsPayload, { onConflict: 'id' });
-      if (itemsErr) {
-        console.warn(`[Supabase Direct SDK] Order items upsert warning: ${itemsErr.message}`);
+      const itemsResult = await robustDirectSupabaseUpsert('order_items', itemsPayload, { onConflict: 'id' });
+      if (!itemsResult.success) {
+        console.warn(`[Supabase Direct SDK] Order items upsert warning: ${itemsResult.error}`);
       }
     }
     console.log(`[Supabase Direct SDK] Created order: ${order.id}`);
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err.message };
+    return { success: false, error: err?.message || String(err) };
   }
 }
 
@@ -1198,6 +1475,70 @@ export async function updateOrderStatusInSupabase(orderId: string, status: Custo
   } catch (err: any) {
     return { success: false, error: formatSupabaseError(err?.message || String(err)) };
   }
+}
+
+export async function updateOrderPaymentStatusInSupabase(
+  orderId: string, 
+  paymentStatus: CustomerOrder['paymentStatus'], 
+  orderStatus?: CustomerOrder['status'], 
+  note?: string,
+  rejectionReason?: string,
+  verifiedBy?: string
+): Promise<{ success: boolean; error?: string }> {
+  await initializeSupabaseRuntime();
+  if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
+
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/db/orders/${encodeURIComponent(orderId)}/payment-status`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ paymentStatus, orderStatus, note, rejectionReason, verifiedBy })
+    });
+    const result = await res.json().catch(() => null);
+    if (!res.ok || (result && result.success === false)) {
+      // Fallback to updating order status endpoint
+      if (orderStatus) {
+        return updateOrderStatusInSupabase(orderId, orderStatus, note);
+      }
+      return { success: false, error: result?.error || 'Failed to update payment status' };
+    }
+    console.log(`[Supabase API] Updated order ${orderId} payment status: ${paymentStatus}`);
+    return { success: true };
+  } catch (err: any) {
+    if (orderStatus) {
+      return updateOrderStatusInSupabase(orderId, orderStatus, note);
+    }
+    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
+  }
+}
+
+export async function fetchPaymentMethodsFromSupabase(): Promise<PaymentMethodConfig[] | null> {
+  const methods = await fetchSiteSettingFromSupabase<PaymentMethodConfig[]>('zst_payment_methods_v1');
+  if (Array.isArray(methods) && methods.length > 0) {
+    return methods;
+  }
+  return null;
+}
+
+export async function savePaymentMethodsToSupabase(methods: PaymentMethodConfig[]): Promise<{ success: boolean; error?: string }> {
+  return saveSiteSettingToSupabase('zst_payment_methods_v1', methods);
+}
+
+// =========================================================
+// HOW TO ORDER GUIDE CRUD (Site Settings)
+// =========================================================
+
+export async function fetchHowToOrderConfigFromSupabase(): Promise<HowToOrderConfig | null> {
+  const config = await fetchSiteSettingFromSupabase<HowToOrderConfig>('zst_how_to_order_guide_v1');
+  if (config && Array.isArray(config.steps) && config.steps.length > 0) {
+    return config;
+  }
+  return null;
+}
+
+export async function saveHowToOrderConfigToSupabase(config: HowToOrderConfig): Promise<{ success: boolean; error?: string }> {
+  return saveSiteSettingToSupabase('zst_how_to_order_guide_v1', config);
 }
 
 // =========================================================

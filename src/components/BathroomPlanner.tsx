@@ -25,7 +25,8 @@ import {
   Plus,
   Trash2,
   ExternalLink,
-  ChevronRight
+  ChevronRight,
+  Zap
 } from 'lucide-react';
 import { Product, EasyBathroomPlannerConfig, BathroomPackageItem, EasyBathroomPlannerResult } from '../types';
 import { defaultEasyBathroomPlannerConfig } from '../data/defaultPlannerConfig';
@@ -37,6 +38,7 @@ interface BathroomPlannerProps {
   config?: EasyBathroomPlannerConfig | any;
   whatsappNumber?: string;
   onAddToCart?: (product: Product, quantity: number, color?: string) => void;
+  onBuyNow?: (product: Product, quantity: number, color?: string) => void;
   onViewProduct?: (product: Product) => void;
 }
 
@@ -45,6 +47,7 @@ export const BathroomPlanner: React.FC<BathroomPlannerProps> = ({
   config = defaultEasyBathroomPlannerConfig,
   whatsappNumber = "923108002863",
   onAddToCart,
+  onBuyNow,
   onViewProduct
 }) => {
   const plannerConfig: EasyBathroomPlannerConfig = {
@@ -182,6 +185,20 @@ export const BathroomPlanner: React.FC<BathroomPlannerProps> = ({
     });
     setCartAddedNotice(true);
     setTimeout(() => setCartAddedNotice(false), 4000);
+  };
+
+  // Buy now handler - adds all items to cart and triggers checkout
+  const handleBuyNow = () => {
+    const included = packageItems.filter(i => i.isIncluded);
+    if (included.length > 0) {
+      included.forEach((item, idx) => {
+        if (idx === included.length - 1 && onBuyNow) {
+          onBuyNow(item.product, item.quantity, item.selectedColor);
+        } else if (onAddToCart) {
+          onAddToCart(item.product, item.quantity, item.selectedColor);
+        }
+      });
+    }
   };
 
   // Reset planner
@@ -751,16 +768,15 @@ export const BathroomPlanner: React.FC<BathroomPlannerProps> = ({
                 <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     
-                    {/* WhatsApp Action Button */}
-                    <a
-                      href={buildPlannerWhatsAppMessage(currentResult, whatsappNumber, plannerConfig.whatsappTemplate)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="py-4 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm shadow-xl shadow-emerald-600/30 transition-all flex items-center justify-center gap-2.5 text-center"
+                    {/* Buy Now Action Button */}
+                    <button
+                      type="button"
+                      onClick={handleBuyNow}
+                      className="py-4 px-6 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm shadow-xl shadow-blue-600/30 transition-all flex items-center justify-center gap-2.5 text-center cursor-pointer"
                     >
-                      <PhoneCall className="w-4 h-4 shrink-0" />
-                      <span>Order on WhatsApp (واٹس ایپ پر آرڈر کریں)</span>
-                    </a>
+                      <Zap className="w-4 h-4 shrink-0 text-amber-300 fill-amber-300" />
+                      <span>Buy Now (ابھی خریدیں)</span>
+                    </button>
 
                     {/* Add Entire Package to Cart Button */}
                     {onAddToCart && (

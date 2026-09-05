@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   User, 
@@ -19,10 +19,16 @@ import {
   ShieldAlert, 
   ExternalLink,
   ShoppingBag,
-  ArrowLeft
+  ArrowLeft,
+  ShieldCheck,
+  AlertCircle,
+  RefreshCw,
+  Search
 } from 'lucide-react';
 import { CustomerProfile, CustomerOrder, BusinessConfig } from '../types';
 import { saveCustomerProfile } from '../utils/customerStorage';
+import { fetchSingleOrderFromSupabase } from '../services/supabaseService';
+import { loadStoredOrders, saveStoredOrders } from '../utils/storage';
 
 interface CustomerAccountModalProps {
   isOpen: boolean;
@@ -58,8 +64,48 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState<CustomerProfile>({ ...profile });
   const [orderFilter, setOrderFilter] = useState<'all' | 'active' | 'delivered' | 'cancelled'>('all');
+  const [isRefreshingOrder, setIsRefreshingOrder] = useState(false);
+
+  // Real-time synchronization of currently viewed order
+  useEffect(() => {
+    const handleStatusEvent = (event: any) => {
+      const updatedOrder = event?.detail?.order as CustomerOrder | undefined;
+      if (updatedOrder && selectedOrder && (updatedOrder.id === selectedOrder.id || updatedOrder.orderNumber === selectedOrder.orderNumber)) {
+        setSelectedOrder(prev => prev ? { ...prev, ...updatedOrder } : updatedOrder);
+      }
+    };
+
+    window.addEventListener('zst_order_status_updated', handleStatusEvent);
+    return () => window.removeEventListener('zst_order_status_updated', handleStatusEvent);
+  }, [selectedOrder]);
 
   if (!isOpen) return null;
+
+  const handleRefreshLiveOrder = async (orderId: string) => {
+    setIsRefreshingOrder(true);
+    try {
+      const live = await fetchSingleOrderFromSupabase(orderId);
+      if (live) {
+        if (selectedOrder?.paymentStatus === 'Payment Verified' && live.paymentStatus !== 'Payment Verified') {
+          live.paymentStatus = 'Payment Verified';
+          live.paymentVerifiedAt = selectedOrder.paymentVerifiedAt || live.paymentVerifiedAt || new Date().toISOString();
+        }
+        setSelectedOrder(live);
+        const stored = loadStoredOrders();
+        const idx = stored.findIndex(o => o.id === live.id);
+        if (idx >= 0) {
+          stored[idx] = { ...stored[idx], ...live };
+        } else {
+          stored.unshift(live);
+        }
+        saveStoredOrders(stored);
+      }
+    } catch (e) {
+      console.warn('Failed to refresh order status:', e);
+    } finally {
+      setIsRefreshingOrder(false);
+    }
+  };
 
   // Filter orders isolating only those for this customer
   const myOrders = orders.filter(o => {
@@ -87,17 +133,16 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   };
 
   const getStatusIndex = (status: string) => {
-    const norm = status.toLowerCase();
-    if (norm.includes('received') || norm.includes('pending')) return 0;
-    if (norm.includes('confirm')) return 1;
-    if (norm.includes('prepar') || norm.includes('process')) return 2;
-    if (norm.includes('pack')) return 3;
-    if (norm.includes('ready')) return 4;
-    if (norm.includes('ship')) return 5;
-    if (norm.includes('way')) return 6;
+    const norm = (status || '').toLowerCase().trim();
+    if (norm.includes('deliver') && !norm.includes('ready') && !norm.includes('out')) return 8;
     if (norm.includes('out')) return 7;
-    if (norm.includes('deliver')) return 8;
-    return 1;
+    if (norm.includes('way')) return 6;
+    if (norm.includes('ship')) return 5;
+    if (norm.includes('ready') || norm.includes('dispatch')) return 4;
+    if (norm.includes('pack')) return 3;
+    if (norm.includes('prepar') || norm.includes('process') || norm.includes('product')) return 2;
+    if (norm.includes('confirm') || norm.includes('approv') || norm.includes('verifi') || norm.includes('paid')) return 1;
+    return 0; // Order Received / Pending
   };
 
   const handleWhatsAppOrderInquiry = (order: CustomerOrder) => {
@@ -227,12 +272,26 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                               </p>
                             </div>
 
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 flex-wrap justify-end">
+                              {order.paymentStatus === 'Payment Verified' || order.status === 'Approved' || order.status === 'Confirmed' ? (
+                                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>Verified</span>
+                                </span>
+                              ) : order.paymentStatus === 'Payment Rejected' ? (
+                                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-950 text-rose-300 border border-rose-500/40 flex items-center gap-1">
+                                  <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                                  <span>Rejected</span>
+                                </span>
+                              ) : null}
+
                               <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                                 order.status === 'Delivered' 
                                   ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/40' 
                                   : order.status === 'Cancelled'
                                   ? 'bg-red-950 text-red-400 border border-red-500/40'
+                                  : order.status === 'Approved' || order.status === 'Confirmed'
+                                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
                                   : 'bg-blue-950 text-cyan-300 border border-cyan-500/40'
                               }`}>
                                 {order.status}
@@ -240,7 +299,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
                               <button
                                 onClick={() => setSelectedOrder(order)}
-                                className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-blue-600 text-white text-xs font-bold transition-all flex items-center gap-1"
+                                className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-blue-600 text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
                               >
                                 <span>Track Order</span>
                                 <ChevronRight className="w-3.5 h-3.5" />
@@ -302,13 +361,60 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
                       <div className="flex items-center gap-3">
                         <button
+                          onClick={() => handleRefreshLiveOrder(selectedOrder.id)}
+                          disabled={isRefreshingOrder}
+                          className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 border border-slate-700 transition-all cursor-pointer"
+                          title="Refresh live status from server"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingOrder ? 'animate-spin text-cyan-400' : ''}`} />
+                          <span>{isRefreshingOrder ? 'Checking...' : 'Refresh Status'}</span>
+                        </button>
+
+                        <button
                           onClick={() => handleWhatsAppOrderInquiry(selectedOrder)}
-                          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg transition-all"
+                          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg transition-all cursor-pointer"
                         >
                           <MessageSquare className="w-4 h-4" />
-                          <span>Ask About Delivery on WhatsApp</span>
+                          <span>Ask on WhatsApp</span>
                         </button>
                       </div>
+                    </div>
+
+                    {/* Payment & Verification Status Strip */}
+                    <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between flex-wrap gap-2 text-xs">
+                      <div className="flex items-center gap-2.5">
+                        {selectedOrder.paymentStatus === 'Payment Verified' || selectedOrder.status === 'Confirmed' || selectedOrder.status === 'Approved' ? (
+                          <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                        ) : selectedOrder.paymentStatus === 'Payment Rejected' ? (
+                          <AlertCircle className="w-4 h-4 text-rose-400" />
+                        ) : (
+                          <Clock className="w-4 h-4 text-amber-400" />
+                        )}
+                        <div>
+                          <span className="text-slate-400 mr-2">Payment Verification:</span>
+                          <strong className={
+                            selectedOrder.paymentStatus === 'Payment Verified' || selectedOrder.status === 'Confirmed' || selectedOrder.status === 'Approved'
+                              ? 'text-emerald-400'
+                              : selectedOrder.paymentStatus === 'Payment Rejected'
+                              ? 'text-rose-400'
+                              : 'text-amber-300'
+                          }>
+                            {selectedOrder.paymentStatus === 'Payment Verified' || selectedOrder.status === 'Confirmed' || selectedOrder.status === 'Approved'
+                              ? 'Payment Verified & Approved ✅'
+                              : selectedOrder.paymentStatus === 'Payment Rejected'
+                              ? 'Payment Rejected ❌'
+                              : (selectedOrder.paymentType === 'cod' || selectedOrder.paymentMethodName?.toLowerCase().includes('cash')) && !selectedOrder.isAdvancePayment
+                              ? 'Cash on Delivery'
+                              : 'Payment Approval Pending (Under Review)'}
+                          </strong>
+                        </div>
+                      </div>
+
+                      {selectedOrder.paymentVerifiedAt && (
+                        <span className="text-[11px] text-emerald-500 font-mono">
+                          Verified: {new Date(selectedOrder.paymentVerifiedAt).toLocaleDateString()}
+                        </span>
+                      )}
                     </div>
 
                     {/* Timeline Visual */}

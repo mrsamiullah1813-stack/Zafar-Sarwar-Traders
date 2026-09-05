@@ -16,7 +16,8 @@ import {
   ExternalLink,
   CheckCircle2,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Zap
 } from 'lucide-react';
 import { Product, BusinessConfig, WaterTankPumpInputs, WaterTankPumpResult } from '../types';
 import { 
@@ -28,6 +29,7 @@ interface WaterTankPumpGuideProps {
   products: Product[];
   config: BusinessConfig;
   onAddToCart?: (product: Product, quantity: number) => void;
+  onBuyNow?: (product: Product, quantity: number) => void;
   onViewProduct?: (product: Product) => void;
   onClose?: () => void;
 }
@@ -36,6 +38,7 @@ export const WaterTankPumpGuide: React.FC<WaterTankPumpGuideProps> = ({
   products = [],
   config,
   onAddToCart,
+  onBuyNow,
   onViewProduct,
   onClose
 }) => {
@@ -73,6 +76,19 @@ export const WaterTankPumpGuide: React.FC<WaterTankPumpGuideProps> = ({
       onAddToCart(product, 1);
       setAddedNotice(`Added ${product.name} to cart!`);
       setTimeout(() => setAddedNotice(null), 3000);
+    }
+  };
+
+  const handleBuyNow = () => {
+    const targetProduct = result.recommendedProducts?.[0] || products.find(p => (p.category || '').toLowerCase().includes('tank') || (p.name || '').toLowerCase().includes('tank')) || products[0];
+    if (targetProduct) {
+      if (onBuyNow) {
+        onBuyNow(targetProduct, 1);
+        if (onClose) onClose();
+      } else if (onAddToCart) {
+        onAddToCart(targetProduct, 1);
+        if (onClose) onClose();
+      }
     }
   };
 
@@ -348,11 +364,11 @@ export const WaterTankPumpGuide: React.FC<WaterTankPumpGuideProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={handleWhatsAppInquiry}
-                  className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-lg shadow-emerald-600/20"
+                  onClick={handleBuyNow}
+                  className="py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-lg shadow-blue-600/25 cursor-pointer"
                 >
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  <span>Order on WhatsApp</span>
+                  <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                  <span>Buy Now</span>
                 </button>
 
                 <button

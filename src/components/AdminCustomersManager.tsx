@@ -53,14 +53,25 @@ export const AdminCustomersManager: React.FC<AdminCustomersManagerProps> = ({ on
   useEffect(() => {
     let isMounted = true;
     const loadOrders = async () => {
+      const local = loadStoredOrders();
+      if (isMounted) setOrders(local);
+
       if (isSupabaseConfigured) {
         const dbOrders = await fetchOrdersFromSupabase();
-        if (dbOrders !== null) {
-          if (isMounted) setOrders(dbOrders);
+        if (dbOrders !== null && Array.isArray(dbOrders)) {
+          const orderMap = new Map<string, CustomerOrder>();
+          (local || []).forEach(o => { if (o?.id) orderMap.set(String(o.id), o); });
+          dbOrders.forEach(o => {
+            if (o?.id) {
+              const existing = orderMap.get(String(o.id));
+              orderMap.set(String(o.id), { ...(existing || {}), ...o });
+            }
+          });
+          const merged = Array.from(orderMap.values()).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          if (isMounted) setOrders(merged);
           return;
         }
       }
-      if (isMounted) setOrders(loadStoredOrders());
     };
     loadOrders();
     return () => { isMounted = false; };

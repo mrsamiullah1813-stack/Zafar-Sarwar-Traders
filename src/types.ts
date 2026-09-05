@@ -654,13 +654,96 @@ export interface OrderItem {
   lineTotal: number;
 }
 
-export type OrderStatus = 'Order Received' | 'New' | 'Confirmed' | 'Preparing' | 'Ready for Delivery' | 'Out for Delivery' | 'Delivered' | 'On Hold' | 'Cancelled' | 'Pending' | 'Processing';
+export type OrderStatus =
+  | 'Order Received'
+  | 'Pending Payment'
+  | 'Payment Proof Submitted'
+  | 'Payment Under Review'
+  | 'Payment Verification Pending'
+  | 'Advance Payment Under Review'
+  | 'Payment Verified'
+  | 'Payment Confirmed'
+  | 'Approved'
+  | 'Payment Rejected'
+  | 'Order Confirmed'
+  | 'Confirmed'
+  | 'Preparing'
+  | 'Order Processing'
+  | 'Packed'
+  | 'Ready for Dispatch'
+  | 'Ready for Delivery'
+  | 'Shipped'
+  | 'On The Way'
+  | 'Out for Delivery'
+  | 'Delivered'
+  | 'Cancelled'
+  | 'On Hold'
+  | 'Delayed'
+  | 'New'
+  | 'Pending'
+  | 'Processing';
+
+export type PaymentStatus =
+  | 'Pending Payment'
+  | 'Payment Proof Submitted'
+  | 'Payment Under Review'
+  | 'Payment Verification Pending'
+  | 'Advance Payment Under Review'
+  | 'Payment Verified'
+  | 'Payment Confirmed'
+  | 'Payment Rejected'
+  | 'Paid'
+  | 'Cash on Delivery';
+
+export type PaymentMethodType = 'cod' | 'bank_transfer' | 'easypaisa' | 'jazzcash' | 'custom';
+
+export interface PaymentMethodConfig {
+  id: string;
+  type: PaymentMethodType;
+  name: string;
+  isEnabled: boolean;
+  accountTitle?: string;
+  accountNumber?: string;
+  bankName?: string;
+  iban?: string;
+  branchCode?: string;
+  qrCodeUrl?: string;
+  instructions?: string;
+  whatsappNumber?: string;
+  displayOrder?: number;
+  requiresProof?: boolean;
+  badgeText?: string;
+  iconType?: string;
+  codAdvanceRequired?: boolean;
+  codAdvancePercentage?: number;
+}
 
 export interface OrderStatusHistoryItem {
   status: OrderStatus | string;
   timestamp: string;
   note?: string;
   updatedBy?: string;
+}
+
+export interface HowToOrderStep {
+  id: string;
+  stepNumber: number;
+  title: string;
+  description: string;
+  icon?: string;
+  tip?: string;
+}
+
+export interface HowToOrderConfig {
+  isEnabled: boolean;
+  buttonLabel: string;
+  title: string;
+  subtitle: string;
+  steps: HowToOrderStep[];
+  supportPhone?: string;
+  supportWhatsapp?: string;
+  customNote?: string;
+  updatedAt?: string;
 }
 
 export interface CustomerAddress {
@@ -727,6 +810,36 @@ export interface CustomerOrder {
   discountAmount?: number;
   couponDiscountAmount?: number;
   originalSubtotal?: number;
+  // Payment Details & Proof
+  paymentMethodId?: string;
+  paymentMethodName?: string;
+  paymentType?: PaymentMethodType;
+  paymentProofUrl?: string;
+  paymentProofFileName?: string;
+  paymentProofUploadedAt?: string;
+  transactionReference?: string;
+  paymentStatus?: PaymentStatus;
+  paymentNotes?: string;
+  paymentVerifiedAt?: string;
+  paymentVerifiedBy?: string;
+  paymentRejectionReason?: string;
+  // Advance Payment Protection (for Cash on Delivery or partial deposit)
+  isAdvancePayment?: boolean;
+  advancePercentage?: number;
+  advanceAmountRequired?: number;
+  advancePaidAmount?: number;
+  remainingCodAmount?: number;
+  isCodAdvanceRequired?: boolean;
+  codAdvancePercentage?: number;
+  codAdvanceAmountRequired?: number;
+  codAdvanceAmountPaid?: number;
+  codRemainingBalance?: number;
+  codAdvanceVerified?: boolean;
+  codAdvanceVerifiedAt?: string;
+  // Storage Optimization / Database Capacity Management
+  isStorageOptimized?: boolean;
+  storageOptimizedAt?: string;
+  deliveredAt?: string;
 }
 
 export interface Coupon {
@@ -788,6 +901,12 @@ export interface CheckoutSettings {
   freeDeliveryThreshold?: number;
   whatsappNumber?: string;
   whatsappNumberOverride?: string;
+  // COD Advance Protection
+  codAdvanceRequired?: boolean;
+  codAdvancePercentage?: number; // e.g., 30, 35, 40
+  codAdvanceMinAmount?: number;
+  codAdvanceInstructions?: string;
+  businessOwnerWhatsapp?: string;
 }
 
 export interface CityDeliveryInfo {

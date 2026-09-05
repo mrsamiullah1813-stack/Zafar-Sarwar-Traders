@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Search, PackageCheck, Clock, CheckCircle2, Truck, ShieldCheck, AlertCircle, Calendar, MapPin, Phone, User, ShoppingBag, X, ChevronRight, FileText, Lock } from 'lucide-react';
+import { 
+  Search, PackageCheck, Clock, CheckCircle2, Truck, ShieldCheck, 
+  AlertCircle, Calendar, MapPin, Phone, User, ShoppingBag, X, 
+  ChevronRight, FileText, Lock, RefreshCw 
+} from 'lucide-react';
 import { CustomerOrder, OrderStatus } from '../types';
-import { loadStoredOrders } from '../utils/storage';
-import { fetchOrdersFromSupabase, isSupabaseConfigured } from '../services/supabaseService';
+import { loadStoredOrders, saveStoredOrders } from '../utils/storage';
+import { fetchOrdersFromSupabase, fetchSingleOrderFromSupabase, isSupabaseConfigured } from '../services/supabaseService';
 
 interface OrderTrackingModalProps {
   isOpen: boolean;
@@ -12,7 +16,7 @@ interface OrderTrackingModalProps {
 
 const ORDER_STEPS: { status: OrderStatus; label: string; desc: string }[] = [
   { status: 'Order Received', label: 'Order Received', desc: 'Order logged & placed successfully' },
-  { status: 'Confirmed', label: 'Confirmed', desc: 'Verified by shop management' },
+  { status: 'Confirmed', label: 'Approved & Confirmed', desc: 'Verified by shop management & ready for packing' },
   { status: 'Preparing', label: 'Preparing', desc: 'Packing & quality inspection at warehouse' },
   { status: 'Ready for Delivery', label: 'Ready for Dispatch', desc: 'Handed to courier / delivery fleet' },
   { status: 'Out for Delivery', label: 'Out for Delivery', desc: 'Courier agent on the way to your address' },
@@ -29,6 +33,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
   const [searchedOrder, setSearchedOrder] = useState<CustomerOrder | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (initialOrderId) {
@@ -36,6 +41,19 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
       handlePerformSearch(initialOrderId);
     }
   }, [initialOrderId, isOpen]);
+
+  // Listen to real-time order updates dispatched across the app
+  useEffect(() => {
+    const handleStatusEvent = (event: any) => {
+      const updatedOrder = event?.detail?.order as CustomerOrder | undefined;
+      if (updatedOrder && searchedOrder && (updatedOrder.id === searchedOrder.id || updatedOrder.orderNumber === searchedOrder.orderNumber)) {
+        setSearchedOrder(prev => prev ? { ...prev, ...updatedOrder } : updatedOrder);
+      }
+    };
+
+    window.addEventListener('zst_order_status_updated', handleStatusEvent);
+    return () => window.removeEventListener('zst_order_status_updated', handleStatusEvent);
+  }, [searchedOrder]);
 
   const handlePerformSearch = async (orderIdToSearch?: string) => {
     const rawId = (orderIdToSearch || inputOrderId).trim();
@@ -46,63 +64,91 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
 
     setErrorMessage(null);
     setHasSearched(true);
+    setIsLoading(true);
 
-    const orders = loadStoredOrders();
-    const cleanQuery = rawId.replace('#', '').toLowerCase();
+    const cleanQuery = rawId.replace('#', '').trim();
+    const queryLower = cleanQuery.toLowerCase();
 
-    let found = orders.find(o => {
+    // 1. Check local storage for immediate zero-latency feedback
+    const localOrders = loadStoredOrders();
+    const localFound = localOrders.find(o => {
       const cleanOrder = (o.id || '').replace('#', '').toLowerCase();
-      return cleanOrder === cleanQuery || cleanOrder.includes(cleanQuery);
+      const cleanOrderNum = (o.orderNumber || '').replace('#', '').toLowerCase();
+      return cleanOrder === queryLower || cleanOrder.includes(queryLower) || cleanOrderNum === queryLower;
     });
 
-    if (!found && isSupabaseConfigured) {
-      const dbOrders = await fetchOrdersFromSupabase();
-      if (dbOrders) {
-        found = dbOrders.find(o => {
-          const cleanOrder = (o.id || '').replace('#', '').toLowerCase();
-          return cleanOrder === cleanQuery || cleanOrder.includes(cleanQuery);
-        });
-      }
+    if (localFound) {
+      setSearchedOrder(localFound);
     }
 
-    // Phone number verification check if user supplied phone digits
-    if (found && inputPhoneDigits.trim()) {
-      const cleanInputPhone = inputPhoneDigits.replace(/\D/g, '');
-      const cleanOrderPhone = (found.phoneNumber || '').replace(/\D/g, '');
-      if (cleanInputPhone.length >= 4 && !cleanOrderPhone.endsWith(cleanInputPhone) && !cleanInputPhone.endsWith(cleanOrderPhone.slice(-7))) {
-        setErrorMessage('Phone number verification failed for this Order ID.');
+    // 2. Fetch fresh live order from backend & Supabase
+    try {
+      let liveOrder = await fetchSingleOrderFromSupabase(cleanQuery);
+
+      if (!liveOrder) {
+        // Secondary fallback
+        const allDb = await fetchOrdersFromSupabase();
+        if (allDb && allDb.length > 0) {
+          liveOrder = allDb.find(o => {
+            const cleanOrder = (o.id || '').replace('#', '').toLowerCase();
+            const cleanOrderNum = (o.orderNumber || '').replace('#', '').toLowerCase();
+            return cleanOrder === queryLower || cleanOrder.includes(queryLower) || cleanOrderNum === queryLower;
+          }) || null;
+        }
+      }
+
+      if (liveOrder) {
+        // Sticky preservation of "Payment Verified" to prevent random disappearance
+        if (localFound?.paymentStatus === 'Payment Verified' && liveOrder.paymentStatus !== 'Payment Verified') {
+          liveOrder = {
+            ...liveOrder,
+            paymentStatus: 'Payment Verified',
+            paymentVerifiedAt: localFound.paymentVerifiedAt || liveOrder.paymentVerifiedAt || new Date().toISOString()
+          };
+        }
+
+        // Phone number verification check if user supplied phone digits
+        if (inputPhoneDigits.trim()) {
+          const cleanInputPhone = inputPhoneDigits.replace(/\D/g, '');
+          const cleanOrderPhone = (liveOrder.phoneNumber || '').replace(/\D/g, '');
+          if (cleanInputPhone.length >= 4 && !cleanOrderPhone.endsWith(cleanInputPhone) && !cleanInputPhone.endsWith(cleanOrderPhone.slice(-7))) {
+            setErrorMessage('Phone number verification failed for this Order ID.');
+            setSearchedOrder(null);
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        // Update local storage so cache is permanently up to date
+        const currentStored = loadStoredOrders();
+        const existingIdx = currentStored.findIndex(o => o.id === liveOrder!.id);
+        let updatedList: CustomerOrder[];
+        if (existingIdx >= 0) {
+          updatedList = [...currentStored];
+          updatedList[existingIdx] = { ...updatedList[existingIdx], ...liveOrder };
+        } else {
+          updatedList = [liveOrder, ...currentStored];
+        }
+        saveStoredOrders(updatedList);
+        setSearchedOrder(liveOrder);
+      } else if (!localFound) {
         setSearchedOrder(null);
-        return;
       }
-    }
-
-    if (found) {
-      setSearchedOrder(found);
-    } else {
-      setSearchedOrder(null);
+    } catch (err) {
+      console.warn('Live order query notice:', err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const getStepIndex = (status: OrderStatus): number => {
-    switch (status) {
-      case 'Order Received':
-      case 'New':
-      case 'Pending':
-        return 0;
-      case 'Confirmed':
-      case 'Processing':
-        return 1;
-      case 'Preparing':
-        return 2;
-      case 'Ready for Delivery':
-        return 3;
-      case 'Out for Delivery':
-        return 4;
-      case 'Delivered':
-        return 5;
-      default:
-        return 0;
-    }
+  const getStepIndex = (status: OrderStatus | string): number => {
+    const s = (status || '').toLowerCase().trim();
+    if (s.includes('deliver') && !s.includes('ready') && !s.includes('out')) return 5;
+    if (s.includes('out') || s.includes('ship') || s.includes('way')) return 4;
+    if (s.includes('ready') || s.includes('pack') || s.includes('dispatch')) return 3;
+    if (s.includes('prepar') || s.includes('process') || s.includes('product')) return 2;
+    if (s.includes('confirm') || s.includes('approv') || s.includes('verifi') || s.includes('paid')) return 1;
+    return 0; // Order Received / Pending / Payment Approval Pending
   };
 
   if (!isOpen) return null;
@@ -241,6 +287,66 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                     {searchedOrder.status}
                   </span>
                 </div>
+              </div>
+
+              {/* PAYMENT & ADVANCE VERIFICATION STATUS CARD */}
+              <div className="p-4 rounded-2xl bg-white border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-3">
+                  {searchedOrder.paymentStatus === 'Payment Verified' || searchedOrder.status === 'Confirmed' || searchedOrder.status === 'Approved' ? (
+                    <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center shrink-0">
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                  ) : searchedOrder.paymentStatus === 'Payment Rejected' ? (
+                    <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center shrink-0">
+                      <AlertCircle className="w-5 h-5" />
+                    </div>
+                  ) : (
+                    <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center shrink-0">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                  )}
+
+                  <div>
+                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">
+                      Payment & Verification Status
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-900">
+                        {searchedOrder.paymentStatus === 'Payment Verified' || searchedOrder.status === 'Approved' || searchedOrder.status === 'Confirmed' ? (
+                          <span className="text-emerald-700 font-extrabold flex items-center gap-1">
+                            <span>Payment Verified & Approved</span>
+                            <span className="text-emerald-500">✅</span>
+                          </span>
+                        ) : searchedOrder.paymentStatus === 'Payment Rejected' ? (
+                          <span className="text-rose-700 font-extrabold flex items-center gap-1">
+                            <span>Payment Proof Rejected</span>
+                            <span className="text-rose-500">❌</span>
+                          </span>
+                        ) : (searchedOrder.paymentType === 'cod' || searchedOrder.paymentMethodName?.toLowerCase().includes('cash')) && !searchedOrder.isAdvancePayment ? (
+                          <span className="text-blue-700 font-bold">Cash on Delivery (Pay at Doorstep)</span>
+                        ) : (
+                          <span className="text-amber-700 font-bold">Payment Approval Pending (Under Review)</span>
+                        )}
+                      </span>
+                    </div>
+                    {searchedOrder.paymentVerifiedAt && (
+                      <span className="text-[10px] text-emerald-600 font-medium block mt-0.5">
+                        Verified on: {new Date(searchedOrder.paymentVerifiedAt).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handlePerformSearch(searchedOrder.id)}
+                  disabled={isLoading}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 transition-colors flex items-center gap-1.5 text-xs font-semibold cursor-pointer shrink-0"
+                  title="Refresh latest status from live server"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-blue-600' : ''}`} />
+                  <span>{isLoading ? 'Checking...' : 'Refresh Status'}</span>
+                </button>
               </div>
 
               {/* ESTIMATED DELIVERY NOTICE & ADMIN DELAY NOTES */}

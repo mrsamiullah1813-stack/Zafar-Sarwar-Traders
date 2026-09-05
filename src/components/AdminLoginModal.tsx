@@ -5,6 +5,8 @@ import { setAdminAuthToken, setIsAdminLoggedIn, getAdminPin } from '../utils/sto
 import { supabase, initializeSupabaseRuntime } from '../lib/supabase';
 import { speakAdminVoice, getAdminVoicePreference, setAdminVoicePreference } from '../utils/adminVoice';
 import { AIAssistantAvatar, AIAssistantMood } from './AIAssistantAvatar';
+import { PatternLock } from './PatternLock';
+import { getPatternLockStatus, verifyPatternLock } from '../services/patternLockService';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -97,7 +99,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   onClose,
   onOpenDashboard
 }) => {
-  const [step, setStep] = useState<'credentials' | 'pin'>('credentials');
+  const [step, setStep] = useState<'credentials' | 'pin' | 'pattern'>('credentials');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [pin, setPin] = useState('');
@@ -108,6 +110,13 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   const [activeUserEmail, setActiveUserEmail] = useState<string | null>(null);
   const [tempSessionToken, setTempSessionToken] = useState<string | null>(null);
   const [shakeKey, setShakeKey] = useState(0);
+
+  // Pattern Lock (3rd Security Layer) State - STRICTLY DISABLED BY DEFAULT
+  const [patternStatus, setPatternStatus] = useState<'idle' | 'drawing' | 'error' | 'success' | 'verifying'>('idle');
+  const [patternError, setPatternError] = useState('');
+  const [patternSuccess, setPatternSuccess] = useState('');
+  const [patternLoading, setPatternLoading] = useState(false);
+  const [patternLockEnabled, setPatternLockEnabled] = useState(false);
 
   // Safe Voice Feedback State
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => getAdminVoicePreference());
@@ -123,6 +132,16 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       setError('');
       setSuccess('');
       setPin('');
+      setPatternError('');
+      setPatternSuccess('');
+      setPatternStatus('idle');
+
+      // Check pattern lock setting from server (strictly disabled by default unless explicitly true)
+      getPatternLockStatus().then(status => {
+        setPatternLockEnabled(Boolean(status.enabled));
+      }).catch(() => {
+        setPatternLockEnabled(false);
+      });
       
       // Voice feedback when modal opens (only if not already authenticated)
       if (!isAdmin) {
@@ -137,8 +156,28 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
             if (data.session.access_token) {
               setTempSessionToken(data.session.access_token);
             }
-            setStep('pin');
-            speakAdminVoice("Please enter your security PIN.");
+            // Check if PIN was already verified in this session
+            const pinAlreadyVerified = sessionStorage.getItem('zst_admin_time_pin_verified') === 'true';
+            if (pinAlreadyVerified) {
+              getPatternLockStatus().then(status => {
+                if (status.enabled) {
+                  setStep('pattern');
+                  speakAdminVoice("Please draw your security pattern.");
+                } else {
+                  try {
+                    sessionStorage.setItem('zst_admin_pattern_verified', 'true');
+                  } catch {}
+                  onLoginSuccess();
+                  onClose();
+                }
+              }).catch(() => {
+                setStep('pin');
+                speakAdminVoice("Please enter your security PIN.");
+              });
+            } else {
+              setStep('pin');
+              speakAdminVoice("Please enter your security PIN.");
+            }
           } else {
             setStep('credentials');
           }
@@ -271,24 +310,43 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       }
 
       if (isVerified) {
-        const tokenToSave = tempSessionToken || 'zst_admin_token_' + Date.now();
-        setAdminAuthToken(tokenToSave);
-        setIsAdminLoggedIn(true);
         try {
           sessionStorage.setItem('zst_admin_time_pin_verified', 'true');
         } catch {}
 
-        setSuccess('Security PIN verified! Opening Admin Dashboard...');
-        speakAdminVoice("Welcome, Sir. Welcome to your Admin Dashboard.", true);
+        // Check if 3rd Layer (Pattern Lock) is active (strictly disabled by default)
+        const status = await getPatternLockStatus().catch(() => ({ enabled: false, isConfigured: true }));
+        
+        if (status.enabled) {
+          setPatternLockEnabled(true);
+          setStep('pattern');
+          setPatternStatus('idle');
+          setPatternError('');
+          setPatternSuccess('');
+          setSuccess('Security PIN verified! Please draw your Pattern Lock.');
+          speakAdminVoice("Security PIN verified. Please draw your pattern lock.");
+        } else {
+          // If Pattern Lock is explicitly disabled by admin (or default disabled), advance directly to dashboard
+          setPatternLockEnabled(false);
+          const tokenToSave = tempSessionToken || 'zst_admin_token_' + Date.now();
+          setAdminAuthToken(tokenToSave);
+          setIsAdminLoggedIn(true);
+          try {
+            sessionStorage.setItem('zst_admin_pattern_verified', 'true');
+          } catch {}
 
-        setTimeout(() => {
-          onLoginSuccess();
-          setPassword('');
-          setPin('');
-          setSuccess('');
-          setStep('credentials');
-          onClose();
-        }, 300);
+          setSuccess('Security PIN verified! Opening Admin Dashboard...');
+          speakAdminVoice("Welcome, Sir. Welcome to your Admin Dashboard.", true);
+
+          setTimeout(() => {
+            onLoginSuccess();
+            setPassword('');
+            setPin('');
+            setSuccess('');
+            setStep('credentials');
+            onClose();
+          }, 300);
+        }
       } else {
         setError('Invalid security PIN. Please try again.');
         triggerErrorShake();
@@ -306,6 +364,54 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     }
   };
 
+  // 3rd Security Layer: Android-style Pattern Lock Verification
+  const handleVerifyPattern = async (drawnPattern: number[]) => {
+    setPatternLoading(true);
+    setPatternStatus('verifying');
+    setPatternError('');
+    setPatternSuccess('');
+
+    try {
+      const res = await verifyPatternLock(drawnPattern);
+
+      if (res.verified) {
+        setPatternStatus('success');
+        setPatternSuccess('Pattern Lock verified! Access Granted.');
+        
+        try {
+          sessionStorage.setItem('zst_admin_pattern_verified', 'true');
+        } catch {}
+
+        const tokenToSave = tempSessionToken || 'zst_admin_token_' + Date.now();
+        setAdminAuthToken(tokenToSave);
+        setIsAdminLoggedIn(true);
+        speakAdminVoice("Pattern verified. Welcome, Sir. Welcome to your Admin Dashboard.", true);
+
+        setTimeout(() => {
+          onLoginSuccess();
+          setPassword('');
+          setPin('');
+          setPatternError('');
+          setPatternSuccess('');
+          setStep('credentials');
+          onClose();
+        }, 400);
+      } else {
+        setPatternStatus('error');
+        setPatternError(res.error || 'Incorrect pattern. Please try again.');
+        triggerErrorShake();
+        speakAdminVoice("Incorrect pattern. Please try again.");
+      }
+    } catch (err: any) {
+      setPatternStatus('error');
+      setPatternError('Verification connection error. Please try again.');
+      triggerErrorShake();
+      speakAdminVoice("Incorrect pattern. Please try again.");
+    } finally {
+      setPatternLoading(false);
+    }
+  };
+
   const handleSignOut = async () => {
     setLoading(true);
     try {
@@ -316,6 +422,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     }
     try {
       sessionStorage.removeItem('zst_admin_time_pin_verified');
+      sessionStorage.removeItem('zst_admin_pattern_verified');
       localStorage.removeItem('zst_admin_token');
     } catch {}
     setIsAdminLoggedIn(false);
@@ -344,7 +451,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-          className="fixed inset-0 z-[110] bg-[radial-gradient(ellipse_at_center,_rgba(15,23,42,0.85)_0%,_rgba(2,6,23,0.95)_60%,_rgba(0,0,0,0.98)_100%)] backdrop-blur-2xl flex justify-center items-start sm:items-center p-3 sm:p-6 overflow-y-auto"
+          className="fixed inset-0 z-[110] bg-[radial-gradient(ellipse_at_center,_rgba(15,23,42,0.85)_0%,_rgba(2,6,23,0.95)_60%,_rgba(0,0,0,0.98)_100%)] backdrop-blur-2xl flex justify-center items-center p-2.5 sm:p-4 md:p-6 overflow-y-auto min-h-screen min-h-[100dvh] pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
         >
           {/* Cinematic Ambient Lighting Gradients & Atmosphere */}
           <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
@@ -396,11 +503,11 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
             </div>
           </div>
 
-          {/* Cinematic Glass Login Card */}
+          {/* Cinematic Glass Login Card - Completely visible, centered, responsive, no clipping */}
           <motion.div
             key={shakeKey}
             id="admin-login-card"
-            initial={{ opacity: 0, scale: 0.92, y: 24, filter: 'blur(12px)' }}
+            initial={{ opacity: 0, scale: 0.94, y: 16, filter: 'blur(8px)' }}
             animate={{
               opacity: 1,
               scale: 1,
@@ -413,13 +520,13 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               duration: shakeKey > 0 ? 0.45 : 0.5,
               ease: [0.22, 1, 0.36, 1]
             }}
-            className="relative bg-slate-900/85 border border-slate-700/50 rounded-3xl max-w-md w-full my-auto overflow-hidden shadow-[0_30px_70px_-15px_rgba(0,0,0,0.85),0_0_50px_rgba(37,99,235,0.15)] p-6 sm:p-8 max-h-[92vh] flex flex-col backdrop-blur-3xl z-10"
+            className="relative bg-slate-900/95 border border-slate-700/60 rounded-2xl sm:rounded-3xl max-w-md w-full my-auto shadow-[0_30px_70px_-15px_rgba(0,0,0,0.85),0_0_50px_rgba(37,99,235,0.15)] p-4 sm:p-6 md:p-7 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2.5rem)] flex flex-col backdrop-blur-3xl z-10 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-700/80 scrollbar-track-transparent"
           >
             {/* Cinematic top-edge refractive ambient glow line */}
             <div className="absolute -top-px left-6 right-6 h-[2px] bg-gradient-to-r from-transparent via-cyan-400/90 via-blue-500/80 to-transparent pointer-events-none" />
 
             {/* Header Actions: Voice Toggle & Close Button */}
-            <div className="absolute top-4 right-4 flex items-center gap-2 z-20">
+            <div className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 flex items-center gap-2 z-20">
               <motion.button
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.92 }}
@@ -445,23 +552,63 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               </motion.button>
             </div>
 
-            {/* Logo / Branding Header with Cinematic Glow reveal */}
+            {/* Logo / Branding Header with Responsive Proportions */}
             <motion.div
               initial={{ opacity: 0, y: 12, filter: 'blur(6px)' }}
               animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
               transition={{ duration: 0.5, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
-              className="flex flex-col items-center text-center mb-6"
+              className={`flex flex-col items-center text-center ${step === 'pattern' ? 'mb-2.5 sm:mb-3' : 'mb-4 sm:mb-5'}`}
             >
-              <div className="relative mb-3.5">
-                <AIAssistantAvatar mood={assistantMood} size={58} />
+              <div className={`relative ${step === 'pattern' ? 'mb-1.5' : 'mb-2.5'}`}>
+                <AIAssistantAvatar mood={assistantMood} size={step === 'pattern' ? 42 : 54} />
               </div>
-              <h3 className="text-2xl font-bold text-white font-serif tracking-tight flex items-center gap-1.5 justify-center">
+              <h3 className={`${step === 'pattern' ? 'text-xl' : 'text-2xl'} font-bold text-white font-serif tracking-tight flex items-center gap-1.5 justify-center`}>
                 <span>Website Admin Portal</span>
               </h3>
-              <p className="text-xs text-slate-400 mt-1 font-light tracking-wide">
+              <p className="text-xs text-slate-400 mt-0.5 font-light tracking-wide">
                 Authorized management via Supabase Authentication.
               </p>
             </motion.div>
+
+            {/* Step Navigation Progress Indicator */}
+            {!isAdmin && (
+              <div className={`flex items-center justify-center gap-2 ${step === 'pattern' ? 'mb-2.5 sm:mb-3' : 'mb-4 sm:mb-5'}`}>
+                <div className={`flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-all ${
+                  step === 'credentials'
+                    ? 'bg-blue-600/20 border-blue-500 text-blue-300 shadow-sm shadow-blue-500/25'
+                    : 'bg-slate-950/60 border-slate-800 text-slate-500'
+                }`}>
+                  <span className="w-4 h-4 rounded-full bg-slate-800 flex items-center justify-center text-[9px] font-mono">1</span>
+                  <span>Credentials</span>
+                </div>
+
+                <div className="w-2.5 h-px bg-slate-800" />
+
+                <div className={`flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-all ${
+                  step === 'pin'
+                    ? 'bg-cyan-600/20 border-cyan-500 text-cyan-300 shadow-sm shadow-cyan-500/25'
+                    : 'bg-slate-950/60 border-slate-800 text-slate-500'
+                }`}>
+                  <span className="w-4 h-4 rounded-full bg-slate-800 flex items-center justify-center text-[9px] font-mono">2</span>
+                  <span>PIN</span>
+                </div>
+
+                {patternLockEnabled && (
+                  <>
+                    <div className="w-2.5 h-px bg-slate-800" />
+
+                    <div className={`flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-all ${
+                      step === 'pattern'
+                        ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300 shadow-sm shadow-emerald-500/25'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-500'
+                    }`}>
+                      <span className="w-4 h-4 rounded-full bg-slate-800 flex items-center justify-center text-[9px] font-mono">3</span>
+                      <span>Pattern Lock</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Step Transitions with AnimatePresence */}
             <AnimatePresence mode="wait">
@@ -607,7 +754,11 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                       ) : (
                         <ShieldCheck className="w-4 h-4" />
                       )}
-                      <span className="tracking-wide">{pinLoading ? 'Verifying PIN...' : 'Verify PIN & Open Dashboard'}</span>
+                      <span className="tracking-wide">
+                        {pinLoading 
+                          ? 'Verifying PIN...' 
+                          : (patternLockEnabled ? 'Verify PIN & Continue to Pattern Lock →' : 'Verify PIN & Open Dashboard')}
+                      </span>
                     </motion.button>
 
                     <div className="text-center pt-1">
@@ -625,6 +776,44 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                       </button>
                     </div>
                   </form>
+                </motion.div>
+              ) : step === 'pattern' ? (
+                <motion.div
+                  key="step-pattern"
+                  initial={{ opacity: 0, x: 30, filter: 'blur(8px)' }}
+                  animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, x: -30, filter: 'blur(8px)' }}
+                  transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+                  className="space-y-2.5"
+                >
+                  <PatternLock
+                    onComplete={handleVerifyPattern}
+                    status={patternStatus}
+                    errorMessage={patternError}
+                    successMessage={patternSuccess}
+                    disabled={patternLoading}
+                    title="Security Layer 3: Pattern Lock"
+                    subtitle={activeUserEmail ? `Admin: ${activeUserEmail} • Connect 4+ dots` : "Connect at least 4 dots to unlock Dashboard"}
+                    onReset={() => {
+                      setPatternStatus('idle');
+                      setPatternError('');
+                    }}
+                  />
+
+                  <div className="text-center pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStep('pin');
+                        setPatternError('');
+                        setPatternStatus('idle');
+                        speakAdminVoice("Please enter your security PIN.");
+                      }}
+                      className="text-xs text-slate-400 hover:text-cyan-300 transition-colors duration-200"
+                    >
+                      ← Back to Security PIN
+                    </button>
+                  </div>
                 </motion.div>
               ) : (
                 <motion.form

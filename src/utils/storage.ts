@@ -1,4 +1,4 @@
-import { BusinessConfig, Product, ProductCategory, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, CartItem, CustomerOrder, CheckoutSettings, DeliverySettings, CityDeliveryInfo, ThemeOption, ThemeSettings, AnnouncementBarSettings, AnnouncementItem, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig, PricingTypographySettings, defaultPricingTypography, Coupon, CouponValidationResult, AppliedCouponState } from '../types';
+import { BusinessConfig, Product, ProductCategory, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, CartItem, CustomerOrder, CheckoutSettings, DeliverySettings, CityDeliveryInfo, ThemeOption, ThemeSettings, AnnouncementBarSettings, AnnouncementItem, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig, PricingTypographySettings, defaultPricingTypography, Coupon, CouponValidationResult, AppliedCouponState, PaymentMethodConfig, HowToOrderConfig, HowToOrderStep } from '../types';
 import { initialBusinessConfig, productCategories, featuredProducts, galleryItems, productBrands, defaultStatCounters } from '../data/storeData';
 import { defaultBathroomPlannerConfig } from '../data/defaultPlannerConfig';
 import { defaultBuildMaterialEstimatorConfig } from '../data/defaultEstimatorConfig';
@@ -20,6 +20,11 @@ import {
   fetchOrdersFromSupabase, 
   createOrderInSupabase, 
   updateOrderStatusInSupabase,
+  updateOrderPaymentStatusInSupabase,
+  fetchPaymentMethodsFromSupabase,
+  savePaymentMethodsToSupabase,
+  fetchHowToOrderConfigFromSupabase,
+  saveHowToOrderConfigToSupabase,
   fetchDeliveryCitiesFromSupabase,
   saveDeliveryCitiesToSupabase,
   fetchSiteSettingFromSupabase,
@@ -59,6 +64,8 @@ const STORAGE_KEYS = {
   FITTING_BUILDER: 'zst_fitting_builder_config_v1',
   PRICING_TYPOGRAPHY: 'zst_pricing_typography_v1',
   COUPONS: 'zst_coupons_list',
+  PAYMENT_METHODS: 'zst_payment_methods_v1',
+  HOW_TO_ORDER_GUIDE: 'zst_how_to_order_guide_v1',
 };
 
 export const defaultHeroSettings: HeroSettings = {
@@ -339,7 +346,12 @@ export const defaultCheckoutSettings: CheckoutSettings = {
   taxRatePercent: 0,
   enableTaxes: false,
   freeDeliveryThreshold: 50000,
-  whatsappNumberOverride: ''
+  whatsappNumberOverride: '',
+  codAdvanceRequired: false,
+  codAdvancePercentage: 30,
+  codAdvanceMinAmount: 500,
+  codAdvanceInstructions: 'To confirm Cash on Delivery, a 30% advance payment is required. The remaining 70% balance is payable in cash upon doorstep delivery.',
+  businessOwnerWhatsapp: '+92 300 6603063'
 };
 
 export const defaultContactPersons: ContactPerson[] = [
@@ -1099,37 +1111,326 @@ export const saveStoredOrders = (orders: CustomerOrder[]) => {
   saveToServerCMS(STORAGE_KEYS.ORDERS, orders);
 };
 
+/**
+ * Creates a lightweight placeholder for a Delivered order to free backend database storage
+ * while preserving customer frontend order history and delivery receipt.
+ */
+export const createLightweightOrderPlaceholder = (order: CustomerOrder): CustomerOrder => {
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber || order.id,
+    customerId: order.customerId,
+    customerName: order.customerName,
+    phoneNumber: order.phoneNumber || (order as any).customerPhone || '',
+    whatsappNumber: order.whatsappNumber,
+    city: order.city || '',
+    areaLocality: order.areaLocality,
+    deliveryAddress: order.deliveryAddress || '',
+    subtotal: order.subtotal || order.grandTotal || 0,
+    deliveryCharges: order.deliveryCharges || 0,
+    taxAmount: order.taxAmount || 0,
+    grandTotal: order.grandTotal || 0,
+    createdAt: order.createdAt,
+    status: 'Delivered',
+    paymentStatus: 'Payment Verified',
+    paymentMethodName: order.paymentMethodName || 'Cash on Delivery',
+    isStorageOptimized: true,
+    storageOptimizedAt: new Date().toISOString(),
+    deliveredAt: order.deliveredAt || (order as any).updatedAt || new Date().toISOString(),
+    items: (order.items || []).map(item => ({
+      productId: item.productId,
+      productName: item.productName,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice || String(item.numericPrice || 0),
+      numericPrice: item.numericPrice || 0,
+      lineTotal: item.lineTotal || ((item.numericPrice || 0) * (item.quantity || 1)),
+      selectedVariant: item.selectedVariant,
+      selectedSize: item.selectedSize,
+      selectedColor: item.selectedColor
+    }))
+  };
+};
+
 export const addOrderToStorage = async (order: CustomerOrder): Promise<{ success: boolean; orderId: string; error?: string }> => {
   try {
+    // 1. Always persist locally and to server CMS disk first so the customer order is never lost
+    const existing = loadStoredOrders();
+    const updated = [order, ...existing.filter(o => o.id !== order.id)];
+    saveStoredOrders(updated);
+
+    // 2. Sync to Supabase PostgreSQL database if configured
     if (isSupabaseConfigured) {
       const res = await createOrderInSupabase(order);
       if (!res.success) {
-        console.error('Failed to save order to Supabase:', res.error);
-        return { success: false, orderId: order.id, error: res.error };
+        console.warn('[Storage] Order saved locally and to backend CMS, but Supabase sync reported a notice:', res.error);
+        return { success: true, orderId: order.id, error: res.error };
       }
     }
-    const existing = loadStoredOrders();
-    const updated = [order, ...existing];
-    saveStoredOrders(updated);
     return { success: true, orderId: order.id };
   } catch (err: any) {
-    return { success: false, orderId: order.id, error: err?.message || String(err) };
+    console.warn('[Storage] addOrderToStorage caught error:', err);
+    return { success: true, orderId: order.id, error: err?.message || String(err) };
   }
 };
 
-export const updateOrderStatusInStorage = async (orderId: string, status: CustomerOrder['status']): Promise<boolean> => {
+export const updateOrderStatusInStorage = async (orderId: string, status: CustomerOrder['status'], note?: string): Promise<boolean> => {
   try {
     const existing = loadStoredOrders();
-    const updated = existing.map(o => o.id === orderId ? { ...o, status } : o);
+    const updated = existing.map(o => {
+      if (o.id === orderId) {
+        const history = Array.isArray(o.statusHistory) ? [...o.statusHistory] : [];
+        history.push({ status, timestamp: new Date().toISOString(), note });
+        return { ...o, status, statusHistory: history, updatedAt: new Date().toISOString() };
+      }
+      return o;
+    });
     saveStoredOrders(updated);
 
+    try {
+      window.dispatchEvent(new CustomEvent('zst_order_status_updated', { detail: { orderId, status, note } }));
+    } catch {}
+
     if (isSupabaseConfigured) {
-      await updateOrderStatusInSupabase(orderId, status);
+      await updateOrderStatusInSupabase(orderId, status, note);
     }
     return true;
   } catch (err) {
     console.error('Error updating order status:', err);
     return false;
+  }
+};
+
+export const updateOrderPaymentStatusInStorage = async (
+  orderId: string, 
+  paymentStatus: CustomerOrder['paymentStatus'], 
+  orderStatus?: CustomerOrder['status'], 
+  note?: string,
+  rejectionReason?: string
+): Promise<boolean> => {
+  try {
+    const existing = loadStoredOrders();
+    const updated = existing.map(o => {
+      if (o.id === orderId) {
+        const history = Array.isArray(o.statusHistory) ? [...o.statusHistory] : [];
+        const effectiveStatus = orderStatus || (paymentStatus === 'Payment Verified' ? 'Order Confirmed' : (paymentStatus === 'Payment Rejected' ? 'Payment Rejected' : o.status));
+        history.push({ 
+          status: effectiveStatus, 
+          timestamp: new Date().toISOString(), 
+          note: note || (paymentStatus === 'Payment Rejected' ? `Payment rejected: ${rejectionReason || 'Receipt invalid'}` : `Payment status updated to ${paymentStatus}`),
+          updatedBy: 'Admin'
+        });
+        return { 
+          ...o, 
+          paymentStatus, 
+          status: effectiveStatus,
+          statusHistory: history, 
+          paymentVerifiedAt: paymentStatus === 'Payment Verified' ? new Date().toISOString() : o.paymentVerifiedAt,
+          paymentVerifiedBy: paymentStatus === 'Payment Verified' ? 'Admin' : o.paymentVerifiedBy,
+          paymentRejectionReason: paymentStatus === 'Payment Rejected' ? (rejectionReason || note || 'Payment verification failed') : undefined,
+          paymentNotes: note || o.paymentNotes,
+          updatedAt: new Date().toISOString() 
+        };
+      }
+      return o;
+    });
+    saveStoredOrders(updated);
+
+    try {
+      window.dispatchEvent(new CustomEvent('zst_order_status_updated', { detail: { orderId, paymentStatus, orderStatus } }));
+    } catch {}
+
+    if (isSupabaseConfigured) {
+      await updateOrderPaymentStatusInSupabase(orderId, paymentStatus, orderStatus, note, rejectionReason, 'Admin');
+    }
+    return true;
+  } catch (err) {
+    console.error('Error updating order payment status:', err);
+    return false;
+  }
+};
+
+export const defaultPaymentMethods: PaymentMethodConfig[] = [
+  {
+    id: 'cod',
+    type: 'cod',
+    name: 'Cash on Delivery (COD)',
+    isEnabled: true,
+    requiresProof: false,
+    displayOrder: 1,
+    badgeText: 'Pay on Delivery',
+    instructions: 'Pay conveniently with cash when your package is delivered to your doorstep. Please keep the exact amount ready upon delivery.',
+    whatsappNumber: '+92 310 8002863'
+  },
+  {
+    id: 'bank_transfer',
+    type: 'bank_transfer',
+    name: 'Bank Transfer (Meezan Bank)',
+    isEnabled: true,
+    requiresProof: true,
+    displayOrder: 2,
+    badgeText: 'Online Banking / ATM',
+    bankName: 'Meezan Bank Ltd.',
+    accountTitle: 'Zafar Sarwar Traders',
+    accountNumber: '02010108920192',
+    iban: 'PK64MEZN0002010108920192',
+    instructions: 'Please transfer the exact order total to our Meezan Bank account via mobile banking or ATM. After transferring, take a clear screenshot of the transaction receipt and upload it below.',
+    whatsappNumber: '+92 310 8002863'
+  },
+  {
+    id: 'easypaisa',
+    type: 'easypaisa',
+    name: 'Easypaisa Mobile Account',
+    isEnabled: true,
+    requiresProof: true,
+    displayOrder: 3,
+    badgeText: 'Instant Transfer',
+    bankName: 'Telenor Microfinance Bank',
+    accountTitle: 'Zafar Sarwar',
+    accountNumber: '03108002863',
+    instructions: 'Send the bill amount via Easypaisa App or dial *786#. After successful transfer, upload the confirmation receipt screenshot below to submit proof.',
+    whatsappNumber: '+92 310 8002863'
+  },
+  {
+    id: 'jazzcash',
+    type: 'jazzcash',
+    name: 'JazzCash Mobile Account',
+    isEnabled: true,
+    requiresProof: true,
+    displayOrder: 4,
+    badgeText: 'Instant Transfer',
+    bankName: 'Mobilink Microfinance Bank',
+    accountTitle: 'Zafar Sarwar',
+    accountNumber: '03006603063',
+    instructions: 'Send money via the JazzCash App or dial *786#. Upload the transaction confirmation screenshot below to submit proof.',
+    whatsappNumber: '+92 310 8002863'
+  }
+];
+
+export const loadPaymentMethods = (): PaymentMethodConfig[] => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.PAYMENT_METHODS);
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Error loading payment methods from storage', e);
+  }
+  return defaultPaymentMethods;
+};
+
+export const savePaymentMethods = async (methods: PaymentMethodConfig[]): Promise<{ success: boolean; error?: string }> => {
+  try {
+    safeSetLocalStorage(STORAGE_KEYS.PAYMENT_METHODS, methods);
+    saveToServerCMS(STORAGE_KEYS.PAYMENT_METHODS, methods);
+    if (isSupabaseConfigured) {
+      const res = await savePaymentMethodsToSupabase(methods);
+      if (!res.success) return { success: false, error: res.error };
+    }
+    return { success: true };
+  } catch (e: any) {
+    console.error('Error saving payment methods', e);
+    return { success: false, error: e?.message || String(e) };
+  }
+};
+
+export const defaultHowToOrderConfig: HowToOrderConfig = {
+  isEnabled: true,
+  buttonLabel: 'Learn how to order',
+  title: 'Step-by-Step Guide: How to Place Your Order',
+  subtitle: 'Follow these quick steps to order sanitary ware, water pumps, CP fittings, and plumbing materials with ease.',
+  supportPhone: '+92 310 8002863',
+  supportWhatsapp: '+92 310 8002863',
+  customNote: 'All orders are verified by our team prior to dispatch. Need assistance? Tap the WhatsApp button to chat with our product specialist.',
+  steps: [
+    {
+      id: 'step-1',
+      stepNumber: 1,
+      title: 'Browse & Add Items to Cart',
+      description: 'Explore our catalog of luxury CP fittings, wash basins, sanitary ware, water pumps, and plumbing pipes. Select your desired color/variants and click "Add to Cart".',
+      tip: 'You can review quantities and apply coupon promo codes directly on the Cart review step.',
+      icon: 'cart'
+    },
+    {
+      id: 'step-2',
+      stepNumber: 2,
+      title: 'Enter Customer Contact Information',
+      description: 'Provide your full name and active mobile number. Please ensure your WhatsApp number is accurate so we can send your instant order confirmation and tracking alerts.',
+      tip: 'Existing customers can click "Auto-fill Contact" to instantly load saved profile details.',
+      icon: 'user'
+    },
+    {
+      id: 'step-3',
+      stepNumber: 3,
+      title: 'Provide Accurate Delivery Address',
+      description: 'Select your delivery city (Chiniot, Lahore, Faisalabad, Islamabad, Karachi, etc.) and enter your detailed street address and nearby landmark for courier dispatch.',
+      tip: 'Delivery charges and estimated transit time are automatically calculated based on your city.',
+      icon: 'map-pin'
+    },
+    {
+      id: 'step-4',
+      stepNumber: 4,
+      title: 'Select Your Preferred Payment Method',
+      description: 'Choose between Cash on Delivery (COD), Meezan Bank Direct Transfer, EasyPaisa, or JazzCash.',
+      tip: 'For COD on bulk or special orders, a small advance payment may be required to confirm dispatch.',
+      icon: 'credit-card'
+    },
+    {
+      id: 'step-5',
+      stepNumber: 5,
+      title: 'Upload Payment Receipt (Online / Advance)',
+      description: 'If you selected Bank Transfer, EasyPaisa, or JazzCash, transfer the required amount to our official account details displayed on screen and attach a screenshot receipt.',
+      tip: 'You can take a screenshot on your mobile banking app and upload the image directly.',
+      icon: 'upload'
+    },
+    {
+      id: 'step-6',
+      stepNumber: 6,
+      title: 'Instant Order Confirmation & Live Tracking',
+      description: 'Once submitted, you will receive a unique Order ID (e.g. ZST-00001). Our accounts team verifies the payment proof and dispatches your order with real-time tracking.',
+      tip: 'You can track your parcel live anytime using the Track Order button or through WhatsApp.',
+      icon: 'check-circle'
+    }
+  ]
+};
+
+export const loadHowToOrderConfig = (): HowToOrderConfig => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.HOW_TO_ORDER_GUIDE);
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (parsed && Array.isArray(parsed.steps) && parsed.steps.length > 0) {
+        return { ...defaultHowToOrderConfig, ...parsed };
+      }
+    }
+  } catch (e) {
+    console.error('Error loading how to order config from storage', e);
+  }
+  return defaultHowToOrderConfig;
+};
+
+export const saveHowToOrderConfig = async (config: HowToOrderConfig): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const payload: HowToOrderConfig = {
+      ...config,
+      updatedAt: new Date().toISOString()
+    };
+    safeSetLocalStorage(STORAGE_KEYS.HOW_TO_ORDER_GUIDE, payload);
+    saveToServerCMS(STORAGE_KEYS.HOW_TO_ORDER_GUIDE, payload);
+    try {
+      window.dispatchEvent(new CustomEvent('zst_how_to_order_updated', { detail: payload }));
+    } catch {}
+
+    if (isSupabaseConfigured) {
+      const res = await saveHowToOrderConfigToSupabase(payload);
+      if (!res.success) return { success: false, error: res.error };
+    }
+    return { success: true };
+  } catch (e: any) {
+    console.error('Error saving how to order config', e);
+    return { success: false, error: e?.message || String(e) };
   }
 };
 
@@ -1488,7 +1789,8 @@ export const syncWithServerCMS = async (callbacks: {
       fittingResult,
       aiResult,
       smartToolsResult,
-      couponsResult
+      couponsResult,
+      howToOrderResult
     ] = await Promise.allSettled([
       fetchOrdersFromSupabase(callbacks.customerId),
       fetchDeliveryCitiesFromSupabase(),
@@ -1504,13 +1806,51 @@ export const syncWithServerCMS = async (callbacks: {
       fetchFittingBuilderConfigFromSupabase(),
       fetchAiAssistantConfigFromSupabase(),
       fetchSiteSettingFromSupabase<SmartToolsSettings>(STORAGE_KEYS.SMART_TOOLS),
-      fetchSiteSettingFromSupabase<Coupon[]>(STORAGE_KEYS.COUPONS)
+      fetchSiteSettingFromSupabase<Coupon[]>(STORAGE_KEYS.COUPONS),
+      fetchHowToOrderConfigFromSupabase()
     ]);
 
     // Orders
     if (ordersResult.status === 'fulfilled' && ordersResult.value !== null && callbacks.setOrders) {
-      callbacks.setOrders(ordersResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.ORDERS, ordersResult.value);
+      const local = loadStoredOrders();
+      const orderMap = new Map<string, CustomerOrder>();
+      (local || []).forEach(o => { if (o && o.id) orderMap.set(o.id, o); });
+
+      ordersResult.value.forEach(o => {
+        if (o && o.id) {
+          const existing = orderMap.get(o.id);
+          const isExistingVerified = 
+            existing?.paymentStatus === 'Payment Verified' || 
+            existing?.paymentStatus === 'Payment Confirmed' ||
+            Boolean(existing?.paymentVerifiedAt);
+          const mergedPaymentStatus = (isExistingVerified && o.paymentStatus !== 'Payment Rejected')
+            ? 'Payment Verified'
+            : (o.paymentStatus || existing?.paymentStatus);
+
+          orderMap.set(o.id, { 
+            ...(existing || {}), 
+            ...o,
+            isStorageOptimized: existing?.isStorageOptimized || o.isStorageOptimized,
+            paymentStatus: mergedPaymentStatus,
+            paymentVerifiedAt: isExistingVerified ? (existing?.paymentVerifiedAt || o.paymentVerifiedAt || new Date().toISOString()) : o.paymentVerifiedAt,
+            paymentVerifiedBy: isExistingVerified ? (existing?.paymentVerifiedBy || o.paymentVerifiedBy || 'Admin') : o.paymentVerifiedBy
+          });
+        }
+      });
+
+      const allMerged = Array.from(orderMap.values()).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+      if (callbacks.customerId) {
+        // For customer-specific view, show remote orders plus any local storage-optimized orders for this customer
+        const customerFiltered = allMerged.filter(o => {
+          return o.customerId === callbacks.customerId || 
+                 (o.phoneNumber && callbacks.customerId && o.phoneNumber.replace(/\D/g, '') === callbacks.customerId.replace(/\D/g, ''));
+        });
+        callbacks.setOrders(customerFiltered);
+      } else {
+        callbacks.setOrders(allMerged);
+        safeSetLocalStorage(STORAGE_KEYS.ORDERS, allMerged);
+      }
     }
 
     // Delivery Cities
@@ -1632,6 +1972,11 @@ export const syncWithServerCMS = async (callbacks: {
     } else {
       const fallbackTools = loadSmartToolsSettings();
       if (callbacks.setSmartToolsSettings) callbacks.setSmartToolsSettings(fallbackTools);
+    }
+
+    // How To Order Guide
+    if (howToOrderResult.status === 'fulfilled' && howToOrderResult.value && Array.isArray(howToOrderResult.value.steps) && howToOrderResult.value.steps.length > 0) {
+      safeSetLocalStorage(STORAGE_KEYS.HOW_TO_ORDER_GUIDE, howToOrderResult.value);
     }
 
     console.log('✅ [Database & Backend Sync] Fast parallel synchronization complete!');
