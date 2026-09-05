@@ -376,6 +376,120 @@ CREATE POLICY "Allow all operations for admins on site_settings" ON site_setting
 CREATE POLICY "Allow all operations for admins on ai_knowledge" ON ai_knowledge FOR ALL USING (true) WITH CHECK (true);
 
 -- =========================================================
+-- SECURE RPC ORDER SUBMISSION BYPASS FOR GUESTS / ANONYMOUS CUSTOMERS
+-- =========================================================
+-- This SECURITY DEFINER function executes with database owner privileges, allowing
+-- public unauthenticated customers to insert orders and items under strict schema validation
+-- while keeping the rest of the orders table completely protected under RLS policies.
+
+CREATE OR REPLACE FUNCTION submit_customer_order(
+  order_id TEXT,
+  order_data JSONB,
+  items_data JSONB
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  existing_count INTEGER;
+  item_record RECORD;
+BEGIN
+  -- 1. Prevent overwriting existing orders
+  SELECT COUNT(*) INTO existing_count FROM orders WHERE id = order_id;
+  IF existing_count > 0 THEN
+    RETURN json_build_object('success', false, 'error', 'Access denied: Order with this ID already exists and cannot be modified.');
+  END IF;
+
+  -- 2. Insert into orders table with strict initial fields
+  INSERT INTO orders (
+    id,
+    customer_id,
+    customer_name,
+    customer_email,
+    customer_phone,
+    shipping_city,
+    shipping_area,
+    shipping_address,
+    postal_code,
+    delivery_option,
+    delivery_fee,
+    subtotal,
+    total_amount,
+    status,
+    payment_method,
+    notes,
+    status_history,
+    created_at,
+    updated_at
+  ) VALUES (
+    order_id,
+    (order_data->>'customer_id'),
+    (order_data->>'customer_name'),
+    (order_data->>'customer_email'),
+    (order_data->>'customer_phone'),
+    (order_data->>'shipping_city'),
+    (order_data->>'shipping_area'),
+    (order_data->>'shipping_address'),
+    (order_data->>'postal_code'),
+    (order_data->>'delivery_option'),
+    COALESCE((order_data->>'delivery_fee')::NUMERIC, 0),
+    COALESCE((order_data->>'subtotal')::NUMERIC, 0),
+    COALESCE((order_data->>'total_amount')::NUMERIC, 0),
+    'Order Received', -- Force secure initial status
+    COALESCE(order_data->>'payment_method', 'Cash on Delivery'),
+    (order_data->>'notes'),
+    '[{"status": "Order Received", "timestamp": "' || to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"') || '", "note": "Order placed successfully by customer."}]'::jsonb,
+    COALESCE((order_data->>'created_at')::TIMESTAMPTZ, NOW()),
+    NOW()
+  );
+
+  -- 3. Insert items into order_items table
+  FOR item_record IN SELECT * FROM jsonb_to_recordset(items_data) AS x(
+    id UUID,
+    order_id TEXT,
+    product_id TEXT,
+    product_title TEXT,
+    product_image TEXT,
+    unit_price NUMERIC,
+    quantity INTEGER,
+    total_price NUMERIC
+  )
+  LOOP
+    INSERT INTO order_items (
+      id,
+      order_id,
+      product_id,
+      product_title,
+      product_image,
+      unit_price,
+      quantity,
+      total_price,
+      created_at
+    ) VALUES (
+      COALESCE(item_record.id, gen_random_uuid()),
+      order_id,
+      item_record.product_id,
+      item_record.product_title,
+      item_record.product_image,
+      COALESCE(item_record.unit_price, 0),
+      COALESCE(item_record.quantity, 1),
+      COALESCE(item_record.total_price, 0),
+      NOW()
+    );
+  END LOOP;
+
+  RETURN json_build_object('success', true, 'id', order_id);
+EXCEPTION WHEN OTHERS THEN
+  RETURN json_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+-- Grant execute permissions to anon and authenticated roles
+GRANT EXECUTE ON FUNCTION submit_customer_order TO anon, authenticated;
+
+
+-- =========================================================
 -- STORAGE BUCKETS SETUP
 -- =========================================================
 INSERT INTO storage.buckets (id, name, public) VALUES ('product-media', 'product-media', true) ON CONFLICT (id) DO NOTHING;

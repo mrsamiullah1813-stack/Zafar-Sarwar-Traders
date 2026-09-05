@@ -1541,6 +1541,11 @@ export async function createOrderInSupabase(order: CustomerOrder): Promise<{ suc
     if (res.ok && json?.success) {
       console.log(`[Supabase Proxy] Successfully created order: ${order.id}`);
       return { success: true };
+    } else if (json && json.success === false && json.error) {
+      // If the server proxy rejected the checkout with a specific validation or security message,
+      // return it directly rather than falling back to unauthenticated direct DB writes.
+      console.warn(`[Supabase Proxy] Order creation rejected by server: ${json.error}`);
+      return { success: false, error: json.error };
     }
   } catch (proxyErr) {
     console.warn('[Supabase Proxy] Order creation proxy attempt failed, falling back to direct SDK:', proxyErr);
@@ -1551,6 +1556,24 @@ export async function createOrderInSupabase(order: CustomerOrder): Promise<{ suc
     return { success: false, error: 'Server proxy failed and direct Supabase SDK is not configured' };
   }
 
+  // A. Try the secure SQL RPC first as the direct SDK fallback to bypass RLS
+  try {
+    const { data: rpcRes, error: rpcErr } = await supabase.rpc('submit_customer_order', {
+      order_id: order.id,
+      order_data: orderPayload,
+      items_data: itemsPayload
+    });
+    if (!rpcErr && rpcRes && rpcRes.success) {
+      console.log(`[Supabase Direct SDK] Created order via secure RPC bypass: ${order.id}`);
+      return { success: true };
+    } else if (rpcErr) {
+      console.warn('[Supabase Direct SDK] Direct RPC submit_customer_order check failed, trying direct inserts:', rpcErr);
+    }
+  } catch (rpcCatchErr) {
+    console.warn('[Supabase Direct SDK] RPC exception caught, trying direct inserts:', rpcCatchErr);
+  }
+
+  // B. Fallback to direct table inserts if RPC isn't installed in user's Supabase yet
   try {
     const orderResult = await robustDirectSupabaseInsert('orders', [orderPayload]);
     if (!orderResult.success) {

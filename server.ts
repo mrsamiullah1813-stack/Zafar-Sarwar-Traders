@@ -1477,19 +1477,39 @@ async function startServer() {
         console.warn("[CMS Orders] Server disk cache save warning:", cmsSaveErr);
       }
 
-      // 6. Secure Supabase DB Save via robustInsert (Bypasses RLS updates / works on pure inserts)
+      // 6. Secure Supabase DB Save via robustInsert / Secure RPC
       if (dbClient) {
-        const orderResult = await robustInsert("orders", [order]);
-        if (!orderResult.success) {
-          console.warn("[Orders Submit] Supabase orders insert failed:", orderResult.error);
-          return res.status(500).json({ success: false, error: `Supabase database error: ${orderResult.error}` });
+        let savedViaRpc = false;
+        try {
+          // Attempt the secure SECURITY DEFINER RPC bypass which works for guest checkouts
+          const { data: rpcRes, error: rpcErr } = await dbClient.rpc("submit_customer_order", {
+            order_id: order.id,
+            order_data: order,
+            items_data: validatedItems
+          });
+          if (!rpcErr && rpcRes && rpcRes.success) {
+            console.log(`[Orders Submit] Successfully created order via secure RPC bypass: ${order.id}`);
+            savedViaRpc = true;
+          } else if (rpcErr) {
+            console.warn("[Orders Submit] RPC submit_customer_order check failed (might not be installed yet, falling back to direct inserts):", rpcErr);
+          }
+        } catch (rpcCatchErr) {
+          console.warn("[Orders Submit] RPC exception caught, falling back to direct inserts:", rpcCatchErr);
         }
 
-        if (validatedItems.length > 0) {
-          const itemsResult = await robustInsert("order_items", validatedItems);
-          if (!itemsResult.success) {
-            console.warn("[Orders Submit] Order items insert failed:", itemsResult.error);
-            // Items are nested, but we log the warning
+        if (!savedViaRpc) {
+          const orderResult = await robustInsert("orders", [order]);
+          if (!orderResult.success) {
+            console.warn("[Orders Submit] Supabase orders insert failed:", orderResult.error);
+            return res.status(500).json({ success: false, error: `Supabase database error: ${orderResult.error}` });
+          }
+
+          if (validatedItems.length > 0) {
+            const itemsResult = await robustInsert("order_items", validatedItems);
+            if (!itemsResult.success) {
+              console.warn("[Orders Submit] Order items insert failed:", itemsResult.error);
+              // Items are nested, but we log the warning
+            }
           }
         }
       } else {
