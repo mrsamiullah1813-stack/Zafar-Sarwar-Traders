@@ -200,13 +200,41 @@ export default function App() {
   const [deliveryCheckerOpen, setDeliveryCheckerOpen] = useState(false);
   const [viewDeliveryAreasPage, setViewDeliveryAreasPage] = useState(false);
 
-  // Real-time synchronization of customer orders when updated in admin or tracking
+  // Real-time synchronization of customer orders and admin settings across the public website
   useEffect(() => {
     const handleOrderStatusUpdated = () => {
       setCustomerOrders(loadStoredOrders());
     };
+    const handleProductsUpdated = () => setProducts(loadStoredProducts());
+    const handleCategoriesUpdated = () => setCategories(loadStoredCategories());
+    const handleBrandsUpdated = () => setBrands(loadStoredBrands());
+    const handleConfigUpdated = () => setConfig(loadStoredConfig());
+    const handleCheckoutSettingsUpdated = () => setCheckoutSettings(loadCheckoutSettings());
+    const handleHeroSettingsUpdated = () => setHeroSettings(loadHeroSettings());
+    const handleThemeSettingsUpdated = () => setThemeSettings(loadThemeSettings());
+    const handleSmartToolsUpdated = () => setSmartToolsSettings(loadSmartToolsSettings());
+
     window.addEventListener('zst_order_status_updated', handleOrderStatusUpdated);
-    return () => window.removeEventListener('zst_order_status_updated', handleOrderStatusUpdated);
+    window.addEventListener('zst_products_updated', handleProductsUpdated);
+    window.addEventListener('zst_categories_updated', handleCategoriesUpdated);
+    window.addEventListener('zst_brands_updated', handleBrandsUpdated);
+    window.addEventListener('zst_config_updated', handleConfigUpdated);
+    window.addEventListener('zst_checkout_settings_updated', handleCheckoutSettingsUpdated);
+    window.addEventListener('zst_hero_settings_updated', handleHeroSettingsUpdated);
+    window.addEventListener('zst_theme_updated', handleThemeSettingsUpdated);
+    window.addEventListener('zst_smart_tools_updated', handleSmartToolsUpdated);
+
+    return () => {
+      window.removeEventListener('zst_order_status_updated', handleOrderStatusUpdated);
+      window.removeEventListener('zst_products_updated', handleProductsUpdated);
+      window.removeEventListener('zst_categories_updated', handleCategoriesUpdated);
+      window.removeEventListener('zst_brands_updated', handleBrandsUpdated);
+      window.removeEventListener('zst_config_updated', handleConfigUpdated);
+      window.removeEventListener('zst_checkout_settings_updated', handleCheckoutSettingsUpdated);
+      window.removeEventListener('zst_hero_settings_updated', handleHeroSettingsUpdated);
+      window.removeEventListener('zst_theme_updated', handleThemeSettingsUpdated);
+      window.removeEventListener('zst_smart_tools_updated', handleSmartToolsUpdated);
+    };
   }, []);
 
   // When order tracking modal is opened, refresh stored orders

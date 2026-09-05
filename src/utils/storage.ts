@@ -153,12 +153,16 @@ export const loadAnnouncementSettings = (): AnnouncementBarSettings => {
 
 export const saveAnnouncementSettings = async (settings: AnnouncementBarSettings): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, settings);
-      if (!res.success) return { success: false, error: res.error };
-    }
-    localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, JSON.stringify(settings));
+    safeSetLocalStorage(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, settings);
     saveToServerCMS(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, settings);
+    try {
+      window.dispatchEvent(new CustomEvent('zst_announcements_updated', { detail: settings }));
+    } catch {}
+
+    const res = await saveSiteSettingToSupabase(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, settings);
+    if (res && res.success === false) {
+      console.warn('Supabase saveAnnouncementSettings notice:', res.error);
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving announcement settings', e);
@@ -253,12 +257,16 @@ export const loadThemeSettings = (): ThemeSettings => {
 
 export const saveThemeSettings = async (settings: ThemeSettings): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.THEME_SETTINGS, settings);
-      if (!res.success) return { success: false, error: res.error };
-    }
-    localStorage.setItem(STORAGE_KEYS.THEME_SETTINGS, JSON.stringify(settings));
+    safeSetLocalStorage(STORAGE_KEYS.THEME_SETTINGS, settings);
     saveToServerCMS(STORAGE_KEYS.THEME_SETTINGS, settings);
+    try {
+      window.dispatchEvent(new CustomEvent('zst_theme_updated', { detail: settings }));
+    } catch {}
+
+    const res = await saveSiteSettingToSupabase(STORAGE_KEYS.THEME_SETTINGS, settings);
+    if (res && res.success === false) {
+      console.warn('Supabase saveThemeSettings notice:', res.error);
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving theme settings', e);
@@ -616,12 +624,16 @@ export const loadStoredConfig = (): BusinessConfig => {
 
 export const saveStoredConfig = async (config: BusinessConfig): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.CONFIG, config);
-      if (!res.success) return { success: false, error: res.error };
-    }
-    localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(config));
+    safeSetLocalStorage(STORAGE_KEYS.CONFIG, config);
     saveToServerCMS(STORAGE_KEYS.CONFIG, config);
+    try {
+      window.dispatchEvent(new CustomEvent('zst_config_updated', { detail: config }));
+    } catch {}
+
+    const res = await saveSiteSettingToSupabase(STORAGE_KEYS.CONFIG, config);
+    if (res && res.success === false) {
+      console.warn('Supabase saveStoredConfig notice:', res.error);
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving stored config', e);
@@ -719,17 +731,17 @@ export const saveStoredProductSingle = async (product: Product): Promise<{ succe
 
 export const saveStoredProducts = async (products: Product[]): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await upsertProductInSupabase(products);
-      if (res && res.success === false) {
-        console.error('[Supabase Save Error] Product save returned error:', res.error);
-        return { success: false, error: res.error };
-      }
-    }
-    // Quota-safe lightweight caching (no base64/blobs to avoid storage overflow)
     const sanitized = Array.isArray(products) ? products.map(sanitizeProductForLocalStorage) : [];
     safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, sanitized);
     saveToServerCMS(STORAGE_KEYS.PRODUCTS, products);
+    try {
+      window.dispatchEvent(new CustomEvent('zst_products_updated', { detail: products }));
+    } catch {}
+
+    const res = await upsertProductInSupabase(products);
+    if (res && res.success === false) {
+      console.warn('Supabase saveStoredProducts notice:', res.error);
+    }
     console.log('[Supabase Direct SDK] Products saved and local state cached successfully');
     return { success: true };
   } catch (e: any) {
@@ -800,15 +812,16 @@ export const saveStoredCategorySingle = async (category: ProductCategory): Promi
 
 export const saveStoredCategories = async (categories: ProductCategory[]): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await upsertCategoryInSupabase(categories);
-      if (res && !res.success) {
-        console.error('Failed to save categories to Supabase:', res.error);
-        return { success: false, error: res.error };
-      }
-    }
     safeSetLocalStorage(STORAGE_KEYS.CATEGORIES, categories);
     saveToServerCMS(STORAGE_KEYS.CATEGORIES, categories);
+    try {
+      window.dispatchEvent(new CustomEvent('zst_categories_updated', { detail: categories }));
+    } catch {}
+
+    const res = await upsertCategoryInSupabase(categories);
+    if (res && res.success === false) {
+      console.warn('Supabase saveStoredCategories notice:', res.error);
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving stored categories', e);
@@ -1319,9 +1332,13 @@ export const savePaymentMethods = async (methods: PaymentMethodConfig[]): Promis
   try {
     safeSetLocalStorage(STORAGE_KEYS.PAYMENT_METHODS, methods);
     saveToServerCMS(STORAGE_KEYS.PAYMENT_METHODS, methods);
-    if (isSupabaseConfigured) {
-      const res = await savePaymentMethodsToSupabase(methods);
-      if (!res.success) return { success: false, error: res.error };
+    try {
+      window.dispatchEvent(new CustomEvent('zst_payment_methods_updated', { detail: methods }));
+    } catch {}
+
+    const res = await savePaymentMethodsToSupabase(methods);
+    if (res && res.success === false) {
+      console.warn('Supabase savePaymentMethods notice:', res.error);
     }
     return { success: true };
   } catch (e: any) {
@@ -1442,12 +1459,16 @@ export const loadCheckoutSettings = (): CheckoutSettings => {
 
 export const saveCheckoutSettings = async (settings: CheckoutSettings): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.CHECKOUT_SETTINGS, settings);
-      if (!res.success) return { success: false, error: res.error };
-    }
     safeSetLocalStorage(STORAGE_KEYS.CHECKOUT_SETTINGS, settings);
     saveToServerCMS(STORAGE_KEYS.CHECKOUT_SETTINGS, settings);
+    try {
+      window.dispatchEvent(new CustomEvent('zst_checkout_settings_updated', { detail: settings }));
+    } catch {}
+
+    const res = await saveSiteSettingToSupabase(STORAGE_KEYS.CHECKOUT_SETTINGS, settings);
+    if (res && res.success === false) {
+      console.warn('Supabase saveCheckoutSettings notice:', res.error);
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving checkout settings', e);
@@ -1469,16 +1490,20 @@ export const loadDeliverySettings = (): DeliverySettings => {
 
 export const saveDeliverySettings = async (settings: DeliverySettings): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.DELIVERY_SETTINGS, settings);
-      if (!res.success) return { success: false, error: res.error };
-      const citiesList = settings.cities || (settings as any).cityDeliveryList;
-      if (citiesList) {
-        await saveDeliveryCitiesToSupabase(citiesList);
-      }
-    }
     safeSetLocalStorage(STORAGE_KEYS.DELIVERY_SETTINGS, settings);
     saveToServerCMS(STORAGE_KEYS.DELIVERY_SETTINGS, settings);
+    try {
+      window.dispatchEvent(new CustomEvent('zst_delivery_settings_updated', { detail: settings }));
+    } catch {}
+
+    const res = await saveSiteSettingToSupabase(STORAGE_KEYS.DELIVERY_SETTINGS, settings);
+    const citiesList = settings.cities || (settings as any).cityDeliveryList;
+    if (citiesList) {
+      await saveDeliveryCitiesToSupabase(citiesList).catch(() => {});
+    }
+    if (res && res.success === false) {
+      console.warn('Supabase saveDeliverySettings notice:', res.error);
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving delivery settings', e);
@@ -1500,12 +1525,16 @@ export const loadHeroSettings = (): HeroSettings => {
 
 export const saveHeroSettings = async (settings: HeroSettings): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await saveHeroSettingsToSupabase(settings);
-      if (!res.success) return { success: false, error: res.error };
-    }
     safeSetLocalStorage(STORAGE_KEYS.HERO_SETTINGS, settings);
     saveToServerCMS(STORAGE_KEYS.HERO_SETTINGS, settings);
+    try {
+      window.dispatchEvent(new CustomEvent('zst_hero_settings_updated', { detail: settings }));
+    } catch {}
+
+    const res = await saveHeroSettingsToSupabase(settings);
+    if (res && res.success === false) {
+      console.warn('Supabase saveHeroSettings notice:', res.error);
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving hero settings', e);

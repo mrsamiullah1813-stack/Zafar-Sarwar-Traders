@@ -39,7 +39,19 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
   onOrderPlaced,
 }) => {
   const [currentStep, setCurrentStep] = useState<CheckoutStep>('cart');
-  const [deliverySettings] = useState<DeliverySettings>(() => loadDeliverySettings());
+  const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>(() => loadDeliverySettings());
+
+  // Listen to delivery settings updates
+  useEffect(() => {
+    if (!isOpen) return;
+    setDeliverySettings(loadDeliverySettings());
+    const handleDeliveryUpdated = () => {
+      setDeliverySettings(loadDeliverySettings());
+    };
+    window.addEventListener('zst_delivery_settings_updated', handleDeliveryUpdated);
+    return () => window.removeEventListener('zst_delivery_settings_updated', handleDeliveryUpdated);
+  }, [isOpen]);
+
   const activeCities = deliverySettings.cities.filter(c => c.isEnabled);
 
   const customCityOptionValue = 'CUSTOM_CITY_OPTION';
@@ -130,7 +142,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
         if (isMounted) {
           const enabled = methods.filter(m => m.isEnabled);
           setPaymentMethods(enabled);
-          if (enabled.length > 0) {
+          if (enabled.length > 0 && !enabled.find(m => m.id === selectedPaymentMethodId)) {
             setSelectedPaymentMethodId(enabled[0].id);
           }
         }
@@ -138,7 +150,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
         if (isMounted) {
           const fallback = loadPaymentMethods().filter(m => m.isEnabled);
           setPaymentMethods(fallback);
-          if (fallback.length > 0) {
+          if (fallback.length > 0 && !fallback.find(m => m.id === selectedPaymentMethodId)) {
             setSelectedPaymentMethodId(fallback[0].id);
           }
         }
@@ -147,10 +159,22 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
       }
     };
 
+    const handleMethodsUpdated = (e: any) => {
+      const updated = e.detail || loadPaymentMethods();
+      if (Array.isArray(updated)) {
+        const enabled = updated.filter((m: PaymentMethodConfig) => m.isEnabled);
+        setPaymentMethods(enabled);
+      }
+    };
+
     if (isOpen) {
       fetchMethods();
+      window.addEventListener('zst_payment_methods_updated', handleMethodsUpdated);
     }
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      window.removeEventListener('zst_payment_methods_updated', handleMethodsUpdated);
+    };
   }, [isOpen]);
 
   if (!isOpen) return null;
