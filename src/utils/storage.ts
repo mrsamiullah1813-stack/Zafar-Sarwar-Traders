@@ -2430,3 +2430,23 @@ export const validateCouponCode = async (code: string, orderAmount: number): Pro
   };
 };
 
+export const openWhatsAppLink = (url: string) => {
+  try {
+    const newWindow = window.open(url, '_blank');
+    if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  } catch (e) {
+    try {
+      window.location.href = url;
+    } catch {}
+  }
+};
+
+

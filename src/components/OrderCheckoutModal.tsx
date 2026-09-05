@@ -11,7 +11,7 @@ import {
   DeliverySettings, AppliedCouponState, PaymentMethodConfig, OrderStatus, PaymentStatus,
   HowToOrderConfig
 } from '../types';
-import { loadDeliverySettings, generateNextOrderId, loadPaymentMethods, loadHowToOrderConfig } from '../utils/storage';
+import { loadDeliverySettings, generateNextOrderId, loadPaymentMethods, loadHowToOrderConfig, openWhatsAppLink } from '../utils/storage';
 import { getOrGenerateCustomerId } from '../utils/customerStorage';
 import { getProductPricingDetails, getVariantPricingDetails, getActiveProductPrice } from '../utils/pricingUtils';
 import { fetchPaymentMethodsFromSupabase, uploadMediaToSupabase, fetchHowToOrderConfigFromSupabase } from '../services/supabaseService';
@@ -132,28 +132,34 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     }
   }, [isOpen]);
 
-  // Load configured payment methods from Supabase or local storage
+  // Load configured payment methods instantly from local storage, then sync with Supabase in background
   useEffect(() => {
     let isMounted = true;
     const fetchMethods = async () => {
       setIsLoadingPaymentMethods(true);
+      // 1. Instant load from local storage
+      const localMethods = loadPaymentMethods().filter(m => m.isEnabled);
+      if (isMounted && localMethods.length > 0) {
+        setPaymentMethods(localMethods);
+        if (!selectedPaymentMethodId || !localMethods.find(m => m.id === selectedPaymentMethodId)) {
+          setSelectedPaymentMethodId(localMethods[0].id);
+        }
+      }
+
+      // 2. Background sync from Supabase
       try {
         const methods = await fetchPaymentMethodsFromSupabase();
-        if (isMounted) {
+        if (isMounted && methods && Array.isArray(methods)) {
           const enabled = methods.filter(m => m.isEnabled);
-          setPaymentMethods(enabled);
-          if (enabled.length > 0 && !enabled.find(m => m.id === selectedPaymentMethodId)) {
-            setSelectedPaymentMethodId(enabled[0].id);
+          if (enabled.length > 0) {
+            setPaymentMethods(enabled);
+            if (!selectedPaymentMethodId || !enabled.find(m => m.id === selectedPaymentMethodId)) {
+              setSelectedPaymentMethodId(enabled[0].id);
+            }
           }
         }
       } catch (err) {
-        if (isMounted) {
-          const fallback = loadPaymentMethods().filter(m => m.isEnabled);
-          setPaymentMethods(fallback);
-          if (fallback.length > 0 && !fallback.find(m => m.id === selectedPaymentMethodId)) {
-            setSelectedPaymentMethodId(fallback[0].id);
-          }
-        }
+        console.warn('Supabase fetch payment methods background notice:', err);
       } finally {
         if (isMounted) setIsLoadingPaymentMethods(false);
       }
@@ -630,7 +636,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     
     const cleanNum = targetWhatsapp.replace(/[^0-9]/g, '');
     const waUrl = `https://wa.me/${cleanNum}?text=${encodeURIComponent(msg)}`;
-    window.open(waUrl, '_blank');
+    openWhatsAppLink(waUrl);
   };
 
   // Steps Configuration for Stepper Header

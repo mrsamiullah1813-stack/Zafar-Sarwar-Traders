@@ -5,7 +5,7 @@ import {
   ChevronRight, FileText, Lock, RefreshCw, MessageSquare, ExternalLink 
 } from 'lucide-react';
 import { CustomerOrder, OrderStatus } from '../types';
-import { loadStoredOrders, saveStoredOrders } from '../utils/storage';
+import { loadStoredOrders, saveStoredOrders, openWhatsAppLink } from '../utils/storage';
 import { fetchOrdersFromSupabase, fetchSingleOrderFromSupabase, isSupabaseConfigured } from '../services/supabaseService';
 
 interface OrderTrackingModalProps {
@@ -69,7 +69,8 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
     const message = encodeURIComponent(
       `Hello Zafar Sarwar Traders,\n\nI am tracking my Order #${order.orderNumber || order.id}:\n- Customer Name: ${order.customerName}\n- Contact Phone: ${order.phoneNumber}\n- Status: ${order.status}\n- Payment Status: ${order.paymentStatus || 'Pending'}${proofLine}\n- Grand Total: Rs. ${order.grandTotal.toLocaleString('en-PK')}\n\nPlease update me on order status. Thank you!`
     );
-    window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
+    const waUrl = `https://wa.me/${cleanPhone}?text=${message}`;
+    openWhatsAppLink(waUrl);
   };
 
   const handlePerformSearch = async (orderIdToSearch?: string) => {

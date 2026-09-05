@@ -26,6 +26,7 @@ import {
   Search
 } from 'lucide-react';
 import { CustomerProfile, CustomerOrder, BusinessConfig } from '../types';
+import { openWhatsAppLink } from '../utils/storage';
 import { saveCustomerProfile } from '../utils/customerStorage';
 import { fetchSingleOrderFromSupabase } from '../services/supabaseService';
 import { loadStoredOrders, saveStoredOrders } from '../utils/storage';
@@ -159,7 +160,8 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     const message = encodeURIComponent(
       `Hello ${config.name || 'Zafar Sarwar Traders'},\n\nI want an update about my Order #${order.orderNumber || order.id}.\nCustomer ID: ${profile.customerId}\nName: ${profile.fullName || order.customerName}\nCurrent Status: ${order.status}${proofLine}\n\nThank you!`
     );
-    window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
+    const waUrl = `https://wa.me/${cleanPhone}?text=${message}`;
+    openWhatsAppLink(waUrl);
   };
 
   return (
