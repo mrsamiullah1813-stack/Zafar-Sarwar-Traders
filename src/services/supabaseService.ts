@@ -170,6 +170,90 @@ export async function robustDirectSupabaseUpsert(
   return { success: false, error: formatSupabaseError(lastError?.message || 'Database upsert failed after schema negotiation') };
 }
 
+export async function robustDirectSupabaseInsert(
+  table: string, 
+  payloads: any[]
+): Promise<{ success: boolean; data?: any; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) {
+    return { success: false, error: 'Supabase client not configured' };
+  }
+  if (!payloads || payloads.length === 0) return { success: true };
+
+  const badCols = clientKnownInvalidColumnsByTable.get(table);
+  let currentPayloads = payloads.map(p => {
+    const copy = { ...p };
+    if (badCols && badCols.size > 0) {
+      badCols.forEach(col => delete copy[col]);
+    }
+    return copy;
+  });
+
+  const maxRetries = 50;
+  let attempts = 0;
+  let lastError: any = null;
+
+  while (attempts < maxRetries) {
+    attempts++;
+    const { data, error } = await supabase.from(table).insert(currentPayloads);
+    if (!error) {
+      if (attempts > 1) {
+        console.log(`[Supabase Direct SDK] Table "${table}": Successfully saved after ${attempts} schema adaptation attempt(s).`);
+      }
+      return { success: true, data };
+    }
+
+    lastError = error;
+    const errMsg = String(error.message || '');
+
+    // 1. Missing Column Error (PostgREST schema cache or relation missing column)
+    const colMatch =
+      errMsg.match(/Could not find the '([^']+)' column/i) ||
+      errMsg.match(/Could not find the "([^"]+)" column/i) ||
+      errMsg.match(/column "([^"]+)" of relation/i) ||
+      errMsg.match(/column '([^']+)' of relation/i) ||
+      errMsg.match(/column "([^"]+)" does not exist/i) ||
+      errMsg.match(/column '([^']+)' does not exist/i) ||
+      errMsg.match(/column ([a-zA-Z0-9_]+) does not exist/i) ||
+      errMsg.match(/has no column named '([^']+)'/i) ||
+      errMsg.match(/has no column named "([^"]+)"/i) ||
+      errMsg.match(/has no column named ([a-zA-Z0-9_]+)/i);
+
+    if (colMatch && colMatch[1]) {
+      const badCol = colMatch[1];
+      if (!clientKnownInvalidColumnsByTable.has(table)) {
+        clientKnownInvalidColumnsByTable.set(table, new Set());
+      }
+      clientKnownInvalidColumnsByTable.get(table)!.add(badCol);
+      console.warn(`[Supabase Direct SDK] Table "${table}": Column "${badCol}" not found in schema cache. Stripping column and retrying (attempt ${attempts})...`);
+      currentPayloads = currentPayloads.map(item => {
+        const copy = { ...item };
+        delete copy[badCol];
+        return copy;
+      });
+      continue;
+    }
+
+    // 2. Foreign Key Constraint Violation (e.g. category_id, brand_id, product_id, customer_id)
+    if (error.code === '23503' || errMsg.toLowerCase().includes('foreign key') || errMsg.toLowerCase().includes('violates foreign key')) {
+      console.warn(`[Supabase Direct SDK] Table "${table}": Foreign key constraint violation (${errMsg}). Nullifying relation fields and retrying (attempt ${attempts})...`);
+      currentPayloads = currentPayloads.map(item => {
+        const copy = { ...item };
+        if ('category_id' in copy) copy.category_id = null;
+        if ('brand_id' in copy) copy.brand_id = null;
+        if ('product_id' in copy) copy.product_id = null;
+        if ('customer_id' in copy) copy.customer_id = null;
+        if ('order_id' in copy) copy.order_id = null;
+        return copy;
+      });
+      continue;
+    }
+
+    break;
+  }
+
+  return { success: false, error: formatSupabaseError(lastError?.message || 'Database insert failed after schema negotiation') };
+}
+
 // =========================================================
 // DATA MAPPERS (Robust snake_case <-> camelCase conversion)
 // =========================================================
@@ -1468,16 +1552,16 @@ export async function createOrderInSupabase(order: CustomerOrder): Promise<{ suc
   }
 
   try {
-    const orderResult = await robustDirectSupabaseUpsert('orders', [orderPayload], { onConflict: 'id' });
+    const orderResult = await robustDirectSupabaseInsert('orders', [orderPayload]);
     if (!orderResult.success) {
       console.error(`[Supabase Direct SDK] Order creation failed: ${orderResult.error}`);
       return { success: false, error: orderResult.error };
     }
 
     if (itemsPayload.length > 0) {
-      const itemsResult = await robustDirectSupabaseUpsert('order_items', itemsPayload, { onConflict: 'id' });
+      const itemsResult = await robustDirectSupabaseInsert('order_items', itemsPayload);
       if (!itemsResult.success) {
-        console.warn(`[Supabase Direct SDK] Order items upsert warning: ${itemsResult.error}`);
+        console.warn(`[Supabase Direct SDK] Order items insert warning: ${itemsResult.error}`);
       }
     }
     console.log(`[Supabase Direct SDK] Created order: ${order.id}`);
