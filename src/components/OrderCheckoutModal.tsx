@@ -270,9 +270,13 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
       const uploadResult = await uploadMediaToSupabase(proofFile, 'payment-proofs');
       setUploadProgress(100);
       if (uploadResult?.url) {
-        setProofUploadedUrl(uploadResult.url);
+        let fullUrl = uploadResult.url;
+        if (fullUrl.startsWith('/')) {
+          fullUrl = `${window.location.origin}${fullUrl}`;
+        }
+        setProofUploadedUrl(fullUrl);
         setIsUploadingProof(false);
-        return uploadResult.url;
+        return fullUrl;
       }
 
       // Fallback: Read as data URL if remote upload fails
@@ -556,9 +560,16 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     if (order.transactionReference) {
       paymentLines.push(`- Transaction Reference / ID: ${order.transactionReference}`);
     }
-    if (order.paymentProofUrl) {
-      paymentLines.push(`- Payment Proof Receipt: ${order.paymentProofUrl.startsWith('http') ? order.paymentProofUrl : '[Screenshot Uploaded]'}`);
+    
+    // Always include exact payment proof receipt URL (Supabase or server storage)
+    const rawProof = order.paymentProofUrl || proofUploadedUrl;
+    if (rawProof) {
+      const formattedProofUrl = rawProof.startsWith('/') 
+        ? `${window.location.origin}${rawProof}` 
+        : rawProof;
+      paymentLines.push(`- Payment Proof Receipt (Supabase / Media URL):\n${formattedProofUrl}`);
     }
+
     if (order.paymentNotes) {
       paymentLines.push(`- Payment Notes: ${order.paymentNotes}`);
     }

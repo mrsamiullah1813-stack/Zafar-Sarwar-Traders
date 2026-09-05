@@ -148,8 +148,16 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const handleWhatsAppOrderInquiry = (order: CustomerOrder) => {
     const rawPhone = config.whatsapp || config.phone || '923001234567';
     const cleanPhone = rawPhone.replace(/\D/g, '');
+    let proofLine = '';
+    if (order.paymentProofUrl) {
+      let proofUrl = order.paymentProofUrl.trim();
+      if (proofUrl.startsWith('/')) {
+        proofUrl = `${window.location.origin}${proofUrl}`;
+      }
+      proofLine = `\n- Payment Proof Receipt (Supabase / Media URL):\n${proofUrl}`;
+    }
     const message = encodeURIComponent(
-      `Hello ${config.name || 'Zafar Sarwar Traders'},\n\nI want an update about my Order #${order.orderNumber || order.id}.\nCustomer ID: ${profile.customerId}\nName: ${profile.fullName || order.customerName}\nCurrent Status: ${order.status}\n\nThank you!`
+      `Hello ${config.name || 'Zafar Sarwar Traders'},\n\nI want an update about my Order #${order.orderNumber || order.id}.\nCustomer ID: ${profile.customerId}\nName: ${profile.fullName || order.customerName}\nCurrent Status: ${order.status}${proofLine}\n\nThank you!`
     );
     window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
   };

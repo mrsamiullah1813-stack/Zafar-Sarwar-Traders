@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Search, PackageCheck, Clock, CheckCircle2, Truck, ShieldCheck, 
   AlertCircle, Calendar, MapPin, Phone, User, ShoppingBag, X, 
-  ChevronRight, FileText, Lock, RefreshCw 
+  ChevronRight, FileText, Lock, RefreshCw, MessageSquare, ExternalLink 
 } from 'lucide-react';
 import { CustomerOrder, OrderStatus } from '../types';
 import { loadStoredOrders, saveStoredOrders } from '../utils/storage';
@@ -54,6 +54,23 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
     window.addEventListener('zst_order_status_updated', handleStatusEvent);
     return () => window.removeEventListener('zst_order_status_updated', handleStatusEvent);
   }, [searchedOrder]);
+
+  const handleWhatsAppTrackInquiry = (order: CustomerOrder) => {
+    const rawPhone = '923006603063';
+    const cleanPhone = rawPhone.replace(/\D/g, '');
+    let proofLine = '';
+    if (order.paymentProofUrl) {
+      let proofUrl = order.paymentProofUrl.trim();
+      if (proofUrl.startsWith('/')) {
+        proofUrl = `${window.location.origin}${proofUrl}`;
+      }
+      proofLine = `\n- Payment Proof Receipt (Supabase URL):\n${proofUrl}`;
+    }
+    const message = encodeURIComponent(
+      `Hello Zafar Sarwar Traders,\n\nI am tracking my Order #${order.orderNumber || order.id}:\n- Customer Name: ${order.customerName}\n- Contact Phone: ${order.phoneNumber}\n- Status: ${order.status}\n- Payment Status: ${order.paymentStatus || 'Pending'}${proofLine}\n- Grand Total: Rs. ${order.grandTotal.toLocaleString('en-PK')}\n\nPlease update me on order status. Thank you!`
+    );
+    window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
+  };
 
   const handlePerformSearch = async (orderIdToSearch?: string) => {
     const rawId = (orderIdToSearch || inputOrderId).trim();
@@ -337,17 +354,48 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handlePerformSearch(searchedOrder.id)}
-                  disabled={isLoading}
-                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 transition-colors flex items-center gap-1.5 text-xs font-semibold cursor-pointer shrink-0"
-                  title="Refresh latest status from live server"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-blue-600' : ''}`} />
-                  <span>{isLoading ? 'Checking...' : 'Refresh Status'}</span>
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleWhatsAppTrackInquiry(searchedOrder)}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-all flex items-center gap-1.5 text-xs shadow-md shadow-emerald-600/20 cursor-pointer"
+                    title="Track & verify payment proof via WhatsApp"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>Track on WhatsApp</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handlePerformSearch(searchedOrder.id)}
+                    disabled={isLoading}
+                    className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 transition-colors flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+                    title="Refresh latest status from live server"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-blue-600' : ''}`} />
+                    <span>{isLoading ? '...' : 'Refresh'}</span>
+                  </button>
+                </div>
               </div>
+
+              {/* Payment Proof Receipt Box if present */}
+              {searchedOrder.paymentProofUrl && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between text-xs text-emerald-900">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-bold">Payment Proof Uploaded (Supabase Storage):</span>
+                  </div>
+                  <a
+                    href={searchedOrder.paymentProofUrl.startsWith('/') ? `${window.location.origin}${searchedOrder.paymentProofUrl}` : searchedOrder.paymentProofUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-bold text-emerald-700 hover:text-emerald-800 underline flex items-center gap-1 shrink-0 ml-2"
+                  >
+                    <span>View Receipt Image</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
 
               {/* ESTIMATED DELIVERY NOTICE & ADMIN DELAY NOTES */}
               {(searchedOrder.estimatedDeliveryDays || searchedOrder.deliveryDelayNote) && (
