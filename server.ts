@@ -1048,13 +1048,24 @@ async function startServer() {
   app.get("/api/db/orders", async (req, res) => {
     try {
       const { customerId } = req.query;
+      const customerIdStr = (typeof customerId === "string" && customerId.trim()) ? customerId.trim() : null;
+      const phoneDigits = customerIdStr ? customerIdStr.replace(/\D/g, '') : '';
       let dbOrders: any[] = [];
 
       if (dbClient) {
         try {
           let query = dbClient.from("orders").select("*, order_items(*)").order("created_at", { ascending: false });
-          if (customerId && typeof customerId === "string") {
-            query = query.eq("customer_id", customerId);
+          if (customerIdStr) {
+            const filters = [
+              `customer_id.eq.${customerIdStr}`,
+              `customer_phone.eq.${customerIdStr}`,
+              `id.eq.${customerIdStr}`,
+              `order_number.eq.${customerIdStr}`
+            ];
+            if (phoneDigits && phoneDigits.length >= 7) {
+              filters.push(`customer_phone.ilike.%${phoneDigits}%`);
+            }
+            query = query.or(filters.join(","));
           }
           const { data, error } = await query;
           if (!error && Array.isArray(data)) {
@@ -1062,8 +1073,17 @@ async function startServer() {
           } else {
             // Fallback without joined order_items in case relationship isn't configured in schema cache
             let fallbackQuery = dbClient.from("orders").select("*").order("created_at", { ascending: false });
-            if (customerId && typeof customerId === "string") {
-              fallbackQuery = fallbackQuery.eq("customer_id", customerId);
+            if (customerIdStr) {
+              const filters = [
+                `customer_id.eq.${customerIdStr}`,
+                `customer_phone.eq.${customerIdStr}`,
+                `id.eq.${customerIdStr}`,
+                `order_number.eq.${customerIdStr}`
+              ];
+              if (phoneDigits && phoneDigits.length >= 7) {
+                filters.push(`customer_phone.ilike.%${phoneDigits}%`);
+              }
+              fallbackQuery = fallbackQuery.or(filters.join(","));
             }
             const { data: fallbackData, error: fallbackError } = await fallbackQuery;
             if (!fallbackError && Array.isArray(fallbackData)) {
@@ -1082,21 +1102,34 @@ async function startServer() {
       const optimizedOrders = Array.isArray(cmsDataStore["zst_optimized_orders"]) ? cmsDataStore["zst_optimized_orders"] : [];
       const orderMap = new Map<string, any>();
 
+      const matchCustomer = (o: any) => {
+        if (!customerIdStr) return true;
+        const c = customerIdStr.toLowerCase();
+        const oCustId = String(o.customerId || o.customer_id || '').toLowerCase();
+        const oPhone = String(o.phoneNumber || o.customer_phone || o.phone_number || o.whatsappNumber || o.whatsapp_number || '').replace(/\D/g, '');
+        const oId = String(o.id || '').toLowerCase();
+        const oNum = String(o.orderNumber || o.order_number || '').toLowerCase();
+
+        return (
+          (c && oCustId === c) ||
+          (c && oId === c) ||
+          (c && oNum === c) ||
+          (phoneDigits && oPhone.includes(phoneDigits)) ||
+          (phoneDigits && phoneDigits.includes(oPhone) && oPhone.length >= 7)
+        );
+      };
+
       // Put optimized placeholder orders first (so full orders can override if still active)
       optimizedOrders.forEach((o: any) => {
-        if (o && o.id) {
-          if (!customerId || o.customerId === customerId || o.customer_id === customerId || o.phoneNumber === customerId || o.customer_phone === customerId || o.id === customerId) {
-            orderMap.set(String(o.id), { ...o, isStorageOptimized: true });
-          }
+        if (o && o.id && matchCustomer(o)) {
+          orderMap.set(String(o.id), { ...o, isStorageOptimized: true });
         }
       });
 
       // Put CMS orders
       cmsOrders.forEach((o: any) => {
-        if (o && o.id) {
-          if (!customerId || o.customerId === customerId || o.customer_id === customerId || o.phoneNumber === customerId || o.customer_phone === customerId || o.id === customerId) {
-            orderMap.set(String(o.id), o);
-          }
+        if (o && o.id && matchCustomer(o)) {
+          orderMap.set(String(o.id), o);
         }
       });
 

@@ -1841,12 +1841,35 @@ export const syncWithServerCMS = async (callbacks: {
       const allMerged = Array.from(orderMap.values()).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
       if (callbacks.customerId) {
-        // For customer-specific view, show remote orders plus any local storage-optimized orders for this customer
+        const targetClean = callbacks.customerId.trim().toLowerCase();
+        const targetDigits = callbacks.customerId.replace(/\D/g, '');
+
         const customerFiltered = allMerged.filter(o => {
-          return o.customerId === callbacks.customerId || 
-                 (o.phoneNumber && callbacks.customerId && o.phoneNumber.replace(/\D/g, '') === callbacks.customerId.replace(/\D/g, ''));
+          if (!o) return false;
+          const oCustId = (o.customerId || (o as any).customer_id || '').trim().toLowerCase();
+          const oPhone = (o.phoneNumber || (o as any).customer_phone || o.whatsappNumber || '').replace(/\D/g, '');
+          const oId = (o.id || '').trim().toLowerCase();
+          const oNum = (o.orderNumber || (o as any).order_number || '').trim().toLowerCase();
+
+          return (
+            (targetClean && oCustId === targetClean) ||
+            (targetClean && oId === targetClean) ||
+            (targetClean && oNum === targetClean) ||
+            (targetDigits && oPhone && oPhone.includes(targetDigits)) ||
+            (targetDigits && oPhone && targetDigits.includes(oPhone) && oPhone.length >= 7)
+          );
         });
-        callbacks.setOrders(customerFiltered);
+
+        // Always include orders from local session cache so freshly placed customer orders are never lost
+        const local = loadStoredOrders();
+        const mergedCustomerOrders = [...customerFiltered];
+        (local || []).forEach(loc => {
+          if (loc && loc.id && !mergedCustomerOrders.some(m => m.id === loc.id)) {
+            mergedCustomerOrders.unshift(loc);
+          }
+        });
+
+        callbacks.setOrders(mergedCustomerOrders);
       } else {
         callbacks.setOrders(allMerged);
         safeSetLocalStorage(STORAGE_KEYS.ORDERS, allMerged);

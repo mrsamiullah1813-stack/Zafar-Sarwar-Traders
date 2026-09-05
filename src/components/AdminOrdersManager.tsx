@@ -29,11 +29,13 @@ import {
   X,
   RefreshCw,
   Image as ImageIcon,
-  BookOpen
+  BookOpen,
+  Database,
+  HardDrive
 } from 'lucide-react';
 import { CustomerOrder, CheckoutSettings, OrderStatus, OrderStatusHistoryItem, PaymentStatus } from '../types';
-import { loadStoredOrders, saveStoredOrders, loadCheckoutSettings, saveCheckoutSettings, updateOrderPaymentStatusInStorage } from '../utils/storage';
-import { fetchOrdersFromSupabase, updateOrderStatusInSupabase, isSupabaseConfigured } from '../services/supabaseService';
+import { loadStoredOrders, saveStoredOrders, loadCheckoutSettings, saveCheckoutSettings, updateOrderPaymentStatusInStorage, createLightweightOrderPlaceholder } from '../utils/storage';
+import { fetchOrdersFromSupabase, updateOrderStatusInSupabase, deleteOrderFromSupabase, isSupabaseConfigured } from '../services/supabaseService';
 import { supabase } from '../lib/supabase';
 import { AdminPaymentMethodsManager } from './AdminPaymentMethodsManager';
 import { AdminHowToOrderManager } from './AdminHowToOrderManager';
@@ -408,31 +410,41 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
   };
 
   const handleDeleteOrder = async (orderId: string) => {
-    if (confirm('Are you sure you want to delete this order record permanently?')) {
+    const targetOrder = orders.find(o => o.id === orderId);
+    const isDelivered = targetOrder?.status === 'Delivered' || targetOrder?.isStorageOptimized;
+
+    const confirmMsg = isDelivered
+      ? `Free Up Database Storage for Order #${(targetOrder?.orderNumber || orderId).slice(-6)}?\n\nThis action will completely remove heavy order data and receipts from the backend database to save storage capacity.\n\nA lightweight "Delivered" receipt placeholder will be retained for the customer so their order history remains intact.`
+      : `Delete Order #${(targetOrder?.orderNumber || orderId).slice(-6)}?\n\nThis will remove heavy order data from the backend database to free storage capacity.`;
+
+    if (confirm(confirmMsg)) {
       try {
-        const token = localStorage.getItem('zst_admin_token');
-        await fetch(`/api/db/orders/${encodeURIComponent(orderId)}`, {
-          method: 'DELETE',
-          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-        });
-      } catch (e) {
-        console.warn('Server delete error:', e);
-      }
-
-      if (isSupabaseConfigured) {
-        try {
-          await supabase.from('order_items').delete().eq('order_id', orderId);
-          await supabase.from('orders').delete().eq('id', orderId);
-        } catch (sbErr) {
-          console.warn('Supabase delete error:', sbErr);
+        if (isSupabaseConfigured) {
+          await deleteOrderFromSupabase(orderId);
+        } else {
+          const token = localStorage.getItem('zst_admin_token');
+          await fetch(`/api/db/orders/${encodeURIComponent(orderId)}`, {
+            method: 'DELETE',
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+          });
         }
+      } catch (e) {
+        console.warn('Server storage optimization notice:', e);
       }
 
-      const updated = orders.filter(o => o.id !== orderId);
+      let updated: CustomerOrder[];
+      if (targetOrder) {
+        // Create lightweight placeholder to preserve customer order history
+        const placeholder = createLightweightOrderPlaceholder(targetOrder);
+        updated = orders.map(o => o.id === orderId ? placeholder : o);
+      } else {
+        updated = orders.filter(o => o.id !== orderId);
+      }
+
       setOrders(updated);
       saveStoredOrders(updated);
       if (editingOrder?.id === orderId) setEditingOrder(null);
-      onShowToast('Order record deleted permanently.');
+      onShowToast(`Database storage capacity freed for Order #${(targetOrder?.orderNumber || orderId).slice(-6)}! Customer history retained.`);
     }
   };
 
@@ -902,6 +914,12 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                         )}
                         {getStatusBadge(order.status)}
                         {getPaymentBadge(order)}
+                        {order.isStorageOptimized && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 flex items-center gap-1" title="Heavy database payload deleted to save storage capacity. Lightweight receipt placeholder preserved for customer.">
+                            <HardDrive className="w-3 h-3 text-cyan-400" />
+                            <span>Storage Optimized (Lightweight)</span>
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
                         <Calendar className="w-3.5 h-3.5 text-slate-500" />
@@ -941,10 +959,25 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
 
                       <button
                         onClick={() => handleDeleteOrder(order.id)}
-                        className="p-2 rounded-xl bg-slate-800 hover:bg-rose-600 text-slate-400 hover:text-white transition-colors"
-                        title="Delete Record"
+                        className={`p-2 rounded-xl transition-all flex items-center gap-1.5 font-bold text-xs ${
+                          order.status === 'Delivered'
+                            ? 'bg-amber-950/80 hover:bg-amber-600 border border-amber-500/40 text-amber-200 hover:text-white'
+                            : 'bg-slate-800 hover:bg-rose-600 text-slate-400 hover:text-white'
+                        }`}
+                        title={
+                          order.status === 'Delivered'
+                            ? 'Delete heavy database payload to free storage while preserving customer receipt'
+                            : 'Delete Order Record'
+                        }
                       >
-                        <Trash2 className="w-4 h-4" />
+                        {order.status === 'Delivered' ? (
+                          <>
+                            <HardDrive className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span className="hidden md:inline">Free Up Storage</span>
+                          </>
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
                       </button>
                     </div>
                   </div>

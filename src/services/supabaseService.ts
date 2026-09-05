@@ -1360,41 +1360,73 @@ export async function createOrderInSupabase(order: CustomerOrder): Promise<{ suc
 
   const orderPayload: Record<string, any> = {
     id: order.id,
+    orderNumber: order.orderNumber || order.id,
+    order_number: order.orderNumber || order.id,
+    customerId: order.customerId,
     customer_id: (order.customerId && isUUID(order.customerId)) ? order.customerId : null,
+    customerName: order.customerName,
     customer_name: order.customerName,
+    phoneNumber: order.phoneNumber,
     customer_phone: order.phoneNumber,
+    whatsappNumber: order.whatsappNumber,
     whatsapp_number: order.whatsappNumber || null,
+    city: order.city,
     shipping_city: order.city,
+    areaLocality: order.areaLocality,
     shipping_area: order.areaLocality || null,
+    deliveryAddress: order.deliveryAddress,
     shipping_address: order.deliveryAddress,
+    postalCode: order.postalCode,
     postal_code: order.postalCode || null,
     landmark: order.landmark || null,
+    deliveryInstructions: order.deliveryInstructions,
     delivery_instructions: order.deliveryInstructions || null,
     notes: order.notes || null,
     subtotal: order.subtotal,
+    deliveryCharges: order.deliveryCharges,
     delivery_fee: order.deliveryCharges,
+    taxAmount: order.taxAmount,
     tax_amount: order.taxAmount || 0,
+    grandTotal: order.grandTotal,
     total_amount: order.grandTotal,
     status: order.status || 'Order Received',
+    statusHistory: order.statusHistory || [{ status: order.status || 'Order Received', timestamp: new Date().toISOString() }],
     status_history: order.statusHistory || [{ status: order.status || 'Order Received', timestamp: new Date().toISOString() }],
+    estimatedDeliveryDays: order.estimatedDeliveryDays,
     estimated_delivery_days: order.estimatedDeliveryDays || null,
+    estimatedDeliveryDate: order.estimatedDeliveryDate,
     estimated_delivery_date: order.estimatedDeliveryDate || null,
+    estimatedDeliveryTime: order.estimatedDeliveryTime,
     estimated_delivery_time: order.estimatedDeliveryTime || null,
+    createdAt: order.createdAt || new Date().toISOString(),
     created_at: order.createdAt || new Date().toISOString(),
+    items: order.items || [],
     // Coupon fields
+    couponCode: order.appliedCouponCode || order.couponCode,
     coupon_code: order.appliedCouponCode || order.couponCode || null,
+    discountAmount: order.couponDiscountAmount || order.discountAmount,
     discount_amount: order.couponDiscountAmount || order.discountAmount || 0,
     // Payment fields
+    paymentMethodName: order.paymentMethodName || order.paymentMethodId,
     payment_method: order.paymentMethodName || order.paymentMethodId || (order.paymentProofUrl ? 'Online Transfer' : 'Cash on Delivery'),
+    paymentStatus: order.paymentStatus,
     payment_status: order.paymentStatus || (order.paymentProofUrl ? 'Payment Proof Submitted' : 'Cash on Delivery'),
+    paymentProofUrl: order.paymentProofUrl,
     payment_proof_url: order.paymentProofUrl || null,
+    transactionReference: order.transactionReference,
     transaction_reference: order.transactionReference || null,
+    paymentNotes: order.paymentNotes,
     payment_notes: order.paymentNotes || null,
     // Advance Payment fields
+    isAdvancePayment: Boolean(order.isAdvancePayment),
     is_advance_payment: Boolean(order.isAdvancePayment),
+    advancePercentage: order.advancePercentage,
     advance_percentage: order.advancePercentage || null,
+    advanceAmountRequired: order.advanceAmountRequired,
     advance_amount_required: order.advanceAmountRequired || null,
+    advancePaidAmount: order.advancePaidAmount,
     advance_paid_amount: order.advancePaidAmount || null,
+    remainingCodAmount: order.remainingCodAmount,
     remaining_cod_amount: order.remainingCodAmount || null
   };
 
@@ -1509,6 +1541,26 @@ export async function updateOrderPaymentStatusInSupabase(
     if (orderStatus) {
       return updateOrderStatusInSupabase(orderId, orderStatus, note);
     }
+    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
+  }
+}
+
+export async function deleteOrderFromSupabase(orderId: string): Promise<{ success: boolean; error?: string }> {
+  await initializeSupabaseRuntime();
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/db/orders/${encodeURIComponent(orderId)}`, {
+      method: 'DELETE',
+      headers
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || (json && json.success === false)) {
+      const errMsg = json?.error || (res.statusText ? `${res.statusText} (${res.status})` : `Server returned error ${res.status}`);
+      return { success: false, error: formatSupabaseError(errMsg) };
+    }
+    console.log(`[Supabase API] Storage optimization complete for order ${orderId}`);
+    return { success: true };
+  } catch (err: any) {
     return { success: false, error: formatSupabaseError(err?.message || String(err)) };
   }
 }
