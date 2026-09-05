@@ -26,7 +26,7 @@ interface OrderCheckoutModalProps {
   config: BusinessConfig;
   checkoutSettings: CheckoutSettings;
   onClose: () => void;
-  onOrderPlaced: (order: CustomerOrder) => Promise<void> | void;
+  onOrderPlaced: (order: CustomerOrder) => Promise<{ success: boolean; error?: string } | any> | any;
 }
 
 export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
@@ -376,6 +376,12 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
   // Order Placement
   const handleFinalizeOrder = async () => {
     setIsSubmitting(true);
+    setErrors(prev => {
+      const copy = { ...prev };
+      delete copy.submit;
+      return copy;
+    });
+
     let finalProofUrl = proofUploadedUrl;
 
     if (requiresPaymentProof && proofFile && !finalProofUrl) {
@@ -483,9 +489,23 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
     // 1. Save order locally and in Supabase first
     try {
-      await onOrderPlaced(newOrder);
-    } catch (orderSaveErr) {
+      const res = await onOrderPlaced(newOrder);
+      if (res && res.success === false) {
+        setErrors(prev => ({
+          ...prev,
+          submit: res.error || 'The system could not save your order in the database. Please try again or contact us via WhatsApp.'
+        }));
+        setIsSubmitting(false);
+        return;
+      }
+    } catch (orderSaveErr: any) {
       console.warn('Order save warning:', orderSaveErr);
+      setErrors(prev => ({
+        ...prev,
+        submit: orderSaveErr?.message || 'A network error occurred while submitting your order. Please try again.'
+      }));
+      setIsSubmitting(false);
+      return;
     }
 
     // 2. Dispatch real WhatsApp Business notification via secure server backend
@@ -1822,6 +1842,14 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                         : 'Your payment receipt will be verified by our team. We will confirm your order and keep you updated via WhatsApp.'}
                     </p>
                   </div>
+                </div>
+              )}
+
+              {/* Submission error feedback */}
+              {errors.submit && (
+                <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-700 text-[11px] font-semibold text-center mt-3 animate-fadeIn flex items-center justify-center gap-1.5">
+                  <AlertCircle className="w-4.5 h-4.5 text-rose-600 flex-shrink-0" />
+                  <span>{errors.submit}</span>
                 </div>
               )}
 

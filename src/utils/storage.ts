@@ -1174,13 +1174,13 @@ export const addOrderToStorage = async (order: CustomerOrder): Promise<{ success
     // 2. Sync to Backend server API and Supabase PostgreSQL database
     const res = await createOrderInSupabase(order);
     if (!res.success) {
-      console.warn('[Storage] Order saved locally and to backend CMS, but database sync reported a notice:', res.error);
-      return { success: true, orderId: order.id, error: res.error };
+      console.warn('[Storage] Database sync reported a notice:', res.error);
+      return { success: false, orderId: order.id, error: res.error || 'Failed to save order to the database.' };
     }
     return { success: true, orderId: order.id };
   } catch (err: any) {
     console.warn('[Storage] addOrderToStorage caught error:', err);
-    return { success: true, orderId: order.id, error: err?.message || String(err) };
+    return { success: false, orderId: order.id, error: err?.message || String(err) };
   }
 };
 

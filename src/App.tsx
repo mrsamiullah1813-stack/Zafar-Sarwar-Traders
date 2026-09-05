@@ -822,6 +822,7 @@ export default function App() {
           const res = await addOrderToStorage(newOrder);
           if (!res.success) {
             console.error(`Could not save order: ${res.error || 'Database error'}`);
+            return res;
           }
           
           // If this was a normal cart checkout, clear cart; if it was Buy Now, leave normal cart untouched!
@@ -844,6 +845,8 @@ export default function App() {
           if (!updatedProf.completeAddress && newOrder.deliveryAddress) updatedProf.completeAddress = newOrder.deliveryAddress;
           setCustomerProfile(updatedProf);
           saveCustomerProfile(updatedProf);
+
+          return res;
         }}
       />
 

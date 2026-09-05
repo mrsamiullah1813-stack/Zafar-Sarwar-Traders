@@ -1274,13 +1274,20 @@ async function startServer() {
       if (dbClient) {
         const orderResult = await robustUpsert("orders", [order], { onConflict: "id" });
         if (!orderResult.success) {
-          console.warn("[Orders Upsert] Supabase orders upsert warning:", orderResult.error);
+          console.warn("[Orders Upsert] Supabase orders upsert failed:", orderResult.error);
+          return res.status(500).json({ success: false, error: `Supabase order save failed: ${orderResult.error}` });
         }
 
         if (Array.isArray(items) && items.length > 0) {
           const itemsResult = await robustUpsert("order_items", items, { onConflict: "id" });
-          if (!itemsResult.success) console.warn("[Orders Upsert] Order items upsert warning:", itemsResult.error);
+          if (!itemsResult.success) {
+            console.warn("[Orders Upsert] Order items upsert failed:", itemsResult.error);
+            return res.status(500).json({ success: false, error: `Supabase order items save failed: ${itemsResult.error}` });
+          }
         }
+      } else {
+        console.warn("[Orders Upsert] dbClient not configured on server");
+        return res.status(503).json({ success: false, error: "Database client is not configured on the server." });
       }
 
       return res.json({ success: true, id: order.id });
