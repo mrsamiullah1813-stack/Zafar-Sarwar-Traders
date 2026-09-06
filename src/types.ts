@@ -1769,6 +1769,162 @@ export const defaultPricingTypography: PricingTypographySettings = {
   letterSpacing: 'normal'
 };
 
+// ==========================================
+// DYNAMIC ADMIN VOICE & TTS PROMPT SETTINGS
+// ==========================================
+
+export type AdminVoiceEventKey =
+  | 'enter_credentials'
+  | 'enter_pin'
+  | 'draw_pattern'
+  | 'pin_verified'
+  | 'welcome_dashboard'
+  | 'auth_failed'
+  | 'pin_incorrect'
+  | 'pattern_incorrect'
+  | 'pattern_setup';
+
+export interface AdminVoicePromptConfig {
+  key: AdminVoiceEventKey;
+  label: string;
+  description: string;
+  category: 'authentication' | 'security_pin' | 'pattern_lock' | 'feedback';
+  defaultTextEn: string;
+  defaultTextUr: string;
+  defaultTextRomanUr: string;
+}
+
+export interface AdminVoicePresetOption {
+  id: string;
+  name: string;
+  displayName: string;
+  nativeName?: string;
+  gender: 'female' | 'male';
+  locale: string;
+  language: 'Urdu' | 'English';
+  tone: string;
+  description: string;
+  recommendedPitch: number;
+  recommendedRate: number;
+  badge: string;
+  isUrdu?: boolean;
+}
+
+export interface AdminVoiceSettings {
+  enabled: boolean;
+  voiceId: string;
+  pitch: number; // 0.6 - 1.4, default 1.0
+  rate: number;  // 0.6 - 1.4, default 0.90
+  volume: number; // 0.2 - 1.0, default 0.95
+  preferredLang: string; // 'en-US' | 'ur-PK' | 'auto'
+  prompts: Record<AdminVoiceEventKey, string>;
+}
+
+export const ADMIN_VOICE_EVENT_DEFINITIONS: AdminVoicePromptConfig[] = [
+  {
+    key: 'enter_credentials',
+    label: 'Login / Credentials Prompt',
+    description: 'Spoken when the admin login modal opens or returns to the email & password screen.',
+    category: 'authentication',
+    defaultTextEn: 'Please enter your email and password.',
+    defaultTextUr: 'براہ کرم اپنا ای میل اور پاس ورڈ درج کریں۔',
+    defaultTextRomanUr: 'Barah-e-karam apna email aur password enter karein.'
+  },
+  {
+    key: 'enter_pin',
+    label: 'Security PIN Prompt',
+    description: 'Spoken when prompting for the 4-digit administrative Security PIN.',
+    category: 'security_pin',
+    defaultTextEn: 'Please enter your security PIN.',
+    defaultTextUr: 'براہ کرم اپنا سیکیورٹی پن درج کریں۔',
+    defaultTextRomanUr: 'Barah-e-karam apna security PIN enter karein.'
+  },
+  {
+    key: 'draw_pattern',
+    label: 'Pattern Lock Prompt',
+    description: 'Spoken when prompting for the 3×3 security pattern lock.',
+    category: 'pattern_lock',
+    defaultTextEn: 'Please draw your security pattern.',
+    defaultTextUr: 'براہ کرم اپنا سیکیورٹی پیٹرن ڈرا کریں۔',
+    defaultTextRomanUr: 'Barah-e-karam apna security pattern draw karein.'
+  },
+  {
+    key: 'pin_verified',
+    label: 'PIN Verified Transition',
+    description: 'Spoken when PIN is matched and user transitions to the pattern lock screen.',
+    category: 'security_pin',
+    defaultTextEn: 'Security PIN verified. Please draw your pattern lock.',
+    defaultTextUr: 'سیکیورٹی پن تصدیق شدہ۔ براہ کرم اپنا پیٹرن ڈرا کریں۔',
+    defaultTextRomanUr: 'Security PIN verify ho gaya. Ab pattern draw karein.'
+  },
+  {
+    key: 'welcome_dashboard',
+    label: 'Dashboard Welcome Greeting',
+    description: 'Spoken upon complete authentication when opening the Admin Dashboard.',
+    category: 'authentication',
+    defaultTextEn: 'Welcome, Sir. Welcome to your Admin Dashboard.',
+    defaultTextUr: 'خوش آمدید جناب۔ ظفر سرور ٹریڈرز ایڈمن ڈیش بورڈ میں آپ کا خیر مقدم ہے۔',
+    defaultTextRomanUr: 'Khush-Amdeed Sir. Welcome to your Admin Dashboard.'
+  },
+  {
+    key: 'auth_failed',
+    label: 'Invalid Credentials Alert',
+    description: 'Spoken when email or password authentication fails.',
+    category: 'authentication',
+    defaultTextEn: 'Authentication failed. Please try again.',
+    defaultTextUr: 'لاگ ان ناکام رہا۔ براہ کرم دوبارہ کوشش کریں۔',
+    defaultTextRomanUr: 'Authentication fail ho gayi. Barah-e-karam dobara koshish karein.'
+  },
+  {
+    key: 'pin_incorrect',
+    label: 'Incorrect PIN Alert',
+    description: 'Spoken when the submitted security PIN does not match.',
+    category: 'security_pin',
+    defaultTextEn: 'Security PIN is incorrect. Please try again.',
+    defaultTextUr: 'سیکیورٹی پن غلط ہے۔ براہ کرم دوبارہ کوشش کریں۔',
+    defaultTextRomanUr: 'Security PIN ghalat hai. Barah-e-karam dobara try karein.'
+  },
+  {
+    key: 'pattern_incorrect',
+    label: 'Incorrect Pattern Alert',
+    description: 'Spoken when the drawn pattern lock sequence is wrong.',
+    category: 'pattern_lock',
+    defaultTextEn: 'Incorrect pattern. Please try again.',
+    defaultTextUr: 'پیٹرن غلط ہے۔ براہ کرم دوبارہ کوشش کریں۔',
+    defaultTextRomanUr: 'Pattern ghalat hai. Barah-e-karam dobara koshish karein.'
+  },
+  {
+    key: 'pattern_setup',
+    label: 'New Pattern Configuration',
+    description: 'Spoken when initiating new pattern setup in admin security settings.',
+    category: 'pattern_lock',
+    defaultTextEn: 'Please draw your new security pattern.',
+    defaultTextUr: 'براہ کرم نیا سیکیورٹی پیٹرن ڈرا کریں۔',
+    defaultTextRomanUr: 'Barah-e-karam apna naya security pattern draw karein.'
+  }
+];
+
+export const defaultAdminVoiceSettings: AdminVoiceSettings = {
+  enabled: true,
+  voiceId: 'ur-PK-UzmaNeural',
+  pitch: 1.0,
+  rate: 0.90,
+  volume: 0.95,
+  preferredLang: 'auto',
+  prompts: {
+    enter_credentials: 'Please enter your email and password.',
+    enter_pin: 'Please enter your security PIN.',
+    draw_pattern: 'Please draw your security pattern.',
+    pin_verified: 'Security PIN verified. Please draw your pattern lock.',
+    welcome_dashboard: 'Welcome, Sir. Welcome to your Admin Dashboard.',
+    auth_failed: 'Authentication failed. Please try again.',
+    pin_incorrect: 'Security PIN is incorrect. Please try again.',
+    pattern_incorrect: 'Incorrect pattern. Please try again.',
+    pattern_setup: 'Please draw your new security pattern.'
+  }
+};
+
+
 
 
 

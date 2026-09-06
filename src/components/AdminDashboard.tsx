@@ -68,12 +68,14 @@ import { AdminAiAssistantManager } from './AdminAiAssistantManager';
 import { AdminAnnouncementManager } from './AdminAnnouncementManager';
 import { AdminHeroManager } from './AdminHeroManager';
 import { AdminConstructionBuilderManager } from './AdminConstructionBuilderManager';
-import { Megaphone, Palette, HardHat } from 'lucide-react';
+import { Megaphone, Palette, HardHat, Volume2 } from 'lucide-react';
 import { AdminThemeManager } from './AdminThemeManager';
 import { AdminPricingAppearanceManager } from './AdminPricingAppearanceManager';
 import { AdminSmartToolsManager } from './AdminSmartToolsManager';
 import { AdminCouponsManager } from './AdminCouponsManager';
 import { AdminGalleryManager } from './AdminGalleryManager';
+import { AdminVoiceSettingsManager } from './AdminVoiceSettingsManager';
+import { speakAdminVoice } from '../utils/adminVoice';
 import { PatternLock } from './PatternLock';
 import { getPatternLockStatus, savePatternLock, togglePatternLock } from '../services/patternLockService';
 import { Product, ProductCategory, ProductVideo, BusinessConfig, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, ThemeSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig } from '../types';
@@ -128,7 +130,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onLogout,
   onClose
 }) => {
-  const [activeTab, setActiveTab] = useState<'analytics' | 'hero' | 'announcements' | 'orders' | 'payments' | 'customers' | 'coupons' | 'delivery' | 'products' | 'categories' | 'brands' | 'contacts' | 'statistics' | 'banners_seo' | 'pricing_appearance' | 'gallery' | 'smart_tools' | 'construction_builder' | 'planner' | 'estimator' | 'ai_assistant' | 'themes'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'hero' | 'announcements' | 'orders' | 'payments' | 'customers' | 'coupons' | 'delivery' | 'products' | 'categories' | 'brands' | 'contacts' | 'statistics' | 'banners_seo' | 'pricing_appearance' | 'gallery' | 'smart_tools' | 'construction_builder' | 'planner' | 'estimator' | 'ai_assistant' | 'themes' | 'voice_settings'>('analytics');
   const [plannerConfig, setPlannerConfig] = useState<AiDesignerConfig>(loadPlannerConfig());
   const [estimatorConfig, setEstimatorConfig] = useState<BuildMaterialEstimatorConfig>(loadBuildMaterialEstimatorConfig());
   const [fittingConfigState, setFittingConfigState] = useState<FittingBuilderConfig>(fittingBuilderConfig || loadFittingBuilderConfig());
@@ -237,6 +239,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setPatternMode('drawing_new');
     setFirstPatternDraft(null);
     setPatternLockStatusState('idle');
+    speakAdminVoice("Please draw your new security pattern.", false, 'pattern_setup');
     setPatternStatusMessage({
       type: 'info',
       text: 'Step 1 of 2: Draw your new 3×3 pattern lock (connect at least 4 dots)'
@@ -253,6 +256,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handlePatternComplete = async (drawnPattern: number[]) => {
     if (drawnPattern.length < 4) {
       setPatternLockStatusState('error');
+      speakAdminVoice("Pattern too short! Connect at least 4 dots.");
       setPatternStatusMessage({
         type: 'error',
         text: 'Pattern too short! Connect at least 4 dots.'
@@ -265,6 +269,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setFirstPatternDraft(drawnPattern);
       setPatternMode('confirming');
       setPatternLockStatusState('idle');
+      speakAdminVoice("Please redraw the same pattern to confirm.");
       setPatternStatusMessage({
         type: 'info',
         text: 'Step 2 of 2: Re-draw the same pattern to confirm'
@@ -290,6 +295,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             setPatternMode('idle');
             setFirstPatternDraft(null); // Clear temporary draft from memory immediately
             showToast('New Security Pattern Lock saved successfully!');
+            speakAdminVoice("Security pattern lock saved successfully.", true);
             setPatternStatusMessage({
               type: 'success',
               text: patternLockEnabled
@@ -1141,6 +1147,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <span className="px-2 py-0.5 rounded-full bg-pink-950 text-[10px] text-pink-300 font-mono font-bold">
                 5 Themes
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('voice_settings')}
+              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all ${
+                activeTab === 'voice_settings'
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-950'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Volume2 className="w-4 h-4 text-emerald-400" />
+                <span>Voice Settings & TTS</span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-[10px] text-emerald-300 font-mono font-bold">
+                TTS
               </span>
             </button>
 
@@ -2801,6 +2824,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
+                          onClick={() => setActiveTab('voice_settings')}
+                          className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white font-bold text-xs transition-all flex items-center gap-1.5"
+                          title="Customize voice guidance and spoken prompts for Pattern Lock & Security PIN"
+                        >
+                          <Volume2 className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Voice Prompts</span>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={handleStartSetPattern}
                           className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs shadow-md shadow-cyan-950 transition-all flex items-center gap-1.5"
                         >
@@ -2946,6 +2979,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 showToast('Product pricing typography saved and updated across showroom!');
               }}
             />
+          )}
+
+          {/* TAB: VOICE SETTINGS & TTS PROMPTS CUSTOMIZATION */}
+          {activeTab === 'voice_settings' && (
+            <AdminVoiceSettingsManager showToast={showToast} />
           )}
 
         </main>

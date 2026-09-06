@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
+import { handleTtsGet, handleTtsPost, handleTtsVoicesGet } from "./server/aiVoiceService";
 
 // Initialize Supabase DB Client for server proxy with exhaustive environment variable fallbacks
 const rawSupabaseUrl = (
@@ -5327,6 +5328,14 @@ Please analyze this space and provide complete, coordinated color palettes stric
       });
     }
   });
+
+  // =========================================================
+  // HIGH-FIDELITY AI NEURAL TTS AUDIO ENGINE (Urdu & English)
+  // Isolated service powered by Microsoft Azure Cognitive Speech
+  // =========================================================
+  app.get("/api/tts", handleTtsGet);
+  app.post("/api/tts", handleTtsPost);
+  app.get("/api/tts/voices", handleTtsVoicesGet);
 
   app.get("/api/cms/load", (req, res) => {
     return res.json({ success: true, data: cmsDataStore });
