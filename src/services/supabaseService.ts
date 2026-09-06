@@ -2307,8 +2307,80 @@ export async function saveFittingBuilderConfigToSupabase(config: FittingBuilderC
 
 
 // =========================================================
-// 8. STORAGE MEDIA UPLOAD (Direct Supabase SDK)
+// 8. STORAGE MEDIA UPLOAD & PAYMENT PROOF (Direct Supabase SDK & Dedicated Server Routes)
 // =========================================================
+
+export async function uploadPaymentProof(
+  fileOrDataUrl: File | Blob | string,
+  customFileName?: string
+): Promise<{ url?: string; error?: string }> {
+  try {
+    let base64String: string = '';
+    let mimeType = 'image/jpeg';
+    let fileExt = 'jpg';
+
+    if (typeof fileOrDataUrl === 'string') {
+      if (fileOrDataUrl.startsWith('data:')) {
+        base64String = fileOrDataUrl;
+        const mimeMatch = fileOrDataUrl.match(/:(.*?);/);
+        mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+        fileExt = mimeType.split('/')[1] || 'jpg';
+      } else {
+        return { url: fileOrDataUrl };
+      }
+    } else if (fileOrDataUrl instanceof File || fileOrDataUrl instanceof Blob) {
+      mimeType = fileOrDataUrl.type || 'image/jpeg';
+      fileExt = (fileOrDataUrl instanceof File ? fileOrDataUrl.name.split('.').pop() : mimeType.split('/')[1]) || 'jpg';
+      base64String = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (e) => reject(e);
+        reader.readAsDataURL(fileOrDataUrl);
+      });
+    }
+
+    const fileName = customFileName || `proof-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+
+    // 1. Try dedicated payment proof upload route
+    try {
+      const res = await fetch('/api/payment-proof/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileData: base64String, fileName, mimeType })
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success && json?.url) {
+        let fullUrl = json.url;
+        if (fullUrl.startsWith('/')) {
+          fullUrl = `${window.location.origin}${fullUrl}`;
+        }
+        return { url: fullUrl };
+      }
+    } catch (e) {
+      console.warn('[Payment Proof] /api/payment-proof/upload notice:', e);
+    }
+
+    // 2. Fallback to general storage upload
+    const fallbackRes = await uploadMediaToSupabase(base64String, 'payment-proofs', fileName);
+    if (fallbackRes.url) {
+      let fullUrl = fallbackRes.url;
+      if (fullUrl.startsWith('/')) {
+        fullUrl = `${window.location.origin}${fullUrl}`;
+      }
+      return { url: fullUrl };
+    }
+
+    // 3. Guaranteed fallback: return base64 string
+    if (base64String) {
+      return { url: base64String };
+    }
+
+    return { error: 'Failed to process payment receipt' };
+  } catch (err: any) {
+    console.error('[Payment Proof Upload Exception]', err);
+    return { error: err?.message || 'Payment proof upload failed' };
+  }
+}
 
 export async function uploadMediaToSupabase(
   fileOrDataUrl: File | Blob | string,

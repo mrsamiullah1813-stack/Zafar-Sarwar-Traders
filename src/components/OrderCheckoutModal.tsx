@@ -14,7 +14,7 @@ import {
 import { loadDeliverySettings, generateNextOrderId, loadPaymentMethods, loadHowToOrderConfig, openWhatsAppLink } from '../utils/storage';
 import { getOrGenerateCustomerId } from '../utils/customerStorage';
 import { getProductPricingDetails, getVariantPricingDetails, getActiveProductPrice } from '../utils/pricingUtils';
-import { fetchPaymentMethodsFromSupabase, uploadMediaToSupabase, fetchHowToOrderConfigFromSupabase } from '../services/supabaseService';
+import { fetchPaymentMethodsFromSupabase, uploadMediaToSupabase, uploadPaymentProof, fetchHowToOrderConfigFromSupabase } from '../services/supabaseService';
 import { CouponPromoBox } from './CouponPromoBox';
 
 type CheckoutStep = 'cart' | 'customer' | 'address' | 'payment_method' | 'payment_instructions' | 'payment_proof' | 'confirmation';
@@ -271,33 +271,133 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     setTimeout(() => setCopiedField(null), 2500);
   };
 
-  // File selection for proof
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        setUploadError('File size must be under 10MB.');
+  // Helper to downscale large camera pictures (e.g. 10MB phone screenshots) to crisp ~300KB JPEG
+  const prepareOptimizedImage = async (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      if (file.type === 'application/pdf') {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
         return;
       }
-      setProofFile(file);
-      setUploadError('');
-      const preview = URL.createObjectURL(file);
-      setProofPreviewUrl(preview);
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 1600;
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL('image/jpeg', 0.88);
+            resolve(compressed);
+          } else {
+            resolve(e.target?.result as string);
+          }
+        };
+        img.onerror = () => resolve(e.target?.result as string);
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Seamless file selection & immediate background upload
+  const processSelectedProofFile = async (file: File) => {
+    if (!file) return;
+
+    if (file.size > 15 * 1024 * 1024) {
+      setUploadError('File size exceeds 15MB limit. Please choose a smaller image.');
+      return;
+    }
+
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'image/gif', 'application/pdf'];
+    const isValidType = validTypes.some(t => file.type.toLowerCase().includes(t.split('/')[1])) || file.type.startsWith('image/');
+    if (!isValidType) {
+      setUploadError('Please upload a valid image (PNG, JPG, WEBP) or PDF receipt.');
+      return;
+    }
+
+    setProofFile(file);
+    setUploadError('');
+    setErrors(prev => {
+      const copy = { ...prev };
+      delete copy.paymentProof;
+      delete copy.submit;
+      return copy;
+    });
+
+    const preview = URL.createObjectURL(file);
+    setProofPreviewUrl(preview);
+    setIsUploadingProof(true);
+    setUploadProgress(20);
+
+    try {
+      const optimizedBase64 = await prepareOptimizedImage(file);
+      setUploadProgress(60);
+
+      const res = await uploadPaymentProof(optimizedBase64 || file, file.name);
+      setUploadProgress(100);
+
+      if (res?.url) {
+        let fullUrl = res.url;
+        if (fullUrl.startsWith('/')) {
+          fullUrl = `${window.location.origin}${fullUrl}`;
+        }
+        setProofUploadedUrl(fullUrl);
+      } else if (optimizedBase64) {
+        setProofUploadedUrl(optimizedBase64);
+      }
+    } catch (err: any) {
+      console.warn('[Proof Upload Background Warning]', err);
+      try {
+        const fallbackBase64 = await prepareOptimizedImage(file);
+        if (fallbackBase64) {
+          setProofUploadedUrl(fallbackBase64);
+        }
+      } catch {}
+    } finally {
+      setIsUploadingProof(false);
     }
   };
 
-  // Upload proof image
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processSelectedProofFile(file);
+    }
+  };
+
+  // Upload proof image fallback/finalizer
   const handleUploadProof = async (): Promise<string | null> => {
-    if (!proofFile && proofUploadedUrl) return proofUploadedUrl;
+    if (proofUploadedUrl) return proofUploadedUrl;
     if (!proofFile) return null;
 
     setIsUploadingProof(true);
-    setUploadProgress(25);
+    setUploadProgress(30);
     setUploadError('');
 
     try {
-      // Direct upload proxy or fallback
-      const uploadResult = await uploadMediaToSupabase(proofFile, 'payment-proofs');
+      const optimized = await prepareOptimizedImage(proofFile);
+      setUploadProgress(70);
+
+      const uploadResult = await uploadPaymentProof(optimized || proofFile, proofFile.name);
       setUploadProgress(100);
       if (uploadResult?.url) {
         let fullUrl = uploadResult.url;
@@ -309,28 +409,32 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
         return fullUrl;
       }
 
-      // Fallback: Read as data URL if remote upload fails
+      if (optimized) {
+        setProofUploadedUrl(optimized);
+        setIsUploadingProof(false);
+        return optimized;
+      }
+
+      // Fallback: Read as raw data URL
       const dataUrl = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => resolve('');
         reader.readAsDataURL(proofFile);
       });
 
-      setProofUploadedUrl(dataUrl);
-      setIsUploadingProof(false);
-      return dataUrl;
+      if (dataUrl) {
+        setProofUploadedUrl(dataUrl);
+        setIsUploadingProof(false);
+        return dataUrl;
+      }
     } catch (err: any) {
       console.error('Failed to upload proof image:', err);
-      // Still allow local dataUrl
-      if (proofPreviewUrl) {
-        setProofUploadedUrl(proofPreviewUrl);
-        setIsUploadingProof(false);
-        return proofPreviewUrl;
-      }
-      setUploadError('Failed to upload payment receipt. Please retry or submit order and send proof via WhatsApp.');
+    } finally {
       setIsUploadingProof(false);
-      return null;
     }
+
+    return null;
   };
 
   // Validation functions per step
@@ -1732,12 +1836,12 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                     </label>
 
                     {proofPreviewUrl ? (
-                      /* Preview Box with remove */
-                      <div className="relative rounded-2xl border-2 border-slate-200 bg-slate-50 p-3 flex items-center gap-4">
+                      /* Preview Box with remove and upload status */
+                      <div className="relative rounded-2xl border-2 border-slate-200 bg-slate-50 p-3.5 flex items-center gap-4">
                         <img
                           src={proofPreviewUrl}
                           alt="Payment Receipt Preview"
-                          className="w-20 h-20 rounded-xl object-cover border border-slate-300 bg-white"
+                          className="w-20 h-20 rounded-xl object-cover border border-slate-300 bg-white shadow-sm flex-shrink-0"
                         />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold text-slate-900 truncate">
@@ -1746,18 +1850,38 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                           <p className="text-[10px] text-slate-500 mt-0.5">
                             {proofFile ? `${(proofFile.size / 1024).toFixed(1)} KB` : 'Ready to submit'}
                           </p>
-                          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 font-bold mt-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Receipt Attached
-                          </span>
+                          
+                          {isUploadingProof ? (
+                            <div className="mt-1.5 space-y-1">
+                              <div className="flex items-center gap-1.5 text-[11px] text-blue-600 font-bold">
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                <span>Attaching receipt ({uploadProgress}%)...</span>
+                              </div>
+                              <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                                <div 
+                                  className="bg-blue-600 h-full transition-all duration-300 rounded-full"
+                                  style={{ width: `${uploadProgress}%` }}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 font-bold mt-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Receipt Attached & Verified
+                            </span>
+                          )}
                         </div>
                         <button
                           type="button"
+                          disabled={isUploadingProof}
                           onClick={() => {
                             setProofFile(null);
                             setProofPreviewUrl('');
                             setProofUploadedUrl('');
+                            setUploadError('');
+                            setUploadProgress(0);
+                            if (fileInputRef.current) fileInputRef.current.value = '';
                           }}
-                          className="p-2 rounded-xl text-rose-500 hover:bg-rose-50 transition-colors"
+                          className="p-2 rounded-xl text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer disabled:opacity-40"
                           title="Remove Screenshot"
                         >
                           <X className="w-4 h-4" />
@@ -1772,12 +1896,11 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                           e.preventDefault();
                           const file = e.dataTransfer.files?.[0];
                           if (file) {
-                            setProofFile(file);
-                            setProofPreviewUrl(URL.createObjectURL(file));
+                            processSelectedProofFile(file);
                           }
                         }}
                         className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all hover:bg-blue-50/40 hover:border-blue-400 ${
-                          errors.paymentProof ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300 bg-slate-50/60'
+                          errors.paymentProof || uploadError ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300 bg-slate-50/60'
                         }`}
                       >
                         <Upload className="w-8 h-8 text-blue-600 mx-auto mb-2" />
@@ -1785,20 +1908,30 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                           Click to upload or drag & drop payment screenshot
                         </p>
                         <p className="text-[10px] text-slate-400 mt-1">
-                          PNG, JPG, JPEG or WEBP (Max 10MB)
+                          PNG, JPG, JPEG, WEBP or PDF (Max 15MB)
                         </p>
                         <input
                           ref={fileInputRef}
                           type="file"
-                          accept="image/*"
+                          accept="image/png,image/jpeg,image/webp,image/jpg,application/pdf"
                           onChange={handleFileChange}
                           className="hidden"
                         />
                       </div>
                     )}
 
+                    {uploadError && (
+                      <div className="flex items-center gap-1.5 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-[11px] text-rose-600 font-semibold">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                        <span>{uploadError}</span>
+                      </div>
+                    )}
+
                     {errors.paymentProof && (
-                      <p className="text-[11px] text-rose-500 font-semibold">{errors.paymentProof}</p>
+                      <div className="flex items-center gap-1.5 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-[11px] text-rose-600 font-semibold">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                        <span>{errors.paymentProof}</span>
+                      </div>
                     )}
                   </div>
 

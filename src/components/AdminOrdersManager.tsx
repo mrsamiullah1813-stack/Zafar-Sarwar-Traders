@@ -756,6 +756,14 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
     );
   };
 
+  const formatProofUrl = (url?: string | null): string => {
+    if (!url) return '';
+    if (url.startsWith('/')) {
+      return `${window.location.origin}${url}`;
+    }
+    return url;
+  };
+
   return (
     <div className="space-y-6">
       
@@ -1690,7 +1698,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                     className="relative cursor-pointer group rounded-xl overflow-hidden border border-slate-800 bg-slate-950 flex justify-center items-center max-h-56"
                   >
                     <img 
-                      src={editingOrder.paymentProofUrl} 
+                      src={formatProofUrl(editingOrder.paymentProofUrl)} 
                       alt="Payment proof receipt" 
                       className="max-h-56 w-auto object-contain rounded-xl transition-transform group-hover:scale-105"
                     />
@@ -1885,7 +1893,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                 <span>{viewingProofOrder.isCodAdvanceRequired ? 'Advance Payment Screenshot' : 'Payment Screenshot / Receipt'}</span>
                 {viewingProofOrder.paymentProofUrl && (
                   <a 
-                    href={viewingProofOrder.paymentProofUrl} 
+                    href={formatProofUrl(viewingProofOrder.paymentProofUrl)} 
                     target="_blank" 
                     rel="noreferrer"
                     className="text-blue-400 hover:text-blue-300 flex items-center gap-1 font-bold"
@@ -1899,7 +1907,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
               {viewingProofOrder.paymentProofUrl ? (
                 <div className="rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex justify-center items-center p-3">
                   <img 
-                    src={viewingProofOrder.paymentProofUrl} 
+                    src={formatProofUrl(viewingProofOrder.paymentProofUrl)} 
                     alt="Customer Payment Receipt" 
                     className="max-h-[50vh] w-auto object-contain rounded-xl"
                   />
