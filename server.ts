@@ -1842,6 +1842,39 @@ async function startServer() {
             dbSaved = true;
           }
         }
+
+        // 11. GUARANTEED DIRECT PROOF SYNC: Ensure payment proof columns are definitively updated on Supabase
+        if (dbClient && orderId) {
+          try {
+            const proofSyncPayload: Record<string, any> = {};
+            if (resolvedProofUrl) {
+              proofSyncPayload.payment_proof_url = resolvedProofUrl;
+              proofSyncPayload.payment_proof_file_name = order.payment_proof_file_name || order.paymentProofFileName || 'customer_proof.jpg';
+              proofSyncPayload.payment_proof_uploaded_at = order.payment_proof_uploaded_at || new Date().toISOString();
+              proofSyncPayload.payment_status = 'Payment Proof Submitted';
+            }
+            if (order.transaction_reference || order.transactionReference) {
+              proofSyncPayload.transaction_reference = order.transaction_reference || order.transactionReference;
+            }
+            if (order.payment_notes || order.paymentNotes) {
+              proofSyncPayload.payment_notes = order.payment_notes || order.paymentNotes;
+            }
+            if (isAdvance) {
+              proofSyncPayload.is_advance_payment = true;
+              if (order.advance_percentage || order.advancePercentage) proofSyncPayload.advance_percentage = order.advance_percentage || order.advancePercentage;
+              if (order.advance_amount_required || order.advanceAmountRequired) proofSyncPayload.advance_amount_required = order.advance_amount_required || order.advanceAmountRequired;
+              if (order.advance_paid_amount || order.advancePaidAmount) proofSyncPayload.advance_paid_amount = order.advance_paid_amount || order.advancePaidAmount;
+              if (order.remaining_cod_amount || order.remainingCodAmount) proofSyncPayload.remaining_cod_amount = order.remaining_cod_amount || order.remainingCodAmount;
+            }
+
+            if (Object.keys(proofSyncPayload).length > 0) {
+              await dbClient.from("orders").update(proofSyncPayload).eq("id", orderId);
+              console.log(`[Orders Submit] Successfully verified & synced payment proof to Supabase for ${orderId}`);
+            }
+          } catch (syncProofErr) {
+            console.warn("[Orders Submit] Direct payment proof column sync notice:", syncProofErr);
+          }
+        }
       }
 
       return res.json({ 

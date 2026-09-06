@@ -1587,6 +1587,20 @@ export async function createOrderInSupabase(order: CustomerOrder): Promise<{ suc
 
     if (!rpcErr && rpcRes && rpcRes.success) {
       console.log(`[Supabase Direct SDK] Created order via secure RPC: ${order.id}`);
+      if (orderPayload.payment_proof_url) {
+        try {
+          await supabase.from('orders').update({
+            payment_proof_url: orderPayload.payment_proof_url,
+            payment_proof_file_name: orderPayload.payment_proof_file_name || 'customer_proof.jpg',
+            payment_proof_uploaded_at: orderPayload.payment_proof_uploaded_at || new Date().toISOString(),
+            payment_status: 'Payment Proof Submitted',
+            transaction_reference: orderPayload.transaction_reference || null,
+            payment_notes: orderPayload.payment_notes || null
+          }).eq('id', order.id);
+        } catch (dirSyncErr) {
+          console.warn('[Supabase Direct SDK] Secondary proof sync warning:', dirSyncErr);
+        }
+      }
       return { success: true };
     } else if (rpcErr) {
       console.error('[Supabase Direct SDK] Secure RPC submit_customer_order failed:', rpcErr.message);
