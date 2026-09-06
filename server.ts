@@ -49,6 +49,9 @@ const isPlaceholder = (val: string) =>
   val.includes("EXAMPLE") ||
   val.includes("YOUR_");
 
+const isUUID = (val: any): boolean => 
+  typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim());
+
 const isSupabaseServerConfigured = Boolean(
   normalizedSupabaseUrl &&
   !isPlaceholder(normalizedSupabaseUrl) &&
@@ -677,6 +680,21 @@ async function startServer() {
         continue;
       }
 
+      // 4. Invalid UUID Syntax Violation
+      if (error.code === "22P02" || errMsg.toLowerCase().includes("invalid input syntax for type uuid")) {
+        console.warn(`[Robust DB Upsert] Table "${table}": Invalid UUID syntax (${errMsg}). Nullifying non-UUID fields and retrying (attempt ${attempts})...`);
+        currentPayloads = currentPayloads.map(item => {
+          const copy = { ...item };
+          if ("customer_id" in copy && !isUUID(copy.customer_id)) copy.customer_id = null;
+          if ("product_id" in copy && !isUUID(copy.product_id)) copy.product_id = null;
+          if ("category_id" in copy && !isUUID(copy.category_id)) copy.category_id = null;
+          if ("brand_id" in copy && !isUUID(copy.brand_id)) copy.brand_id = null;
+          if (table === "order_items" && "id" in copy && !isUUID(copy.id)) copy.id = crypto.randomUUID();
+          return copy;
+        });
+        continue;
+      }
+
       // Unrecoverable error
       break;
     }
@@ -684,7 +702,7 @@ async function startServer() {
     return { success: false, error: lastError?.message || "Database upsert failed after schema negotiation" };
   }
 
-  // Robust Supabase Insert Helper with automatic column negotiation and foreign-key healing
+  // Robust Supabase Insert Helper with automatic column negotiation, UUID sanitization, and foreign-key healing
   async function robustInsert(table: string, payloads: any[]): Promise<{ success: boolean; data?: any; error?: string }> {
     if (!dbClient) return { success: false, error: "Database client not configured on server" };
     if (!payloads || payloads.length === 0) return { success: true };
@@ -772,10 +790,25 @@ async function startServer() {
         } else if (table === "order_items") {
           currentPayloads = currentPayloads.map((item, idx) => ({
             ...item,
-            id: `${item.order_id || 'ord'}-${item.product_id || 'item'}-${idx + 1}-${Math.random().toString(36).substring(2, 7)}`
+            id: crypto.randomUUID()
           }));
           continue;
         }
+      }
+
+      // 4. Invalid UUID Syntax Violation
+      if (error.code === "22P02" || errMsg.toLowerCase().includes("invalid input syntax for type uuid")) {
+        console.warn(`[Robust DB Insert] Table "${table}": Invalid UUID syntax (${errMsg}). Nullifying non-UUID fields and retrying (attempt ${attempts})...`);
+        currentPayloads = currentPayloads.map(item => {
+          const copy = { ...item };
+          if ("customer_id" in copy && !isUUID(copy.customer_id)) copy.customer_id = null;
+          if ("product_id" in copy && !isUUID(copy.product_id)) copy.product_id = null;
+          if ("category_id" in copy && !isUUID(copy.category_id)) copy.category_id = null;
+          if ("brand_id" in copy && !isUUID(copy.brand_id)) copy.brand_id = null;
+          if (table === "order_items" && "id" in copy && !isUUID(copy.id)) copy.id = crypto.randomUUID();
+          return copy;
+        });
+        continue;
       }
 
       break;
@@ -1828,15 +1861,68 @@ async function startServer() {
         }
 
         if (!dbSaved) {
-          // Fallback using robust service-role insert if RPC is not loaded yet
-          const orderResult = await robustInsert("orders", [order]);
+          // Fallback using clean sanitized direct table insert if RPC is not loaded yet
+          const cleanOrderRow: Record<string, any> = {
+            id: orderId,
+            order_number: order.order_number || order.orderNumber || `ZFT-${orderId.replace('#', '')}`,
+            customer_id: (order.customer_id && isUUID(order.customer_id)) ? order.customer_id : ((order.customerId && isUUID(order.customerId)) ? order.customerId : null),
+            customer_name: customerName,
+            customer_phone: phoneNumber,
+            customer_email: order.email || order.customer_email || order.customerEmail || null,
+            shipping_city: city,
+            shipping_area: order.shipping_area || order.areaLocality || order.shippingArea || null,
+            shipping_address: address,
+            postal_code: order.postal_code || order.postalCode || null,
+            delivery_instructions: order.delivery_instructions || order.deliveryInstructions || null,
+            notes: order.notes || null,
+            subtotal: calculatedSubtotal,
+            delivery_fee: trustedDeliveryFee,
+            tax_amount: taxAmount,
+            total_amount: calculatedGrandTotal,
+            status: order.status || "Order Received",
+            status_history: initialHistory,
+            coupon_code: submittedCouponCode || null,
+            discount_amount: trustedDiscountAmount,
+            payment_method: order.payment_method || order.paymentMethodName || "Cash on Delivery",
+            payment_status: order.payment_status || order.paymentStatus || "Pending Payment",
+            payment_proof_url: resolvedProofUrl || null,
+            payment_proof_file_name: order.payment_proof_file_name || order.paymentProofFileName || (resolvedProofUrl ? "customer_proof.jpg" : null),
+            payment_proof_uploaded_at: (resolvedProofUrl || hasProof) ? (order.payment_proof_uploaded_at || new Date().toISOString()) : null,
+            transaction_reference: order.transaction_reference || order.transactionReference || null,
+            payment_notes: order.payment_notes || order.paymentNotes || null,
+            is_advance_payment: isAdvance,
+            advance_percentage: order.advance_percentage || order.advancePercentage || null,
+            advance_amount_required: order.advance_amount_required || order.advanceAmountRequired || null,
+            advance_paid_amount: order.advance_paid_amount || order.advancePaidAmount || null,
+            remaining_cod_amount: order.remaining_cod_amount || order.remainingCodAmount || null,
+            created_at: order.created_at || order.createdAt || new Date().toISOString()
+          };
+
+          const cleanItemRows = validatedItems.map((item: any) => ({
+            id: isUUID(item.id) ? item.id : crypto.randomUUID(),
+            order_id: orderId,
+            product_id: (item.product_id && isUUID(item.product_id)) ? item.product_id : ((item.productId && isUUID(item.productId)) ? item.productId : null),
+            product_title: item.product_title || item.productTitle || item.productName || item.name || "Product",
+            product_image: item.product_image || item.productImage || item.image || "",
+            unit_price: Math.max(0, parseFloat(String(item.unit_price || item.unitPrice || item.price || 0))),
+            quantity: Math.max(1, parseInt(String(item.quantity || 1), 10)),
+            total_price: Math.max(0, parseFloat(String(item.total_price || item.totalPrice || 0))),
+            selected_color: item.selected_color || item.selectedColor || null,
+            selected_size: item.selected_size || item.selectedSize || null,
+            selected_quality: item.selected_quality || item.selectedQuality || null,
+            selected_variant: item.selected_variant || item.selectedVariant || null,
+            selected_shade: item.selected_shade || item.selectedShade || null,
+            selected_shade_code: item.selected_shade_code || item.selectedShadeCode || null
+          }));
+
+          const orderResult = await robustInsert("orders", [cleanOrderRow]);
           if (!orderResult.success) {
-            console.warn("[Orders Submit] Supabase orders insert warning (order secured in server storage):", orderResult.error);
+            console.warn("[Orders Submit] Supabase orders direct insert notice (order secured in server storage):", orderResult.error);
           } else {
-            if (validatedItems.length > 0) {
-              const itemsResult = await robustInsert("order_items", validatedItems);
+            if (cleanItemRows.length > 0) {
+              const itemsResult = await robustInsert("order_items", cleanItemRows);
               if (!itemsResult.success) {
-                console.warn("[Orders Submit] Order items insert warning:", itemsResult.error);
+                console.warn("[Orders Submit] Order items insert notice:", itemsResult.error);
               }
             }
             dbSaved = true;
