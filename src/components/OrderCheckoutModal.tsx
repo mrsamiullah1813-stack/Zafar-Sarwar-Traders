@@ -2052,20 +2052,54 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
           {/* ============================================================ */}
           {currentStep === 'confirmation' && placedOrder && (
             <div className="max-w-xl mx-auto text-center space-y-4 py-3 animate-fadeIn">
-              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center shadow-lg shadow-emerald-600/20">
-                <CheckCircle2 className="w-9 h-9 stroke-[2.5]" />
+              {/* REALISTIC HIGH-QUALITY ANIMATED GREEN CHECKMARK */}
+              <div className="relative inline-flex items-center justify-center my-3">
+                {/* Expanding Pulse Ring Background */}
+                <div className="absolute inset-0 rounded-full bg-emerald-400/30 animate-success-pulse-wave pointer-events-none" />
+                <div className="absolute -inset-4 rounded-full bg-gradient-to-tr from-emerald-500/20 via-green-400/10 to-teal-400/20 blur-xl animate-pulse pointer-events-none" />
+
+                {/* 3D Realistic Glowing Emerald Badge */}
+                <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-tr from-emerald-600 via-emerald-500 to-green-400 p-1 shadow-[0_12px_35px_rgba(16,185,129,0.45)] flex items-center justify-center animate-checkmark-pop">
+                  <div className="w-full h-full rounded-full bg-white/10 backdrop-blur-xs flex items-center justify-center border border-white/40 shadow-inner">
+                    <svg
+                      className="w-11 h-11 sm:w-13 sm:h-13 text-white filter drop-shadow-[0_3px_8px_rgba(0,0,0,0.25)]"
+                      viewBox="0 0 52 52"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <circle
+                        cx="26"
+                        cy="26"
+                        r="23"
+                        stroke="rgba(255,255,255,0.25)"
+                        strokeWidth="3"
+                      />
+                      <path
+                        className="animate-checkmark-stroke"
+                        d="M14 27L22 35L38 17"
+                        stroke="currentColor"
+                        strokeWidth="4.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <h4 className="font-serif font-bold text-xl text-slate-900">
-                  {placedOrder.isAdvancePayment
-                    ? 'Advance Payment Proof Submitted!'
-                    : placedOrder.paymentStatus === 'Cash on Delivery'
-                      ? 'Order Placed Successfully!'
-                      : 'Payment Proof Submitted & Order Recorded!'}
+              {/* SUCCESS TEXT BANNER */}
+              <div className="animate-success-text-appear space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-800 font-extrabold text-[11px] uppercase tracking-wider shadow-2xs mb-1">
+                  <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
+                  <span>Order Confirmation</span>
+                </div>
+
+                <h4 className="font-serif font-black text-2xl sm:text-3xl text-slate-900 tracking-tight">
+                  Your order submitted successfully.
                 </h4>
-                <p className="text-xs text-slate-600 mt-1">
-                  Thank you, <strong>{placedOrder.customerName}</strong>. Your order has been registered in our system.
+
+                <p className="text-xs text-slate-600 max-w-md mx-auto">
+                  Thank you, <strong className="text-slate-900">{placedOrder.customerName}</strong>. Your order (<span className="font-mono font-bold text-slate-800">#{placedOrder.orderNumber}</span>) has been registered in our system.
                 </p>
               </div>
 
