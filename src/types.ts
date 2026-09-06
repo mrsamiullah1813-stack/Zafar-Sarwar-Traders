@@ -815,8 +815,11 @@ export interface CustomerOrder {
   paymentMethodName?: string;
   paymentType?: PaymentMethodType;
   paymentProofUrl?: string;
+  payment_proof_url?: string;
   paymentProofFileName?: string;
+  payment_proof_file_name?: string;
   paymentProofUploadedAt?: string;
+  payment_proof_uploaded_at?: string;
   transactionReference?: string;
   paymentStatus?: PaymentStatus;
   paymentNotes?: string;

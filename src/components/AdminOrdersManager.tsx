@@ -164,10 +164,16 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
         dbOrders.forEach(o => {
           if (o && o.id) {
             const existing = orderMap.get(String(o.id));
+            const resolvedProof = o.paymentProofUrl || (o as any).payment_proof_url || existing?.paymentProofUrl || (existing as any)?.payment_proof_url;
+            const resolvedProofName = o.paymentProofFileName || (o as any).payment_proof_file_name || existing?.paymentProofFileName || (existing as any)?.payment_proof_file_name;
             // Merge cleanly, preserving complete item descriptions, variant details, and customer info
             orderMap.set(String(o.id), {
               ...(existing || {}),
               ...o,
+              paymentProofUrl: resolvedProof,
+              payment_proof_url: resolvedProof,
+              paymentProofFileName: resolvedProofName,
+              payment_proof_file_name: resolvedProofName,
               items: (Array.isArray(o.items) && o.items.length > 0) ? o.items : (existing?.items || [])
             });
           }
@@ -764,6 +770,39 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
     return url;
   };
 
+  const openProofInNewTab = (rawUrl?: string | null) => {
+    const url = formatProofUrl(rawUrl);
+    if (!url) return;
+    if (url.startsWith('data:')) {
+      const newWin = window.open('');
+      if (newWin) {
+        newWin.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Customer Payment Screenshot Receipt</title>
+              <style>
+                body { margin: 0; background: #0b0f19; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #fff; }
+                .container { display: flex; flex-direction: column; align-items: center; padding: 20px; }
+                img { max-width: 92vw; max-height: 88vh; object-fit: contain; border-radius: 12px; box-shadow: 0 20px 40px rgba(0,0,0,0.7); border: 1px solid #1e293b; }
+                .caption { margin-top: 14px; font-size: 14px; color: #94a3b8; font-weight: 500; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <img src="${url}" alt="Customer Payment Proof Receipt" />
+                <div class="caption">Customer Payment Proof / Advance Screenshot</div>
+              </div>
+            </body>
+          </html>
+        `);
+        newWin.document.close();
+      }
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   return (
     <div className="space-y-6">
       
@@ -1231,7 +1270,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                         <span>Send WhatsApp Alert</span>
                       </button>
 
-                      {order.paymentProofUrl ? (
+                      {(order.paymentProofUrl || (order as any).payment_proof_url) ? (
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => setViewingProofOrder(order)}
@@ -1677,7 +1716,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                 </div>
               </div>
 
-              {editingOrder.paymentProofUrl ? (
+              {(editingOrder.paymentProofUrl || (editingOrder as any).payment_proof_url) ? (
                 <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
@@ -1698,7 +1737,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                     className="relative cursor-pointer group rounded-xl overflow-hidden border border-slate-800 bg-slate-950 flex justify-center items-center max-h-56"
                   >
                     <img 
-                      src={formatProofUrl(editingOrder.paymentProofUrl)} 
+                      src={formatProofUrl(editingOrder.paymentProofUrl || (editingOrder as any).payment_proof_url)} 
                       alt="Payment proof receipt" 
                       className="max-h-56 w-auto object-contain rounded-xl transition-transform group-hover:scale-105"
                     />
@@ -1888,36 +1927,40 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
             )}
 
             {/* Receipt Image Display */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span>{viewingProofOrder.isCodAdvanceRequired ? 'Advance Payment Screenshot' : 'Payment Screenshot / Receipt'}</span>
-                {viewingProofOrder.paymentProofUrl && (
-                  <a 
-                    href={formatProofUrl(viewingProofOrder.paymentProofUrl)} 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="text-blue-400 hover:text-blue-300 flex items-center gap-1 font-bold"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span>Open Full Image in New Tab</span>
-                  </a>
-                )}
-              </div>
+            {(() => {
+              const activeProof = viewingProofOrder.paymentProofUrl || (viewingProofOrder as any).payment_proof_url;
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-slate-400">
+                    <span>{viewingProofOrder.isCodAdvanceRequired ? 'Advance Payment Screenshot' : 'Payment Screenshot / Receipt'}</span>
+                    {activeProof && (
+                      <button 
+                        type="button"
+                        onClick={() => openProofInNewTab(activeProof)}
+                        className="text-blue-400 hover:text-blue-300 flex items-center gap-1 font-bold cursor-pointer transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Open Full Image in New Tab</span>
+                      </button>
+                    )}
+                  </div>
 
-              {viewingProofOrder.paymentProofUrl ? (
-                <div className="rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex justify-center items-center p-3">
-                  <img 
-                    src={formatProofUrl(viewingProofOrder.paymentProofUrl)} 
-                    alt="Customer Payment Receipt" 
-                    className="max-h-[50vh] w-auto object-contain rounded-xl"
-                  />
+                  {activeProof ? (
+                    <div className="rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex justify-center items-center p-3">
+                      <img 
+                        src={formatProofUrl(activeProof)} 
+                        alt="Customer Payment Receipt" 
+                        className="max-h-[50vh] w-auto object-contain rounded-xl"
+                      />
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center bg-slate-950 rounded-xl border border-slate-800 text-slate-500 text-xs">
+                      No payment proof uploaded.
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="p-8 text-center bg-slate-950 rounded-xl border border-slate-800 text-slate-500 text-xs">
-                  No payment proof uploaded.
-                </div>
-              )}
-            </div>
+              );
+            })()}
 
             {/* Rejection Note Form (Conditional) */}
             {showRejectInput && (

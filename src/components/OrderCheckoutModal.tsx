@@ -386,7 +386,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
   // Upload proof image fallback/finalizer
   const handleUploadProof = async (): Promise<string | null> => {
-    if (proofUploadedUrl) return proofUploadedUrl;
+    if (proofUploadedUrl && !proofUploadedUrl.startsWith('blob:')) return proofUploadedUrl;
     if (!proofFile) return null;
 
     setIsUploadingProof(true);
@@ -399,7 +399,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
       const uploadResult = await uploadPaymentProof(optimized || proofFile, proofFile.name);
       setUploadProgress(100);
-      if (uploadResult?.url) {
+      if (uploadResult?.url && !uploadResult.url.startsWith('blob:')) {
         let fullUrl = uploadResult.url;
         if (fullUrl.startsWith('/')) {
           fullUrl = `${window.location.origin}${fullUrl}`;
@@ -486,10 +486,24 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
       return copy;
     });
 
-    let finalProofUrl = proofUploadedUrl;
+    let finalProofUrl = (proofUploadedUrl && !proofUploadedUrl.startsWith('blob:')) ? proofUploadedUrl : '';
 
-    if (requiresPaymentProof && proofFile && !finalProofUrl) {
+    if (proofFile && (!finalProofUrl || isUploadingProof)) {
       finalProofUrl = await handleUploadProof() || '';
+    }
+
+    // Direct fallback if still empty: read proofFile to optimized base64
+    if (proofFile && !finalProofUrl) {
+      try {
+        finalProofUrl = await prepareOptimizedImage(proofFile) || await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string || '');
+          reader.onerror = () => resolve('');
+          reader.readAsDataURL(proofFile);
+        });
+      } catch (e) {
+        console.warn('Direct proof conversion notice:', e);
+      }
     }
 
     const orderId = generateNextOrderId();
@@ -578,9 +592,13 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
         ? `Cash on Delivery (${codAdvancePercentage}% Advance via ${activeAdvanceTransferMethod?.name || 'Online Transfer'})` 
         : activePaymentMethod.name,
       paymentProofUrl: finalProofUrl || undefined,
+      payment_proof_url: finalProofUrl || undefined,
+      paymentProofFileName: proofFile?.name || (finalProofUrl ? 'payment_proof.jpg' : undefined),
+      payment_proof_file_name: proofFile?.name || (finalProofUrl ? 'payment_proof.jpg' : undefined),
       transactionReference: transactionReference.trim() || undefined,
       paymentNotes: paymentNotes.trim() || undefined,
-      paymentProofUploadedAt: requiresPaymentProof ? new Date().toISOString() : undefined,
+      paymentProofUploadedAt: (finalProofUrl || requiresPaymentProof) ? new Date().toISOString() : undefined,
+      payment_proof_uploaded_at: (finalProofUrl || requiresPaymentProof) ? new Date().toISOString() : undefined,
       isAdvancePayment: isCodAdvanceRequired,
       advancePercentage: isCodAdvanceRequired ? codAdvancePercentage : undefined,
       advanceAmountRequired: isCodAdvanceRequired ? codAdvanceAmountRequired : undefined,

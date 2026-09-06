@@ -1671,10 +1671,16 @@ async function startServer() {
       order.total_amount = calculatedGrandTotal;
       order.grandTotal = calculatedGrandTotal;
 
-      // 7. Payment Security: Force Safe Initial Statuses (Never allow client-side elevation to Paid / Admin Approved)
+      // 7. Payment Security & Proof Resolution
+      const resolvedProofUrl = order.payment_proof_url || order.paymentProofUrl || null;
+      order.payment_proof_url = resolvedProofUrl;
+      order.paymentProofUrl = resolvedProofUrl;
+      order.payment_proof_file_name = order.payment_proof_file_name || order.paymentProofFileName || null;
+      order.paymentProofFileName = order.payment_proof_file_name || order.paymentProofFileName || null;
+
       order.status = "Order Received";
       
-      const hasProof = Boolean(order.paymentProofUrl || order.payment_proof_url);
+      const hasProof = Boolean(resolvedProofUrl);
       const isAdvance = Boolean(order.isAdvancePayment || order.is_advance_payment);
       const isCod = String(order.paymentMethodName || order.payment_method || "").toLowerCase().includes("cash");
 
@@ -3902,15 +3908,16 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
         }
       }
 
-      // Safe persistent fallback
+      // Safe persistent fallback: prefer localPublicUrl as the primary URL since it is served directly from /uploads
       const dataUriFallback = typeof fileData === "string" && fileData.startsWith("data:")
         ? fileData
         : `data:${mimeType};base64,${buffer.toString("base64")}`;
 
       return res.json({
         success: true,
-        url: dataUriFallback,
+        url: localPublicUrl || dataUriFallback,
         localUrl: localPublicUrl,
+        dataUri: dataUriFallback,
         fileName: finalFileName
       });
     } catch (err: any) {
