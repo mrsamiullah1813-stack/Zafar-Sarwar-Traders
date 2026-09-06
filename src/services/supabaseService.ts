@@ -1518,8 +1518,8 @@ export async function createOrderInSupabase(order: CustomerOrder): Promise<{ suc
     remaining_cod_amount: order.remainingCodAmount || null
   };
 
-  const itemsPayload = (Array.isArray(order.items) ? order.items : []).map(item => ({
-    id: `${order.id}-${item.productId}`,
+  const itemsPayload = (Array.isArray(order.items) ? order.items : []).map((item, idx) => ({
+    id: `${order.id}-${item.productId || 'item'}-${idx + 1}-${Math.random().toString(36).substring(2, 6)}`,
     order_id: order.id,
     product_id: item.productId,
     product_title: item.productName || '',

@@ -446,7 +446,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
     const newOrder: CustomerOrder = {
       id: orderId,
-      orderNumber: `ZFT-${cleanOrderId}`,
+      orderNumber: `ZFT-${orderId.replace(/^(ZST-|#)/i, '')}`,
       customerId: custId,
       customerName: customerName.trim(),
       phoneNumber: phoneNumber.trim(),

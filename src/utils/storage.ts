@@ -1101,22 +1101,10 @@ export const loadStoredOrders = (): CustomerOrder[] => {
 };
 
 export const generateNextOrderId = (): string => {
-  const orders = loadStoredOrders();
-  if (!orders || orders.length === 0) {
-    return 'ZST-00001';
-  }
-  let maxNum = 0;
-  orders.forEach(o => {
-    if (o.id) {
-      const match = o.id.match(/ZST-(\d+)/i) || o.id.match(/(\d+)/);
-      if (match) {
-        const num = parseInt(match[1] || match[0], 10);
-        if (!isNaN(num) && num > maxNum) maxNum = num;
-      }
-    }
-  });
-  const nextNum = maxNum + 1;
-  return `ZST-${String(nextNum).padStart(5, '0')}`;
+  const timestamp = Date.now().toString();
+  const timeSlice = timestamp.slice(-5); // e.g. last 5 digits
+  const randomSuffix = Math.floor(10 + Math.random() * 90); // 2 random digits
+  return `ZST-${timeSlice}${randomSuffix}`;
 };
 
 export const saveStoredOrders = (orders: CustomerOrder[]) => {

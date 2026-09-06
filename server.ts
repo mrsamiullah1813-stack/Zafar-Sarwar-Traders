@@ -723,6 +723,27 @@ async function startServer() {
         continue;
       }
 
+      // 3. Unique Constraint Violation (e.g. orders_pkey or order_items_pkey)
+      if (error.code === "23505" || errMsg.toLowerCase().includes("unique constraint") || errMsg.toLowerCase().includes("orders_pkey") || errMsg.toLowerCase().includes("duplicate key")) {
+        console.warn(`[Robust DB Insert] Table "${table}": Duplicate key violation (${errMsg}). Generating fresh unique keys and retrying (attempt ${attempts})...`);
+        if (table === "orders") {
+          const freshId = `ZST-${Date.now().toString().slice(-6)}${Math.floor(10 + Math.random() * 90)}`;
+          currentPayloads = currentPayloads.map(item => ({
+            ...item,
+            id: freshId,
+            order_number: item.order_number || `ZFT-${freshId.replace('ZST-', '')}`,
+            orderNumber: item.orderNumber || `ZFT-${freshId.replace('ZST-', '')}`
+          }));
+          continue;
+        } else if (table === "order_items") {
+          currentPayloads = currentPayloads.map((item, idx) => ({
+            ...item,
+            id: `${item.order_id || 'ord'}-${item.product_id || 'item'}-${idx + 1}-${Math.random().toString(36).substring(2, 7)}`
+          }));
+          continue;
+        }
+      }
+
       break;
     }
 
@@ -1364,23 +1385,29 @@ async function startServer() {
         return res.status(400).json({ success: false, error: "Validation Error: Order payload with ID is required." });
       }
 
-      // 1. Validate Order ID format and check for duplicates / prevent overwriting
-      const orderId = String(order.id).trim();
-      if (!orderId || orderId.length > 64) {
-        return res.status(400).json({ success: false, error: "Validation Error: Invalid Order ID format." });
-      }
-
+      // 1. Validate Order ID format and guarantee uniqueness (auto-resolves collisions gracefully)
+      let orderId = String(order.id || "").trim();
       const cmsOrders = Array.isArray(cmsDataStore["zst_orders"]) ? cmsDataStore["zst_orders"] : [];
-      const orderExistsInCms = cmsOrders.some((o: any) => String(o.id).toLowerCase() === orderId.toLowerCase());
-      if (orderExistsInCms) {
-        return res.status(409).json({ success: false, error: "Access denied: Order with this ID already exists and cannot be modified." });
+      const orderExistsInCms = orderId ? cmsOrders.some((o: any) => String(o.id || "").toLowerCase() === orderId.toLowerCase()) : false;
+
+      let dbExistingOrder = false;
+      if (dbClient && orderId) {
+        try {
+          const { data } = await dbClient.from("orders").select("id").eq("id", orderId).maybeSingle();
+          if (data) dbExistingOrder = true;
+        } catch (checkErr) {
+          console.warn("[Orders Upsert] Error checking existing order ID:", checkErr);
+        }
       }
 
-      if (dbClient) {
-        const { data: dbExistingOrder } = await dbClient.from("orders").select("id").eq("id", orderId).maybeSingle();
-        if (dbExistingOrder) {
-          return res.status(409).json({ success: false, error: "Access denied: Order with this ID already exists and cannot be modified." });
-        }
+      // If orderId is missing, invalid, or already exists in database/CMS, generate a guaranteed unique ID
+      if (!orderId || orderId.length > 64 || orderExistsInCms || dbExistingOrder || orderId === 'ZST-00001') {
+        const uniqueSuffix = `${Date.now().toString().slice(-6)}${Math.floor(10 + Math.random() * 90)}`;
+        orderId = `ZST-${uniqueSuffix}`;
+        order.id = orderId;
+        order.order_number = `ZFT-${uniqueSuffix}`;
+        order.orderNumber = `ZFT-${uniqueSuffix}`;
+        console.log(`[Orders Submit] Assigned unique non-colliding order ID: ${orderId}`);
       }
 
       // 2. Validate Customer Details
@@ -1502,7 +1529,7 @@ async function startServer() {
         calculatedSubtotal += itemTotal;
 
         validatedItems.push({
-          id: `${orderId}-${idx + 1}`,
+          id: crypto.randomUUID(),
           order_id: orderId,
           product_id: prodId || null,
           product_title: dbProduct?.title || item.product_title || item.productName || "Product Item",

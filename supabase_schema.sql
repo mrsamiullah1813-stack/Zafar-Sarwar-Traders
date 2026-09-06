@@ -549,7 +549,8 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
-  existing_count INTEGER;
+  final_order_id TEXT := TRIM(order_id);
+  existing_count INTEGER := 0;
   item_record RECORD;
   calc_subtotal NUMERIC := 0;
   calc_delivery_fee NUMERIC := 0;
@@ -567,14 +568,13 @@ DECLARE
   raw_cust_id TEXT;
   parsed_cust_uuid UUID := NULL;
 BEGIN
-  -- 1. Validate Order ID existence and prevent overwriting
-  IF order_id IS NULL OR TRIM(order_id) = '' THEN
-    RETURN json_build_object('success', false, 'error', 'Validation Error: Order ID is required.');
+  -- 1. Validate and guarantee unique Order ID
+  IF final_order_id IS NOT NULL AND final_order_id <> '' THEN
+    SELECT COUNT(*) INTO existing_count FROM orders WHERE id = final_order_id;
   END IF;
 
-  SELECT COUNT(*) INTO existing_count FROM orders WHERE id = order_id;
-  IF existing_count > 0 THEN
-    RETURN json_build_object('success', false, 'error', 'Access denied: Order with this ID already exists and cannot be modified.');
+  IF final_order_id IS NULL OR final_order_id = '' OR existing_count > 0 OR final_order_id = 'ZST-00001' THEN
+    final_order_id := 'ZST-' || SUBSTRING(EXTRACT(EPOCH FROM NOW())::TEXT FROM 5 FOR 6) || (FLOOR(RANDOM() * 90 + 10)::TEXT);
   END IF;
 
   -- 2. Validate mandatory customer fields & safely resolve customer UUID
@@ -704,7 +704,7 @@ BEGIN
     created_at,
     updated_at
   ) VALUES (
-    order_id,
+    final_order_id,
     parsed_cust_uuid,
     cust_name,
     cust_name,
@@ -786,7 +786,7 @@ BEGIN
       created_at
     ) VALUES (
       gen_random_uuid(),
-      order_id,
+      final_order_id,
       item_record.product_id,
       COALESCE(item_record.product_title, 'Product Item'),
       item_record.product_image,
@@ -799,7 +799,7 @@ BEGIN
 
   RETURN json_build_object(
     'success', true,
-    'id', order_id,
+    'id', final_order_id,
     'subtotal', calc_subtotal,
     'total_amount', calc_total,
     'delivery_fee', calc_delivery_fee
