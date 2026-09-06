@@ -1530,7 +1530,7 @@ export async function createOrderInSupabase(order: CustomerOrder): Promise<{ suc
     selected_shade_code: item.selectedShadeCode || null
   }));
 
-  // 1. Try server proxy first (with robustUpsert column fallback)
+  // 1. Try server proxy first (authoritative pricing, delivery, coupon validation & secure DB transaction)
   try {
     const res = await fetch('/api/db/orders/upsert', {
       method: 'POST',
@@ -1542,21 +1542,18 @@ export async function createOrderInSupabase(order: CustomerOrder): Promise<{ suc
       console.log(`[Supabase Proxy] Successfully created order: ${order.id}`);
       return { success: true };
     } else if (json && json.success === false && json.error) {
-      // If the server proxy rejected the checkout with a specific validation or security message,
-      // return it directly rather than falling back to unauthenticated direct DB writes.
       console.warn(`[Supabase Proxy] Order creation rejected by server: ${json.error}`);
       return { success: false, error: json.error };
     }
   } catch (proxyErr) {
-    console.warn('[Supabase Proxy] Order creation proxy attempt failed, falling back to direct SDK:', proxyErr);
+    console.warn('[Supabase Proxy] Order creation proxy network attempt failed, trying secure RPC fallback:', proxyErr);
   }
 
-  // 2. Direct Supabase SDK Fallback (with automatic schema negotiation and missing column stripping)
+  // 2. Direct Supabase SDK Fallback (via secure SECURITY DEFINER RPC only)
   if (!isSupabaseConfigured) {
-    return { success: false, error: 'Server proxy failed and direct Supabase SDK is not configured' };
+    return { success: false, error: 'Order submission failed: Server is unreachable and Supabase client is not initialized.' };
   }
 
-  // A. Try the secure SQL RPC first as the direct SDK fallback to bypass RLS
   try {
     const { data: rpcRes, error: rpcErr } = await supabase.rpc('submit_customer_order', {
       order_id: order.id,
@@ -1564,34 +1561,63 @@ export async function createOrderInSupabase(order: CustomerOrder): Promise<{ suc
       items_data: itemsPayload
     });
     if (!rpcErr && rpcRes && rpcRes.success) {
-      console.log(`[Supabase Direct SDK] Created order via secure RPC bypass: ${order.id}`);
+      console.log(`[Supabase Direct SDK] Created order via secure RPC: ${order.id}`);
       return { success: true };
     } else if (rpcErr) {
-      console.warn('[Supabase Direct SDK] Direct RPC submit_customer_order check failed, trying direct inserts:', rpcErr);
+      console.error('[Supabase Direct SDK] Secure RPC submit_customer_order failed:', rpcErr.message);
+      return { success: false, error: `Order submission error: ${rpcErr.message}` };
+    } else if (rpcRes && !rpcRes.success) {
+      return { success: false, error: rpcRes.error || 'Order submission could not be completed.' };
     }
-  } catch (rpcCatchErr) {
-    console.warn('[Supabase Direct SDK] RPC exception caught, trying direct inserts:', rpcCatchErr);
+  } catch (rpcCatchErr: any) {
+    console.error('[Supabase Direct SDK] RPC exception caught:', rpcCatchErr);
+    return { success: false, error: rpcCatchErr?.message || 'Order submission error occurred.' };
   }
 
-  // B. Fallback to direct table inserts if RPC isn't installed in user's Supabase yet
+  return { success: false, error: 'Order could not be saved to database.' };
+}
+
+// Secure guest order tracking verified by phone number
+export async function trackCustomerOrderInSupabase(orderId: string, phoneNumber: string): Promise<{ success: boolean; order?: CustomerOrder; error?: string }> {
+  await initializeSupabaseRuntime();
+
+  // 1. Try server tracking endpoint first
   try {
-    const orderResult = await robustDirectSupabaseInsert('orders', [orderPayload]);
-    if (!orderResult.success) {
-      console.error(`[Supabase Direct SDK] Order creation failed: ${orderResult.error}`);
-      return { success: false, error: orderResult.error };
+    const res = await fetch('/api/orders/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId, phoneNumber })
+    });
+    const json = await res.json().catch(() => null);
+    if (res.ok && json?.success && json?.order) {
+      return { success: true, order: mapDbOrderToCustomerOrder(json.order) };
+    } else if (json && json.success === false && json.error) {
+      return { success: false, error: json.error };
     }
-
-    if (itemsPayload.length > 0) {
-      const itemsResult = await robustDirectSupabaseInsert('order_items', itemsPayload);
-      if (!itemsResult.success) {
-        console.warn(`[Supabase Direct SDK] Order items insert warning: ${itemsResult.error}`);
-      }
-    }
-    console.log(`[Supabase Direct SDK] Created order: ${order.id}`);
-    return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err?.message || String(err) };
+  } catch (proxyErr) {
+    console.warn('[Track Order] Server proxy attempt failed, falling back to direct RPC:', proxyErr);
   }
+
+  // 2. Try Supabase RPC fallback if available
+  if (isSupabaseConfigured) {
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('track_customer_order', {
+        p_order_id: orderId,
+        p_phone: phoneNumber
+      });
+      if (!rpcErr && rpcRes && rpcRes.success && rpcRes.order) {
+        return { success: true, order: mapDbOrderToCustomerOrder(rpcRes.order) };
+      } else if (rpcErr) {
+        return { success: false, error: rpcErr.message };
+      } else if (rpcRes && !rpcRes.success) {
+        return { success: false, error: rpcRes.error || 'Order tracking not found.' };
+      }
+    } catch (rpcCatchErr: any) {
+      return { success: false, error: rpcCatchErr?.message || 'Order tracking error occurred.' };
+    }
+  }
+
+  return { success: false, error: 'Order tracking service is currently unavailable.' };
 }
 
 export async function updateOrderStatusInSupabase(orderId: string, status: CustomerOrder['status'], note?: string): Promise<{ success: boolean; error?: string }> {

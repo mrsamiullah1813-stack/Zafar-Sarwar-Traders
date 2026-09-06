@@ -1360,97 +1360,252 @@ async function startServer() {
   app.post("/api/db/orders/upsert", async (req, res) => {
     try {
       const { order, items } = req.body;
-      if (!order || !order.id) return res.status(400).json({ success: false, error: "Order payload with id required" });
+      if (!order || !order.id) {
+        return res.status(400).json({ success: false, error: "Validation Error: Order payload with ID is required." });
+      }
 
-      // 1. Guard against modifying existing orders (Prevent Overwrites)
+      // 1. Validate Order ID format and check for duplicates / prevent overwriting
+      const orderId = String(order.id).trim();
+      if (!orderId || orderId.length > 64) {
+        return res.status(400).json({ success: false, error: "Validation Error: Invalid Order ID format." });
+      }
+
       const cmsOrders = Array.isArray(cmsDataStore["zst_orders"]) ? cmsDataStore["zst_orders"] : [];
-      const orderExistsInCms = cmsOrders.some((o: any) => String(o.id).toLowerCase() === String(order.id).toLowerCase());
+      const orderExistsInCms = cmsOrders.some((o: any) => String(o.id).toLowerCase() === orderId.toLowerCase());
       if (orderExistsInCms) {
         return res.status(409).json({ success: false, error: "Access denied: Order with this ID already exists and cannot be modified." });
       }
 
       if (dbClient) {
-        const { data: dbExistingOrder } = await dbClient.from("orders").select("id").eq("id", order.id).maybeSingle();
+        const { data: dbExistingOrder } = await dbClient.from("orders").select("id").eq("id", orderId).maybeSingle();
         if (dbExistingOrder) {
           return res.status(409).json({ success: false, error: "Access denied: Order with this ID already exists and cannot be modified." });
         }
       }
 
-      // 2. Validate Checkout Payload
-      const customerName = order.customerName || order.customer_name;
-      const phoneNumber = order.phoneNumber || order.customer_phone;
-      const city = order.city || order.shipping_city;
-      const address = order.deliveryAddress || order.shipping_address;
+      // 2. Validate Customer Details
+      const customerName = String(order.customerName || order.customer_name || "").trim();
+      const phoneNumber = String(order.phoneNumber || order.customer_phone || "").trim();
+      const city = String(order.city || order.shipping_city || "").trim();
+      const address = String(order.deliveryAddress || order.shipping_address || "").trim();
 
-      if (!customerName || !String(customerName).trim()) {
+      if (!customerName) {
         return res.status(400).json({ success: false, error: "Validation Error: Customer Name is required." });
       }
-      if (!phoneNumber || !String(phoneNumber).trim()) {
-        return res.status(400).json({ success: false, error: "Validation Error: Customer Phone Number is required." });
+      if (!phoneNumber || phoneNumber.replace(/\D/g, "").length < 7) {
+        return res.status(400).json({ success: false, error: "Validation Error: A valid Customer Phone Number (at least 7 digits) is required." });
       }
-      if (!city || !String(city).trim()) {
+      if (!city) {
         return res.status(400).json({ success: false, error: "Validation Error: Shipping City is required." });
       }
-      if (!address || !String(address).trim()) {
+      if (!address) {
         return res.status(400).json({ success: false, error: "Validation Error: Shipping Address is required." });
       }
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ success: false, error: "Validation Error: Order must contain at least one product item." });
       }
 
-      // 3. Preserve Product/Price Data & Safe Totals Validation (Prevent tampering)
-      let calculatedSubtotal = 0;
-      const validatedItems = items.map((item: any) => {
-        const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
-        const price = Math.max(0, parseFloat(item.unit_price || item.numericPrice || item.unitPrice || 0));
-        calculatedSubtotal += price * qty;
+      // 3. Fetch Trusted Products Catalog from Database / CMS Store for Authoritative Pricing
+      let dbProductsMap = new Map<string, any>();
+      if (dbClient) {
+        try {
+          const { data: dbProds } = await dbClient.from("products").select("*");
+          if (Array.isArray(dbProds)) {
+            dbProds.forEach((p: any) => {
+              if (p && p.id) dbProductsMap.set(String(p.id).toLowerCase(), p);
+              if (p && p.sku) dbProductsMap.set(String(p.sku).toLowerCase(), p);
+            });
+          }
+        } catch (dbProdErr) {
+          console.warn("[Order Validation] Error fetching products for price verification:", dbProdErr);
+        }
+      }
 
-        return {
-          id: `${order.id}-${item.product_id || item.productId}`,
-          order_id: order.id,
-          product_id: item.product_id || item.productId,
-          product_title: item.product_title || item.productName || "Unknown Product",
-          product_image: item.product_image || item.image || "",
-          unit_price: price,
-          quantity: qty,
-          total_price: price * qty,
+      // 4. Validate Each Item, Quantities, Variants & Compute Authoritative Subtotal
+      let calculatedSubtotal = 0;
+      const validatedItems: any[] = [];
+
+      for (let idx = 0; idx < items.length; idx++) {
+        const item = items[idx];
+        const rawQty = parseInt(String(item.quantity || "1"), 10);
+        if (isNaN(rawQty) || rawQty < 1 || rawQty > 500) {
+          return res.status(400).json({ success: false, error: `Validation Error: Invalid quantity (${item.quantity}) for item #${idx + 1}.` });
+        }
+
+        const prodId = String(item.product_id || item.productId || item.id || "").trim();
+        const dbProduct = prodId ? dbProductsMap.get(prodId.toLowerCase()) : null;
+
+        let trustedUnitPrice = 0;
+
+        if (dbProduct) {
+          // Check product availability
+          if (dbProduct.hidden === true) {
+            return res.status(400).json({ success: false, error: `The product "${dbProduct.title || prodId}" is currently unavailable.` });
+          }
+
+          // Base price
+          const isSale = Boolean(dbProduct.sale_enabled || dbProduct.saleEnabled);
+          const saleP = parseFloat(String(dbProduct.sale_price || dbProduct.salePrice || "0"));
+          const regP = parseFloat(String(dbProduct.price || "0"));
+          trustedUnitPrice = (isSale && saleP > 0) ? saleP : regP;
+
+          // Check Variant Price Override if selected
+          const selVarId = String(item.selectedVariantId || item.selected_variant_id || item.selectedVariant || item.selected_variant || "").trim().toLowerCase();
+          if (selVarId) {
+            const varList = dbProduct.specifications?._variants_list || 
+                            dbProduct.variants || 
+                            dbProduct.specifications?._variants_config?.variants || [];
+            if (Array.isArray(varList)) {
+              const matchedVar = varList.find((v: any) => 
+                String(v.id || "").toLowerCase() === selVarId ||
+                String(v.sku || "").toLowerCase() === selVarId ||
+                String(v.name || "").toLowerCase() === selVarId ||
+                String(v.title || "").toLowerCase() === selVarId
+              );
+              if (matchedVar) {
+                const varSale = Boolean(matchedVar.saleEnabled || matchedVar.sale_enabled);
+                const varSaleP = parseFloat(String(matchedVar.salePrice || matchedVar.sale_price || "0"));
+                const varRegP = parseFloat(String(matchedVar.price || "0"));
+                if (varSale && varSaleP > 0) {
+                  trustedUnitPrice = varSaleP;
+                } else if (varRegP > 0) {
+                  trustedUnitPrice = varRegP;
+                }
+              }
+            }
+          }
+
+          // Check Paint Shade Price Adjustment if selected
+          const selShadeId = String(item.selectedShadeId || item.selected_shade_id || item.selectedShade || item.selected_shade || "").trim().toLowerCase();
+          if (selShadeId) {
+            const shadeList = dbProduct.specifications?._shades_list || 
+                              dbProduct.paintShadesConfig?.shades || 
+                              dbProduct.specifications?._paint_shades_config?.shades || [];
+            if (Array.isArray(shadeList)) {
+              const matchedShade = shadeList.find((s: any) => 
+                String(s.id || "").toLowerCase() === selShadeId ||
+                String(s.code || "").toLowerCase() === selShadeId ||
+                String(s.name || "").toLowerCase() === selShadeId
+              );
+              if (matchedShade && (matchedShade.priceAdjustment || matchedShade.price_adjustment)) {
+                trustedUnitPrice += parseFloat(String(matchedShade.priceAdjustment || matchedShade.price_adjustment || "0"));
+              }
+            }
+          }
+        } else {
+          // If product catalog has no entry for this ID, fallback to sanitized client price clamped >= 0
+          trustedUnitPrice = Math.max(0, parseFloat(String(item.unit_price || item.numericPrice || item.unitPrice || 0)));
+        }
+
+        trustedUnitPrice = Math.max(0, Math.round(trustedUnitPrice * 100) / 100);
+        const itemTotal = Math.round(trustedUnitPrice * rawQty * 100) / 100;
+        calculatedSubtotal += itemTotal;
+
+        validatedItems.push({
+          id: `${orderId}-${idx + 1}`,
+          order_id: orderId,
+          product_id: prodId || null,
+          product_title: dbProduct?.title || item.product_title || item.productName || "Product Item",
+          product_image: dbProduct?.main_image || dbProduct?.image || item.product_image || item.image || "",
+          unit_price: trustedUnitPrice,
+          quantity: rawQty,
+          total_price: itemTotal,
           selected_color: item.selected_color || item.selectedColor || null,
           selected_size: item.selected_size || item.selectedSize || null,
           selected_quality: item.selected_quality || item.selectedQuality || null,
           selected_variant: item.selected_variant || item.selectedVariant || null,
           selected_shade: item.selected_shade || item.selectedShade || null,
           selected_shade_code: item.selected_shade_code || item.selectedShadeCode || null
-        };
-      });
-
-      const submittedSubtotal = parseFloat(order.subtotal);
-      if (Math.abs(calculatedSubtotal - submittedSubtotal) > 5.0) {
-        console.warn(`[Order Security Check] Subtotal mismatch. Server: ${calculatedSubtotal}, Client: ${submittedSubtotal}. Reverting to secure calculated subtotal.`);
+        });
       }
+
+      calculatedSubtotal = Math.round(calculatedSubtotal * 100) / 100;
       order.subtotal = calculatedSubtotal;
 
-      const deliveryFee = Math.max(0, parseFloat(order.deliveryCharges || order.delivery_fee || 0));
-      const discountAmount = Math.max(0, parseFloat(order.couponDiscountAmount || order.discount_amount || order.discountAmount || 0));
-      const taxAmount = Math.max(0, parseFloat(order.taxAmount || order.tax_amount || 0));
-      const calculatedGrandTotal = Math.max(0, calculatedSubtotal + deliveryFee + taxAmount - discountAmount);
+      // 5. Authoritative Delivery Fee Validation
+      let trustedDeliveryFee = 0;
+      if (dbClient) {
+        try {
+          const { data: cities } = await dbClient.from("delivery_cities").select("*").eq("enabled", true);
+          if (Array.isArray(cities) && cities.length > 0) {
+            const matchedCity = cities.find((c: any) => 
+              String(c.name || "").trim().toLowerCase() === city.toLowerCase()
+            );
+            if (matchedCity) {
+              trustedDeliveryFee = Math.max(0, parseFloat(String(matchedCity.delivery_fee || 0)));
+            } else {
+              trustedDeliveryFee = Math.max(0, parseFloat(String(order.deliveryCharges || order.delivery_fee || 0)));
+            }
+          } else {
+            trustedDeliveryFee = Math.max(0, parseFloat(String(order.deliveryCharges || order.delivery_fee || 0)));
+          }
+        } catch {
+          trustedDeliveryFee = Math.max(0, parseFloat(String(order.deliveryCharges || order.delivery_fee || 0)));
+        }
+      } else {
+        trustedDeliveryFee = Math.max(0, parseFloat(String(order.deliveryCharges || order.delivery_fee || 0)));
+      }
 
-      order.delivery_fee = deliveryFee;
-      order.deliveryCharges = deliveryFee;
-      order.discount_amount = discountAmount;
-      order.discountAmount = discountAmount;
+      // 6. Authoritative Coupon Code Validation (Server-Side Recalculation)
+      let trustedDiscountAmount = 0;
+      const submittedCouponCode = String(order.appliedCouponCode || order.applied_coupon_code || order.couponCode || "").trim().toUpperCase();
+      if (submittedCouponCode) {
+        try {
+          const storedCoupons = await getStoredCouponsList();
+          const coupon = storedCoupons.find((c: any) => 
+            String(c.code || "").trim().toUpperCase() === submittedCouponCode &&
+            (c.isEnabled !== false && c.is_active !== false)
+          );
+
+          if (coupon) {
+            const minAmt = parseFloat(String(coupon.minOrderAmount || coupon.minPurchase || coupon.min_purchase || 0));
+            if (calculatedSubtotal >= minAmt) {
+              const pct = parseFloat(String(coupon.discountPercentage || coupon.discount_percentage || 0));
+              const fixedAmt = parseFloat(String(coupon.discountAmount || coupon.discount_amount || 0));
+              if (pct > 0) {
+                let calcDiscount = (calculatedSubtotal * pct) / 100;
+                const maxCap = parseFloat(String(coupon.maxDiscountAmount || coupon.max_discount || 0));
+                if (maxCap > 0 && calcDiscount > maxCap) {
+                  calcDiscount = maxCap;
+                }
+                trustedDiscountAmount = calcDiscount;
+              } else if (fixedAmt > 0) {
+                trustedDiscountAmount = fixedAmt;
+              }
+            }
+          }
+        } catch (coupErr) {
+          console.warn("[Order Validation] Coupon calculation warning:", coupErr);
+        }
+      }
+
+      trustedDiscountAmount = Math.min(calculatedSubtotal, Math.round(trustedDiscountAmount * 100) / 100);
+      const taxAmount = Math.max(0, parseFloat(String(order.taxAmount || order.tax_amount || 0)));
+      const calculatedGrandTotal = Math.max(0, Math.round((calculatedSubtotal + trustedDeliveryFee + taxAmount - trustedDiscountAmount) * 100) / 100);
+
+      order.delivery_fee = trustedDeliveryFee;
+      order.deliveryCharges = trustedDeliveryFee;
+      order.discount_amount = trustedDiscountAmount;
+      order.discountAmount = trustedDiscountAmount;
+      order.couponDiscountAmount = trustedDiscountAmount;
       order.tax_amount = taxAmount;
       order.taxAmount = taxAmount;
       order.total_amount = calculatedGrandTotal;
       order.grandTotal = calculatedGrandTotal;
 
-      // 4. Force Secure Initial Status & History (Prevent customers from changing status)
+      // 7. Payment Security: Force Safe Initial Statuses (Never allow client-side elevation to Paid / Admin Approved)
       order.status = "Order Received";
       
       const hasProof = Boolean(order.paymentProofUrl || order.payment_proof_url);
+      const isAdvance = Boolean(order.isAdvancePayment || order.is_advance_payment);
       const isCod = String(order.paymentMethodName || order.payment_method || "").toLowerCase().includes("cash");
+
       if (hasProof) {
         order.payment_status = "Payment Proof Submitted";
         order.paymentStatus = "Payment Proof Submitted";
+      } else if (isAdvance) {
+        order.payment_status = "Advance Payment Under Review";
+        order.paymentStatus = "Advance Payment Under Review";
       } else if (isCod) {
         order.payment_status = "Cash on Delivery";
         order.paymentStatus = "Cash on Delivery";
@@ -1459,66 +1614,88 @@ async function startServer() {
         order.paymentStatus = "Pending Payment";
       }
 
+      // Strip any internal admin notes or forbidden fields from public submission
+      delete order.adminNotes;
+      delete order.admin_notes;
+      delete order.internalNotes;
+      delete order.internal_notes;
+      delete order.paymentVerifiedAt;
+      delete order.payment_verified_at;
+
       const initialHistory = [{ status: "Order Received", timestamp: new Date().toISOString(), note: "Order placed successfully by customer." }];
       order.status_history = initialHistory;
       order.statusHistory = initialHistory;
 
-      // 5. Persist to Server Disk CMS Store
-      try {
-        const orderToSave = {
-          ...order,
-          items: validatedItems,
-          order_items: validatedItems
-        };
-        cmsOrders.unshift(orderToSave);
-        cmsDataStore["zst_orders"] = cmsOrders;
-        await persistDataStoreToDisk().catch(() => {});
-      } catch (cmsSaveErr) {
-        console.warn("[CMS Orders] Server disk cache save warning:", cmsSaveErr);
-      }
-
-      // 6. Secure Supabase DB Save via robustInsert / Secure RPC
+      // 8. Atomic Database Transaction via submit_customer_order RPC
       if (dbClient) {
-        let savedViaRpc = false;
+        let dbSaved = false;
+        let dbErrorMsg = "";
+
         try {
-          // Attempt the secure SECURITY DEFINER RPC bypass which works for guest checkouts
           const { data: rpcRes, error: rpcErr } = await dbClient.rpc("submit_customer_order", {
-            order_id: order.id,
+            order_id: orderId,
             order_data: order,
             items_data: validatedItems
           });
+
           if (!rpcErr && rpcRes && rpcRes.success) {
-            console.log(`[Orders Submit] Successfully created order via secure RPC bypass: ${order.id}`);
-            savedViaRpc = true;
-          } else if (rpcErr) {
-            console.warn("[Orders Submit] RPC submit_customer_order check failed (might not be installed yet, falling back to direct inserts):", rpcErr);
+            console.log(`[Orders Submit] Successfully created order via hardened RPC: ${orderId}`);
+            dbSaved = true;
+          } else if (rpcErr || (rpcRes && !rpcRes.success)) {
+            dbErrorMsg = rpcErr?.message || rpcRes?.error || "RPC submission failed";
+            console.warn("[Orders Submit] Hardened RPC submit_customer_order notice:", dbErrorMsg);
           }
-        } catch (rpcCatchErr) {
-          console.warn("[Orders Submit] RPC exception caught, falling back to direct inserts:", rpcCatchErr);
+        } catch (rpcCatchErr: any) {
+          dbErrorMsg = rpcCatchErr?.message || String(rpcCatchErr);
+          console.warn("[Orders Submit] RPC exception caught:", dbErrorMsg);
         }
 
-        if (!savedViaRpc) {
+        if (!dbSaved) {
+          // Fallback using robust service-role insert if RPC is not loaded yet
           const orderResult = await robustInsert("orders", [order]);
           if (!orderResult.success) {
-            console.warn("[Orders Submit] Supabase orders insert failed:", orderResult.error);
-            return res.status(500).json({ success: false, error: `Supabase database error: ${orderResult.error}` });
+            console.error("[Orders Submit] Supabase orders insert failed:", orderResult.error);
+            return res.status(500).json({ success: false, error: `Database order submission failed: ${orderResult.error || dbErrorMsg}` });
           }
 
           if (validatedItems.length > 0) {
             const itemsResult = await robustInsert("order_items", validatedItems);
             if (!itemsResult.success) {
-              console.warn("[Orders Submit] Order items insert failed:", itemsResult.error);
-              // Items are nested, but we log the warning
+              console.warn("[Orders Submit] Order items insert warning:", itemsResult.error);
             }
           }
+          dbSaved = true;
         }
+
+        // 9. Persist to server disk store after successful DB commit
+        try {
+          const orderToSave = {
+            ...order,
+            items: validatedItems,
+            order_items: validatedItems
+          };
+          cmsOrders.unshift(orderToSave);
+          cmsDataStore["zst_orders"] = cmsOrders;
+          await persistDataStoreToDisk().catch(() => {});
+        } catch (cmsSaveErr) {
+          console.warn("[CMS Orders] Server disk cache save warning:", cmsSaveErr);
+        }
+
+        return res.json({ 
+          success: true, 
+          id: orderId, 
+          order_number: order.order_number || `ZFT-${orderId.replace('#', '')}`,
+          subtotal: calculatedSubtotal,
+          total_amount: calculatedGrandTotal,
+          delivery_fee: trustedDeliveryFee,
+          discount_amount: trustedDiscountAmount
+        });
       } else {
         console.warn("[Orders Submit] dbClient not configured on server");
         return res.status(503).json({ success: false, error: "Database client is not configured on the server." });
       }
-
-      return res.json({ success: true, id: order.id, order_number: order.order_number || order.id });
     } catch (err: any) {
+      console.error("[Orders Submit Exception]", err);
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
   });
@@ -1734,6 +1911,125 @@ async function startServer() {
         placeholder 
       });
     } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // SECURE CUSTOMER ORDER TRACKING (Guest access strictly bounded by phone verification)
+  app.all(["/api/orders/track", "/api/db/orders/track"], async (req, res) => {
+    try {
+      const orderId = String(req.body?.orderId || req.query?.orderId || req.body?.id || req.query?.id || "").trim();
+      const rawPhone = String(req.body?.phoneNumber || req.query?.phoneNumber || req.body?.phone || req.query?.phone || "").trim();
+
+      if (!orderId) {
+        return res.status(400).json({ success: false, error: "Tracking Error: Order ID or Order Number is required." });
+      }
+      if (!rawPhone || rawPhone.replace(/\D/g, "").length < 7) {
+        return res.status(400).json({ success: false, error: "Tracking Error: The phone number used when placing the order is required for verification." });
+      }
+
+      const cleanPhoneDigits = rawPhone.replace(/\D/g, "").slice(-7);
+
+      // 1. First try secure RPC on Supabase
+      if (dbClient) {
+        try {
+          const { data: rpcData, error: rpcErr } = await dbClient.rpc("track_customer_order", {
+            p_order_id: orderId,
+            p_phone: rawPhone
+          });
+
+          if (!rpcErr && rpcData && rpcData.success && rpcData.order) {
+            return res.json({ success: true, order: rpcData.order });
+          }
+        } catch (rpcErr) {
+          console.warn("[Order Tracking] RPC track_customer_order notice:", rpcErr);
+        }
+
+        // 2. Query Supabase orders table with phone verification
+        try {
+          const { data: dbOrders } = await dbClient
+            .from("orders")
+            .select("id, order_number, status, payment_status, created_at, subtotal, delivery_fee, discount_amount, tax_amount, total_amount, shipping_city, shipping_address, customer_name, customer_phone, status_history")
+            .or(`id.eq.${orderId},order_number.eq.${orderId}`)
+            .limit(1);
+
+          if (Array.isArray(dbOrders) && dbOrders.length > 0) {
+            const dbOrder = dbOrders[0];
+            const storedPhoneDigits = String(dbOrder.customer_phone || "").replace(/\D/g, "").slice(-7);
+
+            if (storedPhoneDigits === cleanPhoneDigits) {
+              const { data: dbItems } = await dbClient
+                .from("order_items")
+                .select("id, product_id, product_title, product_image, unit_price, quantity, total_price, selected_color, selected_size, selected_quality, selected_variant, selected_shade, selected_shade_code")
+                .eq("order_id", dbOrder.id);
+
+              return res.json({
+                success: true,
+                order: {
+                  id: dbOrder.id,
+                  orderNumber: dbOrder.order_number || dbOrder.id,
+                  customerName: dbOrder.customer_name,
+                  city: dbOrder.shipping_city,
+                  deliveryAddress: dbOrder.shipping_address,
+                  status: dbOrder.status,
+                  paymentStatus: dbOrder.payment_status,
+                  subtotal: dbOrder.subtotal,
+                  deliveryCharges: dbOrder.delivery_fee,
+                  discountAmount: dbOrder.discount_amount,
+                  taxAmount: dbOrder.tax_amount,
+                  grandTotal: dbOrder.total_amount,
+                  createdAt: dbOrder.created_at,
+                  statusHistory: dbOrder.status_history || [],
+                  items: dbItems || []
+                }
+              });
+            } else {
+              return res.status(403).json({ success: false, error: "Access Denied: The provided phone number does not match this order." });
+            }
+          }
+        } catch (dbErr) {
+          console.warn("[Order Tracking] DB direct query warning:", dbErr);
+        }
+      }
+
+      // 3. Fallback to CMS memory/disk store
+      const cmsOrders = Array.isArray(cmsDataStore["zst_orders"]) ? cmsDataStore["zst_orders"] : [];
+      const cmsOrder = cmsOrders.find((o: any) => 
+        String(o.id || "").toLowerCase() === orderId.toLowerCase() ||
+        String(o.orderNumber || o.order_number || "").toLowerCase() === orderId.toLowerCase()
+      );
+
+      if (cmsOrder) {
+        const storedPhoneDigits = String(cmsOrder.phoneNumber || cmsOrder.customer_phone || "").replace(/\D/g, "").slice(-7);
+        if (storedPhoneDigits === cleanPhoneDigits) {
+          return res.json({
+            success: true,
+            order: {
+              id: cmsOrder.id,
+              orderNumber: cmsOrder.orderNumber || cmsOrder.order_number || cmsOrder.id,
+              customerName: cmsOrder.customerName || cmsOrder.customer_name,
+              city: cmsOrder.city || cmsOrder.shipping_city,
+              deliveryAddress: cmsOrder.deliveryAddress || cmsOrder.shipping_address,
+              status: cmsOrder.status,
+              paymentStatus: cmsOrder.paymentStatus || cmsOrder.payment_status,
+              subtotal: cmsOrder.subtotal,
+              deliveryCharges: cmsOrder.deliveryCharges || cmsOrder.delivery_fee,
+              discountAmount: cmsOrder.discountAmount || cmsOrder.discount_amount,
+              taxAmount: cmsOrder.taxAmount || cmsOrder.tax_amount,
+              grandTotal: cmsOrder.grandTotal || cmsOrder.total_amount,
+              createdAt: cmsOrder.createdAt || cmsOrder.created_at,
+              statusHistory: cmsOrder.statusHistory || cmsOrder.status_history || [],
+              items: cmsOrder.items || cmsOrder.order_items || []
+            }
+          });
+        } else {
+          return res.status(403).json({ success: false, error: "Access Denied: The provided phone number does not match this order." });
+        }
+      }
+
+      return res.status(404).json({ success: false, error: "Order not found. Please double-check your Order ID." });
+    } catch (err: any) {
+      console.error("[Order Tracking Exception]", err);
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
   });

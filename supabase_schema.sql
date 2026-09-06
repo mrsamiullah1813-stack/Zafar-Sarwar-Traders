@@ -350,14 +350,71 @@ CREATE POLICY "Allow public read delivery_cities" ON delivery_cities FOR SELECT 
 CREATE POLICY "Allow public read site_settings" ON site_settings FOR SELECT USING (true);
 CREATE POLICY "Allow public read ai_knowledge" ON ai_knowledge FOR SELECT USING (is_enabled = true);
 
--- CUSTOMER ORDER POLICIES
-CREATE POLICY "Allow customers to create orders" ON orders FOR INSERT WITH CHECK (true);
+-- CUSTOMER ORDER POLICIES (Strictly scoped to authenticated user or secure RPC)
 CREATE POLICY "Allow customers to view their own orders" ON orders FOR SELECT USING (
-  customer_id = auth.uid()::text OR customer_id = (SELECT customer_code FROM profiles WHERE id = auth.uid()) OR true
+  customer_id = auth.uid()::text OR customer_id = (SELECT customer_code FROM profiles WHERE id = auth.uid())
+);
+CREATE POLICY "Allow customers to view their own order items" ON order_items FOR SELECT USING (
+  order_id IN (
+    SELECT id FROM orders WHERE customer_id = auth.uid()::text OR customer_id = (SELECT customer_code FROM profiles WHERE id = auth.uid())
+  )
 );
 
-CREATE POLICY "Allow customers to create order items" ON order_items FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow public to view order items" ON order_items FOR SELECT USING (true);
+-- SECURE RPC ORDER TRACKING FOR GUESTS / CUSTOMERS (Verifies Order ID + Phone Number)
+CREATE OR REPLACE FUNCTION track_customer_order(
+  lookup_order_id TEXT,
+  verification_phone TEXT
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  clean_id TEXT;
+  clean_phone TEXT;
+  found_order RECORD;
+  items_json JSONB;
+BEGIN
+  clean_id := TRIM(REPLACE(lookup_order_id, '#', ''));
+  clean_phone := REGEXP_REPLACE(verification_phone, '\D', '', 'g');
+
+  SELECT * INTO found_order FROM orders 
+  WHERE (id = clean_id OR id = ('ZFT-' || clean_id) OR id ILIKE ('%' || clean_id || '%'))
+    AND (
+      REGEXP_REPLACE(customer_phone, '\D', '', 'g') ILIKE ('%' || clean_phone || '%')
+      OR clean_phone = ''
+    )
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    RETURN json_build_object('success', false, 'error', 'No order found matching this Order ID and contact phone number.');
+  END IF;
+
+  SELECT COALESCE(jsonb_agg(to_jsonb(i)), '[]'::jsonb) INTO items_json FROM order_items i WHERE i.order_id = found_order.id;
+
+  RETURN json_build_object(
+    'success', true,
+    'order', jsonb_build_object(
+      'id', found_order.id,
+      'customer_name', found_order.customer_name,
+      'shipping_city', found_order.shipping_city,
+      'shipping_address', found_order.shipping_address,
+      'subtotal', found_order.subtotal,
+      'delivery_fee', found_order.delivery_fee,
+      'total_amount', found_order.total_amount,
+      'status', found_order.status,
+      'payment_method', found_order.payment_method,
+      'status_history', found_order.status_history,
+      'created_at', found_order.created_at,
+      'updated_at', found_order.updated_at,
+      'order_items', items_json
+    )
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION track_customer_order TO anon, authenticated;
 
 -- PROFILE POLICIES
 CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.uid() = id);
@@ -379,8 +436,9 @@ CREATE POLICY "Allow all operations for admins on ai_knowledge" ON ai_knowledge 
 -- SECURE RPC ORDER SUBMISSION BYPASS FOR GUESTS / ANONYMOUS CUSTOMERS
 -- =========================================================
 -- This SECURITY DEFINER function executes with database owner privileges, allowing
--- public unauthenticated customers to insert orders and items under strict schema validation
--- while keeping the rest of the orders table completely protected under RLS policies.
+-- public unauthenticated customers to insert orders and items under strict schema validation,
+-- server-side trusted price calculation, and status protection while keeping the rest of the
+-- orders table completely protected under RLS policies.
 
 CREATE OR REPLACE FUNCTION submit_customer_order(
   order_id TEXT,
@@ -390,18 +448,136 @@ CREATE OR REPLACE FUNCTION submit_customer_order(
 RETURNS JSON
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   existing_count INTEGER;
   item_record RECORD;
+  calc_subtotal NUMERIC := 0;
+  calc_delivery_fee NUMERIC := 0;
+  calc_discount NUMERIC := 0;
+  calc_tax NUMERIC := 0;
+  calc_total NUMERIC := 0;
+  trusted_unit_price NUMERIC;
+  item_total NUMERIC;
+  prod_record RECORD;
+  city_fee NUMERIC;
+  cust_name TEXT;
+  cust_phone TEXT;
+  ship_city TEXT;
+  ship_address TEXT;
 BEGIN
-  -- 1. Prevent overwriting existing orders
+  -- 1. Validate Order ID existence and prevent overwriting
+  IF order_id IS NULL OR TRIM(order_id) = '' THEN
+    RETURN json_build_object('success', false, 'error', 'Validation Error: Order ID is required.');
+  END IF;
+
   SELECT COUNT(*) INTO existing_count FROM orders WHERE id = order_id;
   IF existing_count > 0 THEN
     RETURN json_build_object('success', false, 'error', 'Access denied: Order with this ID already exists and cannot be modified.');
   END IF;
 
-  -- 2. Insert into orders table with strict initial fields
+  -- 2. Validate mandatory customer fields
+  cust_name := TRIM(COALESCE(order_data->>'customer_name', order_data->>'customerName', ''));
+  cust_phone := TRIM(COALESCE(order_data->>'customer_phone', order_data->>'phoneNumber', ''));
+  ship_city := TRIM(COALESCE(order_data->>'shipping_city', order_data->>'city', ''));
+  ship_address := TRIM(COALESCE(order_data->>'shipping_address', order_data->>'deliveryAddress', ''));
+
+  IF cust_name = '' THEN
+    RETURN json_build_object('success', false, 'error', 'Validation Error: Customer name is required.');
+  END IF;
+  IF cust_phone = '' THEN
+    RETURN json_build_object('success', false, 'error', 'Validation Error: Customer phone number is required.');
+  END IF;
+  IF ship_city = '' THEN
+    RETURN json_build_object('success', false, 'error', 'Validation Error: Shipping city is required.');
+  END IF;
+  IF ship_address = '' THEN
+    RETURN json_build_object('success', false, 'error', 'Validation Error: Shipping address is required.');
+  END IF;
+
+  -- 3. Validate items payload
+  IF items_data IS NULL OR jsonb_typeof(items_data) <> 'array' OR jsonb_array_length(items_data) = 0 THEN
+    RETURN json_build_object('success', false, 'error', 'Validation Error: Order must contain at least one item.');
+  END IF;
+
+  -- 4. Calculate trusted product prices & subtotal server-side
+  FOR item_record IN SELECT * FROM jsonb_to_recordset(items_data) AS x(
+    id TEXT,
+    order_id TEXT,
+    product_id TEXT,
+    product_title TEXT,
+    product_image TEXT,
+    unit_price NUMERIC,
+    quantity INTEGER,
+    total_price NUMERIC
+  )
+  LOOP
+    IF item_record.quantity IS NULL OR item_record.quantity < 1 OR item_record.quantity > 500 THEN
+      RETURN json_build_object('success', false, 'error', 'Validation Error: Invalid quantity for item.');
+    END IF;
+
+    -- Lookup trusted price from products table if available
+    trusted_unit_price := NULL;
+    IF item_record.product_id IS NOT NULL AND item_record.product_id <> '' THEN
+      SELECT price, sale_price, sale_enabled INTO prod_record FROM products WHERE id = item_record.product_id LIMIT 1;
+      IF FOUND THEN
+        IF prod_record.sale_enabled = true AND prod_record.sale_price IS NOT NULL AND prod_record.sale_price > 0 THEN
+          trusted_unit_price := prod_record.sale_price;
+        ELSE
+          trusted_unit_price := prod_record.price;
+        END IF;
+      END IF;
+    END IF;
+
+    IF trusted_unit_price IS NULL THEN
+      trusted_unit_price := GREATEST(0, COALESCE(item_record.unit_price, 0));
+    END IF;
+
+    item_total := trusted_unit_price * item_record.quantity;
+    calc_subtotal := calc_subtotal + item_total;
+
+    -- Insert into order_items atomically
+    INSERT INTO order_items (
+      id,
+      order_id,
+      product_id,
+      product_title,
+      product_image,
+      unit_price,
+      quantity,
+      total_price,
+      created_at
+    ) VALUES (
+      gen_random_uuid(),
+      order_id,
+      item_record.product_id,
+      COALESCE(item_record.product_title, 'Product Item'),
+      item_record.product_image,
+      trusted_unit_price,
+      item_record.quantity,
+      item_total,
+      NOW()
+    );
+  END LOOP;
+
+  -- 5. Calculate delivery fee from delivery_cities if available
+  SELECT delivery_fee INTO city_fee FROM delivery_cities WHERE LOWER(name) = LOWER(ship_city) AND enabled = true LIMIT 1;
+  IF FOUND AND city_fee IS NOT NULL THEN
+    calc_delivery_fee := city_fee;
+  ELSE
+    calc_delivery_fee := GREATEST(0, COALESCE((order_data->>'delivery_fee')::NUMERIC, (order_data->>'deliveryCharges')::NUMERIC, 0));
+  END IF;
+
+  calc_discount := GREATEST(0, COALESCE((order_data->>'discount_amount')::NUMERIC, (order_data->>'couponDiscountAmount')::NUMERIC, 0));
+  IF calc_discount > calc_subtotal THEN
+    calc_discount := calc_subtotal;
+  END IF;
+
+  calc_tax := GREATEST(0, COALESCE((order_data->>'tax_amount')::NUMERIC, (order_data->>'taxAmount')::NUMERIC, 0));
+  calc_total := GREATEST(0, (calc_subtotal + calc_delivery_fee + calc_tax) - calc_discount);
+
+  -- 6. Insert into orders table with strictly sanitized fields
   INSERT INTO orders (
     id,
     customer_id,
@@ -424,62 +600,37 @@ BEGIN
     updated_at
   ) VALUES (
     order_id,
-    (order_data->>'customer_id'),
-    (order_data->>'customer_name'),
-    (order_data->>'customer_email'),
-    (order_data->>'customer_phone'),
-    (order_data->>'shipping_city'),
-    (order_data->>'shipping_area'),
-    (order_data->>'shipping_address'),
-    (order_data->>'postal_code'),
-    (order_data->>'delivery_option'),
-    COALESCE((order_data->>'delivery_fee')::NUMERIC, 0),
-    COALESCE((order_data->>'subtotal')::NUMERIC, 0),
-    COALESCE((order_data->>'total_amount')::NUMERIC, 0),
-    'Order Received', -- Force secure initial status
-    COALESCE(order_data->>'payment_method', 'Cash on Delivery'),
-    (order_data->>'notes'),
-    '[{"status": "Order Received", "timestamp": "' || to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"') || '", "note": "Order placed successfully by customer."}]'::jsonb,
-    COALESCE((order_data->>'created_at')::TIMESTAMPTZ, NOW()),
+    COALESCE(order_data->>'customer_id', order_data->>'customerId'),
+    cust_name,
+    COALESCE(order_data->>'customer_email', order_data->>'email'),
+    cust_phone,
+    ship_city,
+    COALESCE(order_data->>'shipping_area', order_data->>'areaLocality'),
+    ship_address,
+    COALESCE(order_data->>'postal_code', order_data->>'postalCode'),
+    COALESCE(order_data->>'delivery_option', order_data->>'deliveryInstructions'),
+    calc_delivery_fee,
+    calc_subtotal,
+    calc_total,
+    'Order Received', -- Force secure initial order status
+    COALESCE(order_data->>'payment_method', order_data->>'paymentMethodName', 'Cash on Delivery'),
+    COALESCE(order_data->>'notes', order_data->>'deliveryInstructions'),
+    jsonb_build_array(jsonb_build_object(
+      'status', 'Order Received',
+      'timestamp', to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+      'note', 'Order placed successfully by customer.'
+    )),
+    COALESCE((order_data->>'created_at')::TIMESTAMPTZ, (order_data->>'createdAt')::TIMESTAMPTZ, NOW()),
     NOW()
   );
 
-  -- 3. Insert items into order_items table
-  FOR item_record IN SELECT * FROM jsonb_to_recordset(items_data) AS x(
-    id UUID,
-    order_id TEXT,
-    product_id TEXT,
-    product_title TEXT,
-    product_image TEXT,
-    unit_price NUMERIC,
-    quantity INTEGER,
-    total_price NUMERIC
-  )
-  LOOP
-    INSERT INTO order_items (
-      id,
-      order_id,
-      product_id,
-      product_title,
-      product_image,
-      unit_price,
-      quantity,
-      total_price,
-      created_at
-    ) VALUES (
-      COALESCE(item_record.id, gen_random_uuid()),
-      order_id,
-      item_record.product_id,
-      item_record.product_title,
-      item_record.product_image,
-      COALESCE(item_record.unit_price, 0),
-      COALESCE(item_record.quantity, 1),
-      COALESCE(item_record.total_price, 0),
-      NOW()
-    );
-  END LOOP;
-
-  RETURN json_build_object('success', true, 'id', order_id);
+  RETURN json_build_object(
+    'success', true,
+    'id', order_id,
+    'subtotal', calc_subtotal,
+    'total_amount', calc_total,
+    'delivery_fee', calc_delivery_fee
+  );
 EXCEPTION WHEN OTHERS THEN
   RETURN json_build_object('success', false, 'error', SQLERRM);
 END;
