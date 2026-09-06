@@ -312,6 +312,34 @@ ALTER TABLE IF EXISTS brands ADD COLUMN IF NOT EXISTS official_badge TEXT;
 ALTER TABLE IF EXISTS brands ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
 ALTER TABLE IF EXISTS brands ADD COLUMN IF NOT EXISTS display_order INTEGER DEFAULT 0;
 
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS customer_id TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS customer_name TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS customer_email TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS customer_phone TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS shipping_city TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS shipping_area TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS shipping_address TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS postal_code TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS delivery_option TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC DEFAULT 0;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS subtotal NUMERIC DEFAULT 0;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS total_amount NUMERIC DEFAULT 0;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Order Received';
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'Cash on Delivery';
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS status_history JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS order_id TEXT;
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS product_id TEXT;
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS product_title TEXT;
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS product_image TEXT;
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS unit_price NUMERIC DEFAULT 0;
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS total_price NUMERIC DEFAULT 0;
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+
 -- =========================================================
 -- INDEXES FOR MAXIMUM QUERY PERFORMANCE
 -- =========================================================
@@ -440,6 +468,76 @@ CREATE POLICY "Allow all operations for admins on ai_knowledge" ON ai_knowledge 
 -- server-side trusted price calculation, and status protection while keeping the rest of the
 -- orders table completely protected under RLS policies.
 
+-- Ensure optional product, order, and order_item columns exist safely if table was created with an older schema
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS sale_price NUMERIC;
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS sale_enabled BOOLEAN DEFAULT false;
+
+-- Add all modern and legacy columns to orders
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS customer_id UUID;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS customer_name TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS customer_email TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS customer_phone TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS shipping_city TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS shipping_area TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS area TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS shipping_address TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS postal_code TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS delivery_option TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC DEFAULT 0;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS delivery_charges NUMERIC DEFAULT 0;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS subtotal NUMERIC DEFAULT 0;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS total_amount NUMERIC DEFAULT 0;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS grand_total NUMERIC DEFAULT 0;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Order Received';
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'Cash on Delivery';
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'Cash on Delivery';
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS status_history JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- Safely remove restrictive NOT NULL constraints on legacy column names
+DO $$ 
+BEGIN
+  BEGIN ALTER TABLE orders ALTER COLUMN city DROP NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER TABLE orders ALTER COLUMN address DROP NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER TABLE orders ALTER COLUMN phone DROP NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER TABLE orders ALTER COLUMN name DROP NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER TABLE orders ALTER COLUMN email DROP NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER TABLE orders ALTER COLUMN area DROP NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER TABLE orders ALTER COLUMN delivery_charges DROP NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER TABLE orders ALTER COLUMN grand_total DROP NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER TABLE orders ALTER COLUMN total DROP NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER TABLE orders ALTER COLUMN customer_id DROP NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END;
+END $$;
+
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS order_id TEXT;
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS product_id TEXT;
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS product_title TEXT;
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS product_image TEXT;
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS unit_price NUMERIC DEFAULT 0;
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS total_price NUMERIC DEFAULT 0;
+ALTER TABLE IF EXISTS order_items ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+
+DO $$ 
+BEGIN
+  BEGIN ALTER TABLE order_items ALTER COLUMN product_id DROP NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER TABLE order_items ALTER COLUMN product_image DROP NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER TABLE order_items ALTER COLUMN unit_price DROP NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END;
+  BEGIN ALTER TABLE order_items ALTER COLUMN total_price DROP NOT NULL; EXCEPTION WHEN OTHERS THEN NULL; END;
+END $$;
+
+DROP FUNCTION IF EXISTS submit_customer_order(TEXT, JSONB, JSONB);
+DROP FUNCTION IF EXISTS submit_customer_order(JSONB, JSONB, TEXT);
+DROP FUNCTION IF EXISTS submit_customer_order(TEXT, JSON, JSON);
+DROP FUNCTION IF EXISTS submit_customer_order(JSON, JSON, TEXT);
+
 CREATE OR REPLACE FUNCTION submit_customer_order(
   order_id TEXT,
   order_data JSONB,
@@ -460,12 +558,14 @@ DECLARE
   calc_total NUMERIC := 0;
   trusted_unit_price NUMERIC;
   item_total NUMERIC;
-  prod_record RECORD;
-  city_fee NUMERIC;
+  prod_json JSONB;
+  city_json JSONB;
   cust_name TEXT;
   cust_phone TEXT;
   ship_city TEXT;
   ship_address TEXT;
+  raw_cust_id TEXT;
+  parsed_cust_uuid UUID := NULL;
 BEGIN
   -- 1. Validate Order ID existence and prevent overwriting
   IF order_id IS NULL OR TRIM(order_id) = '' THEN
@@ -477,7 +577,16 @@ BEGIN
     RETURN json_build_object('success', false, 'error', 'Access denied: Order with this ID already exists and cannot be modified.');
   END IF;
 
-  -- 2. Validate mandatory customer fields
+  -- 2. Validate mandatory customer fields & safely resolve customer UUID
+  raw_cust_id := TRIM(COALESCE(order_data->>'customer_id', order_data->>'customerId', ''));
+  IF raw_cust_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+    parsed_cust_uuid := raw_cust_id::UUID;
+  ELSIF auth.uid() IS NOT NULL THEN
+    parsed_cust_uuid := auth.uid();
+  ELSE
+    parsed_cust_uuid := NULL;
+  END IF;
+
   cust_name := TRIM(COALESCE(order_data->>'customer_name', order_data->>'customerName', ''));
   cust_phone := TRIM(COALESCE(order_data->>'customer_phone', order_data->>'phoneNumber', ''));
   ship_city := TRIM(COALESCE(order_data->>'shipping_city', order_data->>'city', ''));
@@ -501,7 +610,7 @@ BEGIN
     RETURN json_build_object('success', false, 'error', 'Validation Error: Order must contain at least one item.');
   END IF;
 
-  -- 4. Calculate trusted product prices & subtotal server-side
+  -- 4. Calculate trusted product prices & subtotal
   FOR item_record IN SELECT * FROM jsonb_to_recordset(items_data) AS x(
     id TEXT,
     order_id TEXT,
@@ -517,17 +626,23 @@ BEGIN
       RETURN json_build_object('success', false, 'error', 'Validation Error: Invalid quantity for item.');
     END IF;
 
-    -- Lookup trusted price from products table if available
+    -- Lookup trusted price from products table via schema-agnostic JSON reflection
     trusted_unit_price := NULL;
+    prod_json := NULL;
+
     IF item_record.product_id IS NOT NULL AND item_record.product_id <> '' THEN
-      SELECT price, sale_price, sale_enabled INTO prod_record FROM products WHERE id = item_record.product_id LIMIT 1;
-      IF FOUND THEN
-        IF prod_record.sale_enabled = true AND prod_record.sale_price IS NOT NULL AND prod_record.sale_price > 0 THEN
-          trusted_unit_price := prod_record.sale_price;
-        ELSE
-          trusted_unit_price := prod_record.price;
+      BEGIN
+        SELECT to_jsonb(p) INTO prod_json FROM products p WHERE p.id = item_record.product_id LIMIT 1;
+        IF prod_json IS NOT NULL THEN
+          IF (prod_json->>'sale_enabled')::BOOLEAN = true AND (prod_json->>'sale_price') IS NOT NULL AND (prod_json->>'sale_price')::NUMERIC > 0 THEN
+            trusted_unit_price := (prod_json->>'sale_price')::NUMERIC;
+          ELSIF (prod_json->>'price') IS NOT NULL THEN
+            trusted_unit_price := (prod_json->>'price')::NUMERIC;
+          END IF;
         END IF;
-      END IF;
+      EXCEPTION WHEN OTHERS THEN
+        trusted_unit_price := NULL;
+      END;
     END IF;
 
     IF trusted_unit_price IS NULL THEN
@@ -536,8 +651,129 @@ BEGIN
 
     item_total := trusted_unit_price * item_record.quantity;
     calc_subtotal := calc_subtotal + item_total;
+  END LOOP;
 
-    -- Insert into order_items atomically
+  -- 5. Calculate delivery fee from delivery_cities if available
+  BEGIN
+    SELECT to_jsonb(c) INTO city_json FROM delivery_cities c WHERE LOWER(c.name) = LOWER(ship_city) LIMIT 1;
+    IF city_json IS NOT NULL AND (city_json->>'delivery_fee') IS NOT NULL THEN
+      calc_delivery_fee := (city_json->>'delivery_fee')::NUMERIC;
+    ELSE
+      calc_delivery_fee := GREATEST(0, COALESCE((order_data->>'delivery_fee')::NUMERIC, (order_data->>'deliveryCharges')::NUMERIC, 0));
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    calc_delivery_fee := GREATEST(0, COALESCE((order_data->>'delivery_fee')::NUMERIC, (order_data->>'deliveryCharges')::NUMERIC, 0));
+  END;
+
+  calc_discount := GREATEST(0, COALESCE((order_data->>'discount_amount')::NUMERIC, (order_data->>'couponDiscountAmount')::NUMERIC, 0));
+  IF calc_discount > calc_subtotal THEN
+    calc_discount := calc_subtotal;
+  END IF;
+
+  calc_tax := GREATEST(0, COALESCE((order_data->>'tax_amount')::NUMERIC, (order_data->>'taxAmount')::NUMERIC, 0));
+  calc_total := GREATEST(0, (calc_subtotal + calc_delivery_fee + calc_tax) - calc_discount);
+
+  -- 6. Insert into orders table FIRST (satisfies foreign key constraint for order_items)
+  INSERT INTO orders (
+    id,
+    customer_id,
+    customer_name,
+    name,
+    customer_email,
+    email,
+    customer_phone,
+    phone,
+    shipping_city,
+    city,
+    shipping_area,
+    area,
+    shipping_address,
+    address,
+    postal_code,
+    delivery_option,
+    delivery_fee,
+    delivery_charges,
+    subtotal,
+    total_amount,
+    grand_total,
+    status,
+    payment_method,
+    payment_status,
+    notes,
+    status_history,
+    created_at,
+    updated_at
+  ) VALUES (
+    order_id,
+    parsed_cust_uuid,
+    cust_name,
+    cust_name,
+    COALESCE(order_data->>'customer_email', order_data->>'email'),
+    COALESCE(order_data->>'customer_email', order_data->>'email'),
+    cust_phone,
+    cust_phone,
+    ship_city,
+    ship_city,
+    COALESCE(order_data->>'shipping_area', order_data->>'areaLocality'),
+    COALESCE(order_data->>'shipping_area', order_data->>'areaLocality'),
+    ship_address,
+    ship_address,
+    COALESCE(order_data->>'postal_code', order_data->>'postalCode'),
+    COALESCE(order_data->>'delivery_option', order_data->>'deliveryInstructions'),
+    calc_delivery_fee,
+    calc_delivery_fee,
+    calc_subtotal,
+    calc_total,
+    calc_total,
+    'Order Received', -- Force secure initial order status
+    COALESCE(order_data->>'payment_method', order_data->>'paymentMethodName', 'Cash on Delivery'),
+    COALESCE(order_data->>'payment_status', order_data->>'paymentStatus', 'Cash on Delivery'),
+    COALESCE(order_data->>'notes', order_data->>'deliveryInstructions'),
+    jsonb_build_array(jsonb_build_object(
+      'status', 'Order Received',
+      'timestamp', to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+      'note', 'Order placed successfully by customer.'
+    )),
+    COALESCE((order_data->>'created_at')::TIMESTAMPTZ, (order_data->>'createdAt')::TIMESTAMPTZ, NOW()),
+    NOW()
+  );
+
+  -- 7. Insert into order_items table SECOND
+  FOR item_record IN SELECT * FROM jsonb_to_recordset(items_data) AS x(
+    id TEXT,
+    order_id TEXT,
+    product_id TEXT,
+    product_title TEXT,
+    product_image TEXT,
+    unit_price NUMERIC,
+    quantity INTEGER,
+    total_price NUMERIC
+  )
+  LOOP
+    trusted_unit_price := NULL;
+    prod_json := NULL;
+
+    IF item_record.product_id IS NOT NULL AND item_record.product_id <> '' THEN
+      BEGIN
+        SELECT to_jsonb(p) INTO prod_json FROM products p WHERE p.id = item_record.product_id LIMIT 1;
+        IF prod_json IS NOT NULL THEN
+          IF (prod_json->>'sale_enabled')::BOOLEAN = true AND (prod_json->>'sale_price') IS NOT NULL AND (prod_json->>'sale_price')::NUMERIC > 0 THEN
+            trusted_unit_price := (prod_json->>'sale_price')::NUMERIC;
+          ELSIF (prod_json->>'price') IS NOT NULL THEN
+            trusted_unit_price := (prod_json->>'price')::NUMERIC;
+          END IF;
+        END IF;
+      EXCEPTION WHEN OTHERS THEN
+        trusted_unit_price := NULL;
+      END;
+    END IF;
+
+    IF trusted_unit_price IS NULL THEN
+      trusted_unit_price := GREATEST(0, COALESCE(item_record.unit_price, 0));
+    END IF;
+
+    item_total := trusted_unit_price * item_record.quantity;
+
     INSERT INTO order_items (
       id,
       order_id,
@@ -561,69 +797,6 @@ BEGIN
     );
   END LOOP;
 
-  -- 5. Calculate delivery fee from delivery_cities if available
-  SELECT delivery_fee INTO city_fee FROM delivery_cities WHERE LOWER(name) = LOWER(ship_city) AND enabled = true LIMIT 1;
-  IF FOUND AND city_fee IS NOT NULL THEN
-    calc_delivery_fee := city_fee;
-  ELSE
-    calc_delivery_fee := GREATEST(0, COALESCE((order_data->>'delivery_fee')::NUMERIC, (order_data->>'deliveryCharges')::NUMERIC, 0));
-  END IF;
-
-  calc_discount := GREATEST(0, COALESCE((order_data->>'discount_amount')::NUMERIC, (order_data->>'couponDiscountAmount')::NUMERIC, 0));
-  IF calc_discount > calc_subtotal THEN
-    calc_discount := calc_subtotal;
-  END IF;
-
-  calc_tax := GREATEST(0, COALESCE((order_data->>'tax_amount')::NUMERIC, (order_data->>'taxAmount')::NUMERIC, 0));
-  calc_total := GREATEST(0, (calc_subtotal + calc_delivery_fee + calc_tax) - calc_discount);
-
-  -- 6. Insert into orders table with strictly sanitized fields
-  INSERT INTO orders (
-    id,
-    customer_id,
-    customer_name,
-    customer_email,
-    customer_phone,
-    shipping_city,
-    shipping_area,
-    shipping_address,
-    postal_code,
-    delivery_option,
-    delivery_fee,
-    subtotal,
-    total_amount,
-    status,
-    payment_method,
-    notes,
-    status_history,
-    created_at,
-    updated_at
-  ) VALUES (
-    order_id,
-    COALESCE(order_data->>'customer_id', order_data->>'customerId'),
-    cust_name,
-    COALESCE(order_data->>'customer_email', order_data->>'email'),
-    cust_phone,
-    ship_city,
-    COALESCE(order_data->>'shipping_area', order_data->>'areaLocality'),
-    ship_address,
-    COALESCE(order_data->>'postal_code', order_data->>'postalCode'),
-    COALESCE(order_data->>'delivery_option', order_data->>'deliveryInstructions'),
-    calc_delivery_fee,
-    calc_subtotal,
-    calc_total,
-    'Order Received', -- Force secure initial order status
-    COALESCE(order_data->>'payment_method', order_data->>'paymentMethodName', 'Cash on Delivery'),
-    COALESCE(order_data->>'notes', order_data->>'deliveryInstructions'),
-    jsonb_build_array(jsonb_build_object(
-      'status', 'Order Received',
-      'timestamp', to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-      'note', 'Order placed successfully by customer.'
-    )),
-    COALESCE((order_data->>'created_at')::TIMESTAMPTZ, (order_data->>'createdAt')::TIMESTAMPTZ, NOW()),
-    NOW()
-  );
-
   RETURN json_build_object(
     'success', true,
     'id', order_id,
@@ -636,8 +809,11 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
--- Grant execute permissions to anon and authenticated roles
-GRANT EXECUTE ON FUNCTION submit_customer_order TO anon, authenticated;
+-- Grant execute permissions to anon, authenticated, and service_role
+GRANT EXECUTE ON FUNCTION submit_customer_order(TEXT, JSONB, JSONB) TO anon, authenticated, service_role;
+
+-- Reload PostgREST schema cache immediately
+NOTIFY pgrst, 'reload schema';
 
 
 -- =========================================================

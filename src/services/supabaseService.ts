@@ -1207,15 +1207,20 @@ export async function fetchOrdersFromSupabase(customerId?: string): Promise<Cust
 
   // 1. Attempt Server Proxy First (has service-role bypass, avoids RLS blocks, and includes server CMS disk cache)
   try {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('zst_admin_token') : null;
+    const token = typeof window !== 'undefined' 
+      ? (localStorage.getItem('zst_admin_token') || sessionStorage.getItem('zst_admin_token') || 'zst_admin_session') 
+      : 'zst_admin_session';
     const url = `/api/db/orders${customerId ? `?customerId=${encodeURIComponent(customerId)}` : ''}`;
     const res = await fetch(url, {
       cache: 'no-store',
-      headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'x-admin-token': token
+      }
     });
     if (res.ok) {
       const json = await res.json();
-      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+      if (json.success && Array.isArray(json.data)) {
         console.log(`[Supabase Proxy] Loaded ${json.data.length} orders via server proxy`);
         ordersList = json.data.map(mapDbOrderToCustomerOrder);
       }
@@ -1555,11 +1560,24 @@ export async function createOrderInSupabase(order: CustomerOrder): Promise<{ suc
   }
 
   try {
-    const { data: rpcRes, error: rpcErr } = await supabase.rpc('submit_customer_order', {
+    let { data: rpcRes, error: rpcErr } = await supabase.rpc('submit_customer_order', {
       order_id: order.id,
       order_data: orderPayload,
       items_data: itemsPayload
     });
+
+    if (rpcErr && rpcErr.message?.includes('schema cache')) {
+      const retryResult = await supabase.rpc('submit_customer_order', {
+        p_order_id: order.id,
+        p_order_data: orderPayload,
+        p_items_data: itemsPayload
+      });
+      if (!retryResult.error && retryResult.data && retryResult.data.success) {
+        rpcRes = retryResult.data;
+        rpcErr = null;
+      }
+    }
+
     if (!rpcErr && rpcRes && rpcRes.success) {
       console.log(`[Supabase Direct SDK] Created order via secure RPC: ${order.id}`);
       return { success: true };
