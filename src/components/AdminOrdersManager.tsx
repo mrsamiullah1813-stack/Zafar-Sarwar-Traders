@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { CustomerOrder, CheckoutSettings, OrderStatus, OrderStatusHistoryItem, PaymentStatus } from '../types';
 import { loadStoredOrders, saveStoredOrders, loadCheckoutSettings, saveCheckoutSettings, updateOrderPaymentStatusInStorage, createLightweightOrderPlaceholder } from '../utils/storage';
+import { subscribeToRealtimeOrderEvents, playNewOrderAlertSound } from '../utils/orderNotificationUtils';
 import { fetchOrdersFromSupabase, updateOrderStatusInSupabase, deleteOrderFromSupabase, isSupabaseConfigured } from '../services/supabaseService';
 import { supabase } from '../lib/supabase';
 import { AdminPaymentMethodsManager } from './AdminPaymentMethodsManager';
@@ -193,7 +194,52 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
     let isMounted = true;
     loadOrders(false);
 
-    // Supabase Realtime live event subscription
+    // 1. Instant Cross-Tab / Local Broadcast Event Listener
+    const unsubscribeBroadcast = subscribeToRealtimeOrderEvents((newOrder) => {
+      console.log('[Admin Orders] Received local/cross-tab realtime order ping:', newOrder?.id || 'event');
+      if (isMounted) {
+        loadOrders(true);
+        playNewOrderAlertSound();
+        if (newOrder?.customerName || newOrder?.customer_name) {
+          onShowToast(`🔔 New Order from ${newOrder.customerName || newOrder.customer_name}!`);
+        } else {
+          onShowToast('🔔 New Customer Order Received!');
+        }
+      }
+    });
+
+    // 2. Server-Sent Events (SSE) for Instant Backend-to-Frontend Order Stream
+    let sseSource: EventSource | null = null;
+    try {
+      sseSource = new EventSource('/api/admin/orders/stream');
+      
+      sseSource.addEventListener('new_order', (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          console.log('[Admin Orders SSE] New order broadcast received:', payload);
+          if (isMounted) {
+            loadOrders(true);
+            playNewOrderAlertSound();
+            const name = payload.customerName || 'Customer';
+            onShowToast(`🔔 New Order (${payload.orderNumber || payload.orderId}) from ${name}!`);
+          }
+        } catch {
+          if (isMounted) loadOrders(true);
+        }
+      });
+
+      sseSource.addEventListener('orders_updated', () => {
+        if (isMounted) loadOrders(true);
+      });
+
+      sseSource.addEventListener('order_status_updated', () => {
+        if (isMounted) loadOrders(true);
+      });
+    } catch (sseErr) {
+      console.warn('[Admin Orders SSE] EventSource initialization notice:', sseErr);
+    }
+
+    // 3. Supabase Realtime live event subscription (if configured)
     let channel: any = null;
     if (isSupabaseConfigured && supabase) {
       try {
@@ -209,19 +255,28 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
       }
     }
 
-    // Auto-refresh polling every 30 seconds
+    // 4. Ultra-reliable auto-refresh polling every 6 seconds as a backup
     const interval = setInterval(() => {
       if (isMounted) loadOrders(true);
-    }, 30000);
+    }, 6000);
 
-    // Refresh whenever admin tab regains focus
+    // 5. Refresh whenever admin tab regains focus or becomes visible
     const handleFocus = () => {
       if (isMounted) loadOrders(true);
     };
     window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && isMounted) {
+        loadOrders(true);
+      }
+    });
 
     return () => {
       isMounted = false;
+      unsubscribeBroadcast();
+      if (sseSource) {
+        try { sseSource.close(); } catch {}
+      }
       clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
       if (channel && supabase) {
