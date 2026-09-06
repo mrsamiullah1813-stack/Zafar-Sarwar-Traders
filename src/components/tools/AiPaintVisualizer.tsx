@@ -1150,9 +1150,9 @@ export const AiPaintVisualizer: React.FC<AiPaintVisualizerProps> = ({
                                 onAddToCart(featuredPaintProduct, orderQuantity, shadeStr);
                               }
                             }}
-                            className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg shadow-blue-950 transition-all cursor-pointer"
+                            className="flex-1 sm:flex-initial px-4 py-2.5 rounded-lg bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:from-blue-700 active:to-blue-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md hover:shadow-blue-600/20 border border-blue-500/40 transition-all duration-200 cursor-pointer active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed tracking-wide"
                           >
-                            <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                            <Zap className="w-3.5 h-3.5 text-blue-200 stroke-[2.2]" />
                             <span>Buy Now</span>
                           </button>
                         )}

@@ -416,9 +416,10 @@ export function SmartProductFinder({
                       onAddToCart(prod, 1);
                     }
                   }}
-                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-blue-600/20 hover:bg-blue-600 border border-blue-500/30 text-blue-300 hover:text-white transition-all text-[11px] font-bold cursor-pointer"
+                  className="w-full flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:from-blue-700 active:to-blue-800 text-white transition-all duration-200 text-[11px] font-semibold border border-blue-500/40 shadow-sm hover:shadow-md hover:shadow-blue-600/20 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98] tracking-wide"
                 >
-                  <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" /> Buy Now
+                  <Zap className="w-3.5 h-3.5 text-blue-200 stroke-[2.2]" />
+                  <span>Buy Now</span>
                 </button>
               </div>
             </div>

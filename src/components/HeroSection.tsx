@@ -520,9 +520,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                         onAddToCart(currentProduct, 1);
                       }
                     }}
-                    className="px-6 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm border border-blue-400/40 backdrop-blur-md transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] flex items-center gap-2 shadow-lg shadow-blue-600/25 cursor-pointer"
+                    className="px-6 py-3 rounded-lg bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:from-blue-700 active:to-blue-800 text-white font-semibold text-xs sm:text-sm border border-blue-500/50 transition-all duration-200 shadow-sm hover:shadow-md hover:shadow-blue-600/20 active:scale-[0.98] flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed tracking-wide"
                   >
-                    <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
+                    <Zap className="w-4 h-4 text-blue-200 stroke-[2.2]" />
                     <span>Buy Now</span>
                   </button>
                 </>

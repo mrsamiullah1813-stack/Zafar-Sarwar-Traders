@@ -487,9 +487,9 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                             onAddToCart(product);
                           }
                         }}
-                        className="py-2.5 px-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm shadow-blue-600/20 active:scale-95 cursor-pointer"
+                        className="py-2.5 px-2.5 rounded-lg bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:from-blue-700 active:to-blue-800 text-white text-[11px] font-semibold tracking-wide flex items-center justify-center gap-1.5 transition-all duration-200 shadow-sm hover:shadow-md hover:shadow-blue-600/20 border border-blue-500/40 active:scale-[0.98] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                       >
-                        <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                        <Zap className="w-3.5 h-3.5 text-blue-200 stroke-[2.2]" />
                         <span>Buy Now</span>
                       </button>
                     </div>

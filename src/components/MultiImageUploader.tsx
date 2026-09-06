@@ -21,6 +21,7 @@ interface MultiImageUploaderProps {
   onChange: (newImages: string[]) => void;
   maxFiles?: number;
   aspectRatioHint?: string;
+  bucketName?: string;
 }
 
 export const MultiImageUploader: React.FC<MultiImageUploaderProps> = ({
@@ -28,7 +29,8 @@ export const MultiImageUploader: React.FC<MultiImageUploaderProps> = ({
   images,
   onChange,
   maxFiles = 10,
-  aspectRatioHint = 'Supported: JPG, PNG, WebP, AVIF up to 20MB each'
+  aspectRatioHint = 'Supported: JPG, PNG, WebP, AVIF up to 20MB each',
+  bucketName = 'product-media'
 }) => {
   const [dragActive, setDragActive] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
@@ -60,7 +62,7 @@ export const MultiImageUploader: React.FC<MultiImageUploaderProps> = ({
       try {
         const dataUrl = await compressAndResizeImage(file);
         // Upload to Supabase Storage bucket
-        const uploadRes = await uploadMediaToSupabase(dataUrl, 'project media');
+        const uploadRes = await uploadMediaToSupabase(dataUrl, bucketName);
         completed++;
         setUploadProgress(Math.min(95, Math.round(15 + (completed / filesArray.length) * 80)));
         if (uploadRes && uploadRes.url) {

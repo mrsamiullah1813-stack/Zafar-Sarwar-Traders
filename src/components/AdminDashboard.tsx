@@ -73,6 +73,7 @@ import { AdminThemeManager } from './AdminThemeManager';
 import { AdminPricingAppearanceManager } from './AdminPricingAppearanceManager';
 import { AdminSmartToolsManager } from './AdminSmartToolsManager';
 import { AdminCouponsManager } from './AdminCouponsManager';
+import { AdminGalleryManager } from './AdminGalleryManager';
 import { PatternLock } from './PatternLock';
 import { getPatternLockStatus, savePatternLock, togglePatternLock } from '../services/patternLockService';
 import { Product, ProductCategory, ProductVideo, BusinessConfig, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, ThemeSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig } from '../types';
@@ -2858,83 +2859,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* TAB 4: GALLERY MANAGEMENT */}
           {activeTab === 'gallery' && (
-            <div className="space-y-6 max-w-5xl mx-auto">
-              <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
-                <h2 className="text-xl font-bold text-white font-serif">Showroom & Project Gallery</h2>
-                <p className="text-xs text-slate-400 font-light mt-0.5">
-                  Manage real showroom interior photos and project execution galleries shown on the homepage.
-                </p>
-              </div>
-
-              {/* Add Gallery Form with Device Image Upload */}
-              <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-                <span className="text-xs font-bold text-blue-400 uppercase tracking-wider block">Add Showroom / Project Photo</span>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <input
-                    type="text"
-                    placeholder="Photo Title (e.g. Master Bathroom Suite)"
-                    value={newGalleryTitle}
-                    onChange={(e) => setNewGalleryTitle(e.target.value)}
-                    className="px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
-                  />
-
-                  <select
-                    value={newGalleryCat || 'sanitary'}
-                    onChange={(e) => setNewGalleryCat(e.target.value as any)}
-                    className="px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="sanitary">Luxury Bathrooms</option>
-                    <option value="faucets">Faucets & Mixers</option>
-                    <option value="paints">Paints & Decor</option>
-                    <option value="materials">Building Materials</option>
-                  </select>
-                </div>
-
-                <MultiImageUploader
-                  label="Showroom Gallery Photos (Drag & Drop or Browse)"
-                  images={newGalleryImg ? [newGalleryImg] : []}
-                  onChange={(imgs) => {
-                    if (imgs.length > 0) {
-                      setNewGalleryImg(imgs[0]);
-                    } else {
-                      setNewGalleryImg('');
-                    }
-                  }}
-                  maxFiles={1}
-                />
-
-                <button
-                  type="button"
-                  onClick={handleAddGalleryItem}
-                  disabled={!newGalleryTitle || !newGalleryImg}
-                  className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-950 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add Photo to Showroom Gallery</span>
-                </button>
-              </div>
-
-              {/* Gallery Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {gallery.map((item) => (
-                  <div key={item.id} className="relative group rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden">
-                    <img src={item.image} alt={item.title} className="w-full h-48 object-cover" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent p-4 flex flex-col justify-end">
-                      <h4 className="text-sm font-bold text-white font-serif">{item.title}</h4>
-                      <p className="text-[11px] text-slate-400">{item.description}</p>
-                    </div>
-                    <button
-                      onClick={() => handleDeleteGalleryItem(item.id)}
-                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 hover:text-white transition-all shadow-lg"
-                      title="Delete Photo"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <AdminGalleryManager
+              gallery={gallery}
+              onSaveGallery={onSaveGallery}
+              showToast={showToast}
+            />
           )}
 
           {/* TAB: SMART TOOLS HUB (5 TOOLS) */}

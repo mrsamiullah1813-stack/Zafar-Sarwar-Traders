@@ -332,9 +332,9 @@ export function BudgetToProductsAi({
               <button
                 type="button"
                 onClick={handleBuyNow}
-                className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer"
+                className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:from-blue-700 active:to-blue-800 text-white text-xs font-semibold transition-all duration-200 shadow-sm hover:shadow-md hover:shadow-blue-600/20 border border-blue-500/40 active:scale-[0.98] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed tracking-wide"
               >
-                <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                <Zap className="w-3.5 h-3.5 text-blue-200 stroke-[2.2]" />
                 Buy Now (Instant Checkout)
               </button>
             </div>

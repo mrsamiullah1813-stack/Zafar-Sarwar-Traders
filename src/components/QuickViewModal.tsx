@@ -1250,14 +1250,14 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
               <button
                 type="button"
                 onClick={handleBuyNow}
-                className="flex-1 py-3.5 px-6 rounded-2xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-all duration-200 shadow-xl shadow-blue-600/30 flex items-center justify-center gap-2.5 active:scale-98 border border-blue-400/30 cursor-pointer"
+                className="flex-1 py-3 px-6 rounded-xl text-sm font-semibold text-white bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:from-blue-700 active:to-blue-800 transition-all duration-200 shadow-sm hover:shadow-md hover:shadow-blue-600/25 flex items-center justify-center gap-2 active:scale-[0.98] border border-blue-500/50 hover:border-blue-400/60 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed tracking-wide"
               >
-                <Zap className="w-5 h-5 text-amber-300 fill-amber-300" />
+                <Zap className="w-4 h-4 text-blue-200 stroke-[2.2]" />
                 <span>
                   Buy Now
                   {quantity > 1 ? ` (${quantity} ${effectiveUnit})` : ''}
                 </span>
-                <ArrowRight className="w-4 h-4 ml-0.5" />
+                <ArrowRight className="w-4 h-4 ml-0.5 text-blue-200" />
               </button>
             </div>
           </div>

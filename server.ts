@@ -96,10 +96,13 @@ async function startServer() {
   if (dbClient) {
     (async () => {
       try {
-        const requiredBuckets = ["payment-proofs", "product-media", "brand-assets", "hero-media", "media", "public"];
+        const requiredBuckets = ["showroom-gallery", "gallery", "payment-proofs", "product-media", "brand-assets", "hero-media", "media", "public"];
         for (const b of requiredBuckets) {
           try {
             await dbClient.storage.createBucket(b, { public: true });
+          } catch {}
+          try {
+            await dbClient.storage.updateBucket(b, { public: true });
           } catch {}
         }
       } catch (err) {
@@ -110,6 +113,8 @@ async function startServer() {
 
   app.use("/uploads", express.static(UPLOADS_DIR));
   app.use("/uploads", express.static(PUBLIC_UPLOADS_DIR));
+  app.use("/assets", express.static(path.join(process.cwd(), "public", "assets")));
+  app.use("/src/assets", express.static(path.join(process.cwd(), "src", "assets")));
 
   // =========================================================
   // PERSISTENT CMS DATA BACKEND DISK & MEMORY STORE
@@ -3916,19 +3921,12 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
           }
 
           const targetBuckets = Array.from(new Set([
-            bucketName,
-            bucketName.replace(/-/g, " "),
             bucketName.replace(/\s+/g, "-"),
-            "project media",
-            "project-media",
-            "brand assets",
-            "brand-assets",
-            "hero media",
-            "hero-media",
-            "product-media",
-            "products",
-            "categories",
+            bucketName,
+            "showroom-gallery",
             "gallery",
+            "product-media",
+            "project-media",
             "media",
             "public",
             ...availableBuckets

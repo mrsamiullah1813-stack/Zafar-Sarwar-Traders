@@ -2488,20 +2488,12 @@ export async function uploadMediaToSupabase(
           }
         } catch {}
 
+        const safeBucket = (bucketName || 'showroom-gallery').trim().toLowerCase().replace(/\s+/g, '-');
         const candidateBuckets = Array.from(new Set([
-          bucketName,
-          bucketName.replace(/-/g, ' '),
-          bucketName.replace(/\s+/g, '-'),
-          'project media',
-          'project-media',
-          'brand assets',
-          'brand-assets',
-          'hero media',
-          'hero-media',
-          'product-media',
-          'products',
-          'categories',
+          safeBucket,
+          'showroom-gallery',
           'gallery',
+          'product-media',
           'media',
           'public',
           ...availableBuckets

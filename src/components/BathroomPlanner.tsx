@@ -772,9 +772,9 @@ export const BathroomPlanner: React.FC<BathroomPlannerProps> = ({
                     <button
                       type="button"
                       onClick={handleBuyNow}
-                      className="py-4 px-6 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm shadow-xl shadow-blue-600/30 transition-all flex items-center justify-center gap-2.5 text-center cursor-pointer"
+                      className="py-3.5 px-6 rounded-xl bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:from-blue-700 active:to-blue-800 text-white font-semibold text-xs sm:text-sm shadow-sm hover:shadow-md hover:shadow-blue-600/25 border border-blue-500/40 transition-all duration-200 flex items-center justify-center gap-2 text-center cursor-pointer active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed tracking-wide"
                     >
-                      <Zap className="w-4 h-4 shrink-0 text-amber-300 fill-amber-300" />
+                      <Zap className="w-4 h-4 shrink-0 text-blue-200 stroke-[2.2]" />
                       <span>Buy Now (ابھی خریدیں)</span>
                     </button>
 

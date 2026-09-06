@@ -271,6 +271,10 @@ export interface GalleryItem {
   category: 'all' | 'sanitary' | 'faucets' | 'paints' | 'materials';
   image: string;
   description: string;
+  tag?: string;
+  location?: string;
+  displayOrder?: number;
+  featured?: boolean;
 }
 
 export interface StatCounter {
