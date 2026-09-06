@@ -270,6 +270,33 @@ html[data-theme="premium-blue"] body {
   animation: subtleShowroomGlow 10s ease-in-out infinite;
 }
 
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 16s linear infinite;
+}
+
+@keyframes shimmerLight {
+  0% { transform: translateX(-100%) skewX(-15deg); }
+  100% { transform: translateX(200%) skewX(-15deg); }
+}
+
+.animate-shimmer {
+  animation: shimmerLight 3.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes floatGentle {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-7px); }
+}
+
+.animate-float-gentle {
+  animation: floatGentle 4s ease-in-out infinite;
+}
+
 /* Custom Refined Scrollbar */
 ::-webkit-scrollbar {
   width: 7px;

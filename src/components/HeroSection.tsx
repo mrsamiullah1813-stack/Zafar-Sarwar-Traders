@@ -184,7 +184,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
     return found ? found.name : 'Zafar Sarwar Traders';
   };
 
-  // Get effective product image (supports custom hero image override)
+  // Get effective product image (supports custom hero image override and reliable fallback)
   const getProductImage = (prod: Product) => {
     const override = heroSettings?.productImageOverrides?.[prod.id];
     if (override && override.trim() !== '') {
@@ -267,7 +267,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           animate: { 
             opacity: 1, 
             x: 0, 
-            scale: 1,
+            scale: 1, 
             rotateY: 0,
             filter: 'blur(0px)'
           },
@@ -295,7 +295,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
       onMouseMove={handleMouseMove}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={handleMouseLeave}
-      className="relative min-h-[88vh] lg:min-h-[94vh] flex flex-col justify-between bg-slate-950 text-white overflow-hidden select-none"
+      className="relative min-h-[88vh] lg:min-h-[94vh] flex flex-col justify-between bg-[#030712] text-white overflow-hidden select-none"
     >
       {/* 1. CINEMATIC BACKGROUND LAYER */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
@@ -307,12 +307,12 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             loop
             muted
             playsInline
-            className="absolute inset-0 w-full h-full object-cover filter brightness-[0.25] contrast-[1.2]"
+            className="absolute inset-0 w-full h-full object-cover filter brightness-[0.22] contrast-[1.25]"
             src={heroSettings.bgVideoUrl}
           />
         ) : (
           <div 
-            className="absolute inset-0 bg-cover bg-center filter brightness-[0.2] contrast-[1.3] scale-105 transition-all duration-1000"
+            className="absolute inset-0 bg-cover bg-center filter brightness-[0.18] contrast-[1.3] scale-105 transition-all duration-1000"
             style={{
               backgroundImage: `url('${heroSettings?.bgMediaUrl || 'https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&w=2000&q=80'}')`,
               transform: `translate3d(${mousePosition.x * 0.3}px, ${mousePosition.y * 0.3}px, 0) scale(1.05)`
@@ -320,31 +320,36 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           />
         )}
 
-        {/* Dark Slate/Navy Overlay Gradients for Contrast */}
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/95 to-slate-950/70" />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/90" />
+        {/* Cinematic Vignette & Deep Contrast Overlays */}
+        <div className="absolute inset-0 bg-gradient-to-r from-[#030712] via-[#030712]/90 to-[#030712]/75" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#030712] via-transparent to-[#030712]/80" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(3,7,18,0.7)_100%)]" />
 
-        {/* Ambient Blue & Cyan Glow Orbs for Luxury Showroom Atmosphere */}
+        {/* Anamorphic Blue & Cyan Lens Flare Streak across upper stage */}
+        <div className="absolute top-1/4 -left-1/4 w-[150%] h-[1px] bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent blur-[1px] transform -rotate-1 pointer-events-none" />
+        <div className="absolute top-1/4 left-1/3 w-96 h-12 bg-cyan-400/10 blur-3xl rounded-full transform -rotate-2 pointer-events-none" />
+
+        {/* Ambient Glowing Showroom Orbs */}
         <motion.div 
           animate={{
             scale: [1, 1.15, 1],
-            opacity: [0.15, 0.25, 0.15],
+            opacity: [0.15, 0.28, 0.15],
           }}
           transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-          className="absolute top-1/4 right-1/4 w-[600px] h-[600px] bg-blue-600/20 rounded-full blur-[160px] pointer-events-none" 
+          className="absolute top-1/4 right-1/4 w-[650px] h-[650px] bg-blue-600/20 rounded-full blur-[170px] pointer-events-none" 
         />
         <motion.div 
           animate={{
             scale: [1, 1.2, 1],
-            opacity: [0.1, 0.2, 0.1],
+            opacity: [0.12, 0.22, 0.12],
           }}
           transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-          className="absolute bottom-1/4 right-10 w-[450px] h-[450px] bg-cyan-500/15 rounded-full blur-[140px] pointer-events-none" 
+          className="absolute bottom-1/4 right-10 w-[500px] h-[500px] bg-cyan-500/15 rounded-full blur-[150px] pointer-events-none" 
         />
-        <div className="absolute top-1/3 left-10 w-[380px] h-[380px] bg-indigo-600/10 rounded-full blur-[130px] pointer-events-none" />
+        <div className="absolute top-1/3 left-10 w-[400px] h-[400px] bg-indigo-600/10 rounded-full blur-[140px] pointer-events-none" />
 
-        {/* Subtle Architectural Grid Pattern */}
-        <div className="absolute inset-0 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:36px_36px] opacity-10" />
+        {/* Subtle Architectural Showcase Grid */}
+        <div className="absolute inset-0 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:40px_40px] opacity-[0.07]" />
       </div>
 
       {/* 2. MAIN HERO COMPOSITION CONTAINER */}
@@ -357,7 +362,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               initial={{ opacity: 0, y: -20, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -20, scale: 0.9 }}
-              className="fixed top-20 right-6 z-50 px-5 py-3 rounded-2xl bg-emerald-950/90 border border-emerald-500/40 text-emerald-200 text-xs font-bold shadow-2xl backdrop-blur-xl flex items-center gap-3"
+              className="fixed top-20 right-6 z-50 px-5 py-3 rounded-2xl bg-emerald-950/95 border border-emerald-500/40 text-emerald-200 text-xs font-bold shadow-2xl backdrop-blur-xl flex items-center gap-3"
             >
               <CheckCircle2 className="w-5 h-5 text-emerald-400" />
               <span>Added <strong className="text-white">{addedToastProduct}</strong> to your Cart!</span>
@@ -375,7 +380,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               initial={{ opacity: 0, y: -15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
-              className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-gradient-to-r from-blue-600/30 via-cyan-500/20 to-blue-600/30 border border-blue-400/30 text-blue-300 text-xs font-bold uppercase tracking-widest backdrop-blur-md shadow-xl"
+              className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-gradient-to-r from-blue-600/25 via-cyan-500/15 to-blue-600/25 border border-blue-400/30 text-blue-300 text-xs font-bold uppercase tracking-widest backdrop-blur-md shadow-xl"
             >
               <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-spin-slow" />
               <span>{heroSettings.badgeText || 'ZAFAR SARWAR TRADERS'}</span>
@@ -451,17 +456,39 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ duration: 0.4 }}
-                  className="inline-flex flex-wrap items-center gap-4 p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800/90 backdrop-blur-md"
+                  className="inline-flex flex-wrap items-center gap-4 p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800/90 backdrop-blur-md shadow-lg"
                 >
                   <div>
                     <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Showroom Price</span>
-                    {currentProduct.price ? (
-                      <span className="text-xl sm:text-2xl font-black text-cyan-300 font-mono product-price-typography">
-                        Rs. {!isNaN(Number(currentProduct.price)) && Number(currentProduct.price) > 0 ? Number(currentProduct.price).toLocaleString() : currentProduct.price}
-                      </span>
-                    ) : (
-                      <span className="text-sm font-semibold text-slate-300">Contact for Wholesale Price</span>
-                    )}
+                    {(() => {
+                      const pricing = getProductPricingDetails(currentProduct);
+                      if (pricing.isSaleActive) {
+                        return (
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-xl sm:text-2xl font-black text-rose-400 font-mono">
+                              {pricing.formattedSalePrice}
+                            </span>
+                            {pricing.showRegularPriceStrike && (
+                              <span className="text-xs text-slate-500 line-through font-mono">
+                                {pricing.formattedRegularPrice}
+                              </span>
+                            )}
+                            {pricing.showDiscountPercentage && pricing.discountPercentage > 0 && (
+                              <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold text-[10px] font-mono border border-rose-500/40">
+                                {pricing.discountPercentage}% OFF
+                              </span>
+                            )}
+                          </div>
+                        );
+                      }
+                      return currentProduct.price ? (
+                        <span className="text-xl sm:text-2xl font-black text-cyan-300 font-mono product-price-typography">
+                          Rs. {!isNaN(Number(currentProduct.price)) && Number(currentProduct.price) > 0 ? Number(currentProduct.price).toLocaleString() : currentProduct.price}
+                        </span>
+                      ) : (
+                        <span className="text-sm font-semibold text-slate-300">Contact for Wholesale Price</span>
+                      );
+                    })()}
                   </div>
 
                   <div className="h-8 w-px bg-slate-800 hidden sm:block" />
@@ -482,7 +509,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               </AnimatePresence>
             )}
 
-            {/* Action Buttons (View Product, Add to Cart, Order on WhatsApp) */}
+            {/* Action Buttons (View Product, Add to Cart, Buy Now / Order on WhatsApp) */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -494,7 +521,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                   {/* Button 1: View Product */}
                   <button
                     onClick={() => onSelectProduct(currentProduct)}
-                    className="px-6 py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-bold text-xs sm:text-sm shadow-xl shadow-blue-600/30 flex items-center gap-2 transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] border border-blue-400/30"
+                    className="px-6 py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-bold text-xs sm:text-sm shadow-xl shadow-blue-600/30 flex items-center gap-2 transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] border border-blue-400/30 cursor-pointer"
                   >
                     <Eye className="w-4 h-4 text-cyan-200" />
                     <span>View Product</span>
@@ -504,7 +531,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                   {/* Button 2: Add to Cart */}
                   <button
                     onClick={(e) => handleQuickAddToCart(e, currentProduct)}
-                    className="px-6 py-3.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-100 font-bold text-xs sm:text-sm border border-slate-700/80 backdrop-blur-md transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] flex items-center gap-2 shadow-lg hover:border-blue-500/50"
+                    className="px-6 py-3.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-100 font-bold text-xs sm:text-sm border border-slate-700/80 backdrop-blur-md transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] flex items-center gap-2 shadow-lg hover:border-blue-500/50 cursor-pointer"
                   >
                     <ShoppingBag className="w-4 h-4 text-cyan-400" />
                     <span>Add to Cart</span>
@@ -520,7 +547,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                         onAddToCart(currentProduct, 1);
                       }
                     }}
-                    className="px-6 py-3 rounded-lg bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:from-blue-700 active:to-blue-800 text-white font-semibold text-xs sm:text-sm border border-blue-500/50 transition-all duration-200 shadow-sm hover:shadow-md hover:shadow-blue-600/20 active:scale-[0.98] flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed tracking-wide"
+                    className="px-6 py-3.5 rounded-xl bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:from-blue-700 active:to-blue-800 text-white font-semibold text-xs sm:text-sm border border-blue-500/50 transition-all duration-200 shadow-sm hover:shadow-md hover:shadow-blue-600/20 active:scale-[0.98] flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed tracking-wide"
                   >
                     <Zap className="w-4 h-4 text-blue-200 stroke-[2.2]" />
                     <span>Buy Now</span>
@@ -539,7 +566,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
                   <button
                     onClick={onOpenAiConsultant}
-                    className="px-6 py-4 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-cyan-300 font-bold text-sm border border-cyan-500/30 backdrop-blur-md transition-all flex items-center gap-2 shadow-lg"
+                    className="px-6 py-4 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-cyan-300 font-bold text-sm border border-cyan-500/30 backdrop-blur-md transition-all flex items-center gap-2 shadow-lg cursor-pointer"
                   >
                     <Sparkles className="w-4 h-4 text-cyan-400" />
                     <span>AI Bathroom Planner</span>
@@ -596,6 +623,14 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                     onClick={() => onSelectProduct(currentProduct)}
                     className="cursor-pointer relative z-10 bg-slate-900/60 hover:bg-slate-900/80 border border-slate-800/80 hover:border-cyan-500/50 rounded-3xl p-6 sm:p-8 backdrop-blur-2xl shadow-[0_25px_60px_-15px_rgba(2,6,23,0.9)] transition-all duration-500 overflow-hidden group/showcase"
                   >
+                    {/* Dynamic Specular Sheen that tracks cursor movement */}
+                    <div 
+                      className="absolute inset-0 pointer-events-none transition-opacity duration-300 opacity-60 group-hover/showcase:opacity-100"
+                      style={{
+                        background: `radial-gradient(circle at ${(mousePosition.x + 10) * 5}% ${(mousePosition.y + 10) * 5}%, rgba(56, 189, 248, 0.14), transparent 65%)`
+                      }}
+                    />
+
                     {/* Subtle Shimmer Light Beam Effect */}
                     <div className="absolute -inset-full top-0 block w-1/2 h-full bg-gradient-to-r from-transparent via-white/10 to-transparent transform -skew-x-12 -translate-x-full group-hover/showcase:animate-shimmer pointer-events-none" />
 
@@ -619,7 +654,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                       {/* Radial Spot Light Highlight behind Product */}
                       <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/10 via-transparent to-blue-600/10 pointer-events-none" />
 
-                      {/* Main Image with Smooth Floating Bob Effect */}
+                      {/* Main Image with Smooth Floating Bob Effect & Fallback Protection */}
                       <motion.img
                         animate={{
                           y: [0, -8, 0],
@@ -631,6 +666,14 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                         }}
                         src={getProductImage(currentProduct)}
                         alt={`${currentProduct.name} - Premium Sanitaryware & Luxury Bathroom Fitting | Zafar Sarwar Traders Pakistan`}
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          if (!target.dataset.fallbackApplied) {
+                            target.dataset.fallbackApplied = 'true';
+                            target.src = 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1000&q=80';
+                          }
+                        }}
                         className="max-h-full max-w-full object-contain filter drop-shadow-[0_20px_35px_rgba(0,0,0,0.85)] transform group-hover/showcase:scale-105 transition-transform duration-700 ease-out z-10 relative"
                       />
 
@@ -707,9 +750,26 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
       </div>
 
-      {/* 3. BOTTOM CINEMATIC NAVIGATION BAR & THUMBNAILS */}
+      {/* 3. BOTTOM CINEMATIC NAVIGATION BAR & THUMBNAILS WITH SMOOTH PROGRESS */}
       {heroProducts.length > 0 && (
         <div className="relative z-10 bg-slate-950/95 border-t border-slate-800/80 backdrop-blur-xl px-4 py-3">
+          
+          {/* Subtle Slide Progress Bar */}
+          {isPlaying && (
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-slate-900 overflow-hidden">
+              <motion.div
+                key={currentIndex}
+                initial={{ width: '0%' }}
+                animate={{ width: '100%' }}
+                transition={{
+                  duration: durationSec,
+                  ease: 'linear'
+                }}
+                className="h-full bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-400"
+              />
+            </div>
+          )}
+
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
             
             {/* Active Counter & Thumbnail Jump Strip */}
@@ -729,7 +789,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                         setDirection(idx > currentIndex ? 1 : -1);
                         setCurrentIndex(idx);
                       }}
-                      className={`relative flex items-center justify-center rounded-lg p-1 border transition-all duration-300 shrink-0 ${
+                      className={`relative flex items-center justify-center rounded-lg p-1 border transition-all duration-300 shrink-0 cursor-pointer ${
                         isActive 
                           ? 'w-10 h-10 bg-blue-950 border-cyan-400 shadow-lg shadow-cyan-500/20 scale-105' 
                           : 'w-8 h-8 bg-slate-900 border-slate-800 hover:border-slate-700 opacity-60 hover:opacity-100'
@@ -739,6 +799,14 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                       <img 
                         src={getProductImage(prod)} 
                         alt={prod.name} 
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          if (!target.dataset.fallbackApplied) {
+                            target.dataset.fallbackApplied = 'true';
+                            target.src = 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=120&q=80';
+                          }
+                        }}
                         className="w-full h-full object-contain"
                       />
                       {isActive && (
@@ -762,7 +830,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setIsPlaying(!isPlaying)}
-                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-all active:scale-95 flex items-center gap-1.5 px-3"
+                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-all active:scale-95 flex items-center gap-1.5 px-3 cursor-pointer"
                 title={isPlaying ? 'Pause Rotation' : 'Play Auto Rotation'}
               >
                 {isPlaying ? <Pause className="w-3.5 h-3.5 text-cyan-400" /> : <Play className="w-3.5 h-3.5 text-slate-400" />}
@@ -772,7 +840,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               <div className="flex items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-slate-800">
                 <button
                   onClick={handlePrev}
-                  className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition-colors active:scale-95"
+                  className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition-colors active:scale-95 cursor-pointer"
                   title="Previous Product (Left Arrow)"
                 >
                   <ChevronLeft className="w-4 h-4" />
@@ -782,7 +850,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
                 <button
                   onClick={handleNext}
-                  className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition-colors active:scale-95"
+                  className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition-colors active:scale-95 cursor-pointer"
                   title="Next Product (Right Arrow)"
                 >
                   <ChevronRight className="w-4 h-4" />
