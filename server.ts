@@ -89,6 +89,22 @@ async function startServer() {
     console.warn("Uploads folder initialization notice:", err);
   }
 
+  // Ensure storage buckets exist on Supabase if connected
+  if (dbClient) {
+    (async () => {
+      try {
+        const requiredBuckets = ["payment-proofs", "product-media", "brand-assets", "hero-media", "media", "public"];
+        for (const b of requiredBuckets) {
+          try {
+            await dbClient.storage.createBucket(b, { public: true });
+          } catch {}
+        }
+      } catch (err) {
+        console.warn("Storage buckets initial verification notice:", err);
+      }
+    })();
+  }
+
   app.use("/uploads", express.static(UPLOADS_DIR));
   app.use("/uploads", express.static(PUBLIC_UPLOADS_DIR));
 
@@ -1332,9 +1348,25 @@ async function startServer() {
             ? 'Payment Verified'
             : (dbPaymentStatus || existing?.paymentStatus || existing?.payment_status);
 
+          const resolvedProofUrl = o.payment_proof_url || o.paymentProofUrl || existing?.payment_proof_url || existing?.paymentProofUrl || null;
+          const resolvedProofName = o.payment_proof_file_name || o.paymentProofFileName || existing?.payment_proof_file_name || existing?.paymentProofFileName || null;
+          const resolvedProofUploadedAt = o.payment_proof_uploaded_at || o.paymentProofUploadedAt || existing?.payment_proof_uploaded_at || existing?.paymentProofUploadedAt || null;
+          const resolvedTxRef = o.transaction_reference || o.transactionReference || existing?.transaction_reference || existing?.transactionReference || null;
+          const resolvedPaymentNotes = o.payment_notes || o.paymentNotes || existing?.payment_notes || existing?.paymentNotes || null;
+
           orderMap.set(String(o.id), {
             ...(existing || {}),
             ...o,
+            paymentProofUrl: resolvedProofUrl,
+            payment_proof_url: resolvedProofUrl,
+            paymentProofFileName: resolvedProofName,
+            payment_proof_file_name: resolvedProofName,
+            paymentProofUploadedAt: resolvedProofUploadedAt,
+            payment_proof_uploaded_at: resolvedProofUploadedAt,
+            transactionReference: resolvedTxRef,
+            transaction_reference: resolvedTxRef,
+            paymentNotes: resolvedPaymentNotes,
+            payment_notes: resolvedPaymentNotes,
             paymentStatus: mergedPaymentStatus,
             payment_status: mergedPaymentStatus,
             status: o.status || existing?.status || 'Order Received',
@@ -1412,9 +1444,25 @@ async function startServer() {
         ? 'Payment Verified'
         : (dbPaymentStatus || cmsOrder?.paymentStatus || cmsOrder?.payment_status);
 
+      const resolvedProofUrl = dbOrder?.payment_proof_url || dbOrder?.paymentProofUrl || cmsOrder?.payment_proof_url || cmsOrder?.paymentProofUrl || null;
+      const resolvedProofName = dbOrder?.payment_proof_file_name || dbOrder?.paymentProofFileName || cmsOrder?.payment_proof_file_name || cmsOrder?.paymentProofFileName || null;
+      const resolvedProofUploadedAt = dbOrder?.payment_proof_uploaded_at || dbOrder?.paymentProofUploadedAt || cmsOrder?.payment_proof_uploaded_at || cmsOrder?.paymentProofUploadedAt || null;
+      const resolvedTxRef = dbOrder?.transaction_reference || dbOrder?.transactionReference || cmsOrder?.transaction_reference || cmsOrder?.transactionReference || null;
+      const resolvedPaymentNotes = dbOrder?.payment_notes || dbOrder?.paymentNotes || cmsOrder?.payment_notes || cmsOrder?.paymentNotes || null;
+
       const merged = {
         ...(cmsOrder || {}),
         ...(dbOrder || {}),
+        paymentProofUrl: resolvedProofUrl,
+        payment_proof_url: resolvedProofUrl,
+        paymentProofFileName: resolvedProofName,
+        payment_proof_file_name: resolvedProofName,
+        paymentProofUploadedAt: resolvedProofUploadedAt,
+        payment_proof_uploaded_at: resolvedProofUploadedAt,
+        transactionReference: resolvedTxRef,
+        transaction_reference: resolvedTxRef,
+        paymentNotes: resolvedPaymentNotes,
+        payment_notes: resolvedPaymentNotes,
         paymentStatus: finalPaymentStatus,
         payment_status: finalPaymentStatus,
         status: dbOrder?.status || cmsOrder?.status || 'Order Received',

@@ -630,10 +630,11 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
     const matchesStatus = statusFilter === 'all' || o.status === statusFilter;
     const matchesCity = cityFilter === 'all' || o.city === cityFilter;
     
+    const hasProof = Boolean(o.paymentProofUrl || (o as any).payment_proof_url);
     const matchesPayment = paymentFilter === 'all' || 
-      (paymentFilter === 'needs_review' && (o.paymentStatus === 'Payment Proof Submitted' || o.status === 'Payment Proof Submitted' || o.paymentStatus === 'Advance Payment Under Review' || o.status === 'Advance Payment Under Review' || (Boolean(o.paymentProofUrl) && o.paymentStatus !== 'Payment Verified'))) ||
-      (paymentFilter === 'advance_under_review' && (o.paymentStatus === 'Advance Payment Under Review' || o.status === 'Advance Payment Under Review' || (o.isCodAdvanceRequired && o.paymentStatus !== 'Payment Verified' && Boolean(o.paymentProofUrl)))) ||
-      (paymentFilter === 'proof_submitted' && (o.paymentStatus === 'Payment Proof Submitted' || o.status === 'Payment Proof Submitted')) ||
+      (paymentFilter === 'needs_review' && (o.paymentStatus === 'Payment Proof Submitted' || o.status === 'Payment Proof Submitted' || o.paymentStatus === 'Advance Payment Under Review' || o.status === 'Advance Payment Under Review' || (hasProof && o.paymentStatus !== 'Payment Verified'))) ||
+      (paymentFilter === 'advance_under_review' && (o.paymentStatus === 'Advance Payment Under Review' || o.status === 'Advance Payment Under Review' || (o.isCodAdvanceRequired && o.paymentStatus !== 'Payment Verified' && hasProof))) ||
+      (paymentFilter === 'proof_submitted' && (o.paymentStatus === 'Payment Proof Submitted' || o.status === 'Payment Proof Submitted' || hasProof)) ||
       (paymentFilter === 'verified' && (o.paymentStatus === 'Payment Verified' || o.status === 'Payment Verified' || o.codAdvanceVerified === true)) ||
       (paymentFilter === 'rejected' && (o.paymentStatus === 'Payment Rejected' || o.status === 'Payment Rejected')) ||
       (paymentFilter === 'cod' && (o.paymentStatus === 'Cash on Delivery' || o.paymentMethodName?.toLowerCase().includes('cash'))) ||
@@ -713,7 +714,8 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
           </span>
         );
       }
-      if (order.paymentStatus === 'Advance Payment Under Review' || order.status === 'Advance Payment Under Review' || order.paymentProofUrl) {
+      const hasAdvanceProof = Boolean(order.paymentProofUrl || (order as any).payment_proof_url);
+      if (order.paymentStatus === 'Advance Payment Under Review' || order.status === 'Advance Payment Under Review' || hasAdvanceProof) {
         return (
           <span className="px-2.5 py-1 rounded-full bg-amber-950/90 border border-amber-500/50 text-amber-300 text-xs font-bold flex items-center gap-1.5 animate-pulse">
             <Clock className="w-3.5 h-3.5 text-amber-400" />
@@ -739,7 +741,8 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
         </span>
       );
     }
-    if (order.paymentProofUrl || order.paymentStatus === 'Payment Proof Submitted' || order.status === 'Payment Proof Submitted') {
+    const hasOrderProof = Boolean(order.paymentProofUrl || (order as any).payment_proof_url);
+    if (hasOrderProof || order.paymentStatus === 'Payment Proof Submitted' || order.status === 'Payment Proof Submitted') {
       return (
         <span className="px-2.5 py-1 rounded-full bg-amber-950/90 border border-amber-500/50 text-amber-300 text-xs font-bold flex items-center gap-1.5 animate-pulse">
           <Clock className="w-3.5 h-3.5 text-amber-400" />

@@ -166,6 +166,18 @@ CREATE TABLE IF NOT EXISTS orders (
   total_amount NUMERIC NOT NULL,
   status TEXT DEFAULT 'Order Received',
   payment_method TEXT DEFAULT 'Cash on Delivery',
+  payment_status TEXT DEFAULT 'Cash on Delivery',
+  payment_proof_url TEXT,
+  payment_proof_file_name TEXT,
+  payment_proof_uploaded_at TIMESTAMPTZ,
+  transaction_reference TEXT,
+  payment_notes TEXT,
+  payment_type TEXT,
+  is_advance_payment BOOLEAN DEFAULT false,
+  advance_percentage NUMERIC DEFAULT 0,
+  advance_amount_required NUMERIC DEFAULT 0,
+  advance_paid_amount NUMERIC DEFAULT 0,
+  remaining_cod_amount NUMERIC DEFAULT 0,
   notes TEXT,
   status_history JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -496,6 +508,17 @@ ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS grand_total NUMERIC DEFAUL
 ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Order Received';
 ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'Cash on Delivery';
 ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'Cash on Delivery';
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS payment_proof_url TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS payment_proof_file_name TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS payment_proof_uploaded_at TIMESTAMPTZ;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS transaction_reference TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS payment_notes TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS payment_type TEXT;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS is_advance_payment BOOLEAN DEFAULT false;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS advance_percentage NUMERIC DEFAULT 0;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS advance_amount_required NUMERIC DEFAULT 0;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS advance_paid_amount NUMERIC DEFAULT 0;
+ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS remaining_cod_amount NUMERIC DEFAULT 0;
 ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS status_history JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
@@ -699,6 +722,12 @@ BEGIN
     status,
     payment_method,
     payment_status,
+    payment_proof_url,
+    payment_proof_file_name,
+    payment_proof_uploaded_at,
+    transaction_reference,
+    payment_notes,
+    is_advance_payment,
     notes,
     status_history,
     created_at,
@@ -728,6 +757,12 @@ BEGIN
     'Order Received', -- Force secure initial order status
     COALESCE(order_data->>'payment_method', order_data->>'paymentMethodName', 'Cash on Delivery'),
     COALESCE(order_data->>'payment_status', order_data->>'paymentStatus', 'Cash on Delivery'),
+    COALESCE(order_data->>'payment_proof_url', order_data->>'paymentProofUrl'),
+    COALESCE(order_data->>'payment_proof_file_name', order_data->>'paymentProofFileName'),
+    COALESCE((order_data->>'payment_proof_uploaded_at')::TIMESTAMPTZ, (order_data->>'paymentProofUploadedAt')::TIMESTAMPTZ, NOW()),
+    COALESCE(order_data->>'transaction_reference', order_data->>'transactionReference'),
+    COALESCE(order_data->>'payment_notes', order_data->>'paymentNotes'),
+    COALESCE((order_data->>'is_advance_payment')::BOOLEAN, (order_data->>'isAdvancePayment')::BOOLEAN, false),
     COALESCE(order_data->>'notes', order_data->>'deliveryInstructions'),
     jsonb_build_array(jsonb_build_object(
       'status', 'Order Received',
@@ -822,6 +857,7 @@ NOTIFY pgrst, 'reload schema';
 INSERT INTO storage.buckets (id, name, public) VALUES ('product-media', 'product-media', true) ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public) VALUES ('brand-assets', 'brand-assets', true) ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public) VALUES ('hero-media', 'hero-media', true) ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public) VALUES ('payment-proofs', 'payment-proofs', true) ON CONFLICT (id) DO NOTHING;
 
 CREATE POLICY "Public Read Product Media" ON storage.objects FOR SELECT USING (bucket_id = 'product-media');
 CREATE POLICY "Admin Upload Product Media" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'product-media');
@@ -832,3 +868,8 @@ CREATE POLICY "Admin Upload Brand Assets" ON storage.objects FOR INSERT WITH CHE
 
 CREATE POLICY "Public Read Hero Media" ON storage.objects FOR SELECT USING (bucket_id = 'hero-media');
 CREATE POLICY "Admin Upload Hero Media" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'hero-media');
+
+CREATE POLICY "Public Read Payment Proofs" ON storage.objects FOR SELECT USING (bucket_id = 'payment-proofs');
+CREATE POLICY "Public Upload Payment Proofs" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'payment-proofs');
+CREATE POLICY "Public Update Payment Proofs" ON storage.objects FOR UPDATE USING (bucket_id = 'payment-proofs');
+CREATE POLICY "Public Delete Payment Proofs" ON storage.objects FOR DELETE USING (bucket_id = 'payment-proofs');
