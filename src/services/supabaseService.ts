@@ -1828,10 +1828,25 @@ export async function deleteOrderFromSupabase(orderId: string): Promise<{ succes
 }
 
 export async function fetchPaymentMethodsFromSupabase(): Promise<PaymentMethodConfig[] | null> {
+  // 1. Direct Supabase Query (source of truth from site_settings.checkout_settings)
   const methods = await fetchSiteSettingFromSupabase<PaymentMethodConfig[]>('zst_payment_methods_v1');
   if (Array.isArray(methods) && methods.length > 0) {
     return methods;
   }
+
+  // 2. Server API fallback
+  try {
+    const res = await fetch('/api/payment-methods', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json().catch(() => null);
+      if (data && data.success && Array.isArray(data.data) && data.data.length > 0) {
+        return data.data;
+      }
+    }
+  } catch (apiErr) {
+    // Non-critical fallback
+  }
+
   return null;
 }
 
@@ -2016,6 +2031,23 @@ export async function fetchSiteSettingFromSupabase<T>(key: string): Promise<T | 
         }
       }
 
+      // 1b-2. Payment Methods are stored inside checkout_settings.payment_methods (id = 'config')
+      if (k.includes('payment')) {
+        const { data: chkData, error: chkErr } = await supabase
+          .from('site_settings')
+          .select('checkout_settings')
+          .eq('id', 'config')
+          .maybeSingle();
+
+        if (!chkErr && chkData?.checkout_settings) {
+          const pm = chkData.checkout_settings.payment_methods || chkData.checkout_settings.paymentMethods;
+          if (pm && Array.isArray(pm) && pm.length > 0) {
+            console.log(`[Supabase Direct SDK] Loaded ${pm.length} payment methods from site_settings.checkout_settings`);
+            return pm as T;
+          }
+        }
+      }
+
       // 1c. Smart Tools & Fitting Builder are stored inside planner_config (id = 'config')
       if (k.includes('smart_tools') || k.includes('smart-tools') || k.includes('smarttools')) {
         const { data: planData, error: planErr } = await supabase
@@ -2181,6 +2213,29 @@ export async function saveSiteSettingToSupabase(key: string, value: any): Promis
     // 2c. Standard columns
     const col = getSiteSettingColumnName(key);
     if (col) {
+      if (col === 'checkout_settings') {
+        const { data: cur } = await supabase.from('site_settings').select('checkout_settings').eq('id', 'config').maybeSingle();
+        const curCheckout = cur?.checkout_settings || {};
+        const mergedCheckout = {
+          ...curCheckout,
+          ...value,
+          payment_methods: value?.payment_methods || curCheckout.payment_methods || curCheckout.paymentMethods,
+          paymentMethods: value?.paymentMethods || curCheckout.paymentMethods || curCheckout.payment_methods,
+          coupons: value?.coupons || curCheckout.coupons,
+          promo_codes: value?.promo_codes || curCheckout.promo_codes,
+        };
+        const { error: updateErr } = await supabase.from('site_settings').update({
+          checkout_settings: mergedCheckout,
+          updated_at: new Date().toISOString()
+        }).eq('id', 'config');
+
+        if (!updateErr) {
+          console.log(`[Supabase Direct SDK] Updated site_settings column "${col}" (preserved payment methods & coupons)`);
+          return { success: true };
+        }
+        return { success: false, error: formatSupabaseError(updateErr.message) };
+      }
+
       const { error: updateErr } = await supabase.from('site_settings').update({
         [col]: value,
         updated_at: new Date().toISOString()

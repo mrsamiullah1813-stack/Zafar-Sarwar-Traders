@@ -23,8 +23,8 @@ import {
   Sliders
 } from 'lucide-react';
 import { PaymentMethodConfig, PaymentMethodType, CheckoutSettings } from '../types';
-import { defaultPaymentMethods, loadPaymentMethods, savePaymentMethods, loadCheckoutSettings, saveCheckoutSettings } from '../utils/storage';
-import { uploadMediaToSupabase } from '../services/supabaseService';
+import { defaultPaymentMethods, loadPaymentMethods, savePaymentMethods, loadCheckoutSettings, saveCheckoutSettings, safeSetLocalStorage, STORAGE_KEYS } from '../utils/storage';
+import { uploadMediaToSupabase, fetchPaymentMethodsFromSupabase } from '../services/supabaseService';
 
 interface AdminPaymentMethodsManagerProps {
   onSaveNotice?: (message: string) => void;
@@ -44,6 +44,21 @@ export const AdminPaymentMethodsManager: React.FC<AdminPaymentMethodsManagerProp
     const loaded = loadPaymentMethods();
     setMethods(loaded);
     setCheckoutSettings(loadCheckoutSettings());
+
+    // Fetch the true production database state on mount so the admin always sees and edits what is in the database
+    let isMounted = true;
+    fetchPaymentMethodsFromSupabase().then(dbMethods => {
+      if (isMounted && dbMethods && Array.isArray(dbMethods) && dbMethods.length > 0) {
+        setMethods(dbMethods);
+        safeSetLocalStorage(STORAGE_KEYS.PAYMENT_METHODS, dbMethods);
+      }
+    }).catch(err => {
+      console.warn('Admin load payment methods from Supabase notice:', err);
+    });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleToggleEnable = async (id: string) => {

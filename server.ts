@@ -2721,13 +2721,15 @@ async function startServer() {
         return res.json({ success: true });
       }
 
-      // 2f. Checkout Settings -> merge and preserve coupons
+      // 2f. Checkout Settings -> merge and preserve coupons & payment methods
       if (k.includes("checkout")) {
         const { data: cur } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
         const curCheckout = (cur && cur.checkout_settings) || {};
         const updatedCheckout = {
           ...curCheckout,
           ...value,
+          payment_methods: value?.payment_methods || curCheckout.payment_methods || curCheckout.paymentMethods,
+          paymentMethods: value?.paymentMethods || curCheckout.paymentMethods || curCheckout.payment_methods,
           coupons: value?.coupons || curCheckout.coupons,
           promo_codes: value?.promo_codes || curCheckout.promo_codes
         };
@@ -4219,11 +4221,27 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
   app.get("/api/payment-methods", async (req, res) => {
     try {
       if (dbClient) {
-        const { data } = await dbClient.from("site_settings").select("value").eq("key", "zst_payment_methods_v1").maybeSingle();
-        if (data && data.value && Array.isArray(data.value)) {
-          return res.json({ success: true, data: data.value });
+        // 1. Check checkout_settings column in site_settings (id = 'config')
+        const { data: chkData } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
+        const pm = chkData?.checkout_settings?.payment_methods || chkData?.checkout_settings?.paymentMethods;
+        if (pm && Array.isArray(pm) && pm.length > 0) {
+          return res.json({ success: true, data: pm });
         }
+
+        // 2. Fallback check key-value row if present
+        try {
+          const { data } = await dbClient.from("site_settings").select("value").eq("key", "zst_payment_methods_v1").maybeSingle();
+          if (data && data.value && Array.isArray(data.value)) {
+            return res.json({ success: true, data: data.value });
+          }
+        } catch {}
       }
+
+      // 3. Fallback to in-memory/disk store
+      if (cmsDataStore && cmsDataStore["zst_payment_methods_v1"] && Array.isArray(cmsDataStore["zst_payment_methods_v1"])) {
+        return res.json({ success: true, data: cmsDataStore["zst_payment_methods_v1"] });
+      }
+
       return res.json({ success: true, data: null });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
@@ -4237,12 +4255,21 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
         return res.status(400).json({ success: false, error: "Methods array is required" });
       }
 
+      cmsDataStore["zst_payment_methods_v1"] = methods;
+      await persistDataStoreToDisk();
+
       if (dbClient) {
-        await dbClient.from("site_settings").upsert({
-          key: "zst_payment_methods_v1",
-          value: methods,
+        const { data: cur } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
+        const curCheckout = (cur && cur.checkout_settings) || {};
+        const updatedCheckout = {
+          ...curCheckout,
+          payment_methods: methods,
+          paymentMethods: methods
+        };
+        await dbClient.from("site_settings").update({
+          checkout_settings: updatedCheckout,
           updated_at: new Date().toISOString()
-        }, { onConflict: "key" });
+        }).eq("id", "config");
       }
       return res.json({ success: true });
     } catch (err: any) {

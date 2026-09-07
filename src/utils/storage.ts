@@ -41,7 +41,7 @@ import {
   deleteAiKnowledgeFromSupabase
 } from '../services/supabaseService';
 
-const STORAGE_KEYS = {
+export const STORAGE_KEYS = {
   CONFIG: 'zst_business_config_v1',
   PRODUCTS: 'zst_products_v1',
   CATEGORIES: 'zst_categories_v1',
@@ -1807,7 +1807,8 @@ export const syncWithServerCMS = async (callbacks: {
       aiResult,
       smartToolsResult,
       couponsResult,
-      howToOrderResult
+      howToOrderResult,
+      paymentMethodsResult
     ] = await Promise.allSettled([
       fetchOrdersFromSupabase(callbacks.customerId),
       fetchDeliveryCitiesFromSupabase(),
@@ -1824,7 +1825,8 @@ export const syncWithServerCMS = async (callbacks: {
       fetchAiAssistantConfigFromSupabase(),
       fetchSiteSettingFromSupabase<SmartToolsSettings>(STORAGE_KEYS.SMART_TOOLS),
       fetchSiteSettingFromSupabase<Coupon[]>(STORAGE_KEYS.COUPONS),
-      fetchHowToOrderConfigFromSupabase()
+      fetchHowToOrderConfigFromSupabase(),
+      fetchPaymentMethodsFromSupabase()
     ]);
 
     // Orders
@@ -1925,12 +1927,19 @@ export const syncWithServerCMS = async (callbacks: {
       if (callbacks.setThemeSettings) callbacks.setThemeSettings(fallbackTheme);
     }
 
-    // Checkout & Coupons
+    // Checkout & Coupons & Payment Methods
     if (checkoutResult.status === 'fulfilled' && checkoutResult.value && typeof checkoutResult.value === 'object' && Object.keys(checkoutResult.value).length > 0) {
       if (callbacks.setCheckoutSettings) callbacks.setCheckoutSettings(checkoutResult.value);
       safeSetLocalStorage(STORAGE_KEYS.CHECKOUT_SETTINGS, checkoutResult.value);
       if (Array.isArray((checkoutResult.value as any).coupons) && (checkoutResult.value as any).coupons.length > 0) {
         safeSetLocalStorage(STORAGE_KEYS.COUPONS, (checkoutResult.value as any).coupons);
+      }
+      const pms = (checkoutResult.value as any).payment_methods || (checkoutResult.value as any).paymentMethods;
+      if (Array.isArray(pms) && pms.length > 0) {
+        safeSetLocalStorage(STORAGE_KEYS.PAYMENT_METHODS, pms);
+        try {
+          window.dispatchEvent(new CustomEvent('zst_payment_methods_updated', { detail: pms }));
+        } catch {}
       }
     } else {
       const fallbackCheckout = loadCheckoutSettings();
@@ -2023,6 +2032,15 @@ export const syncWithServerCMS = async (callbacks: {
     // How To Order Guide
     if (howToOrderResult.status === 'fulfilled' && howToOrderResult.value && Array.isArray(howToOrderResult.value.steps) && howToOrderResult.value.steps.length > 0) {
       safeSetLocalStorage(STORAGE_KEYS.HOW_TO_ORDER_GUIDE, howToOrderResult.value);
+    }
+
+    // Payment Methods
+    if (paymentMethodsResult.status === 'fulfilled' && Array.isArray(paymentMethodsResult.value) && paymentMethodsResult.value.length > 0) {
+      safeSetLocalStorage(STORAGE_KEYS.PAYMENT_METHODS, paymentMethodsResult.value);
+      try {
+        window.dispatchEvent(new CustomEvent('zst_payment_methods_updated', { detail: paymentMethodsResult.value }));
+      } catch {}
+      console.log(`[Sync] Payment methods synced from Supabase: ${paymentMethodsResult.value.length}`);
     }
 
     console.log('✅ [Database & Backend Sync] Fast parallel synchronization complete!');

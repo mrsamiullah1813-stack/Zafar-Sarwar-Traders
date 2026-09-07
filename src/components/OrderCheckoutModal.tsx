@@ -11,7 +11,7 @@ import {
   DeliverySettings, AppliedCouponState, PaymentMethodConfig, OrderStatus, PaymentStatus,
   HowToOrderConfig
 } from '../types';
-import { loadDeliverySettings, generateNextOrderId, loadPaymentMethods, loadHowToOrderConfig, openWhatsAppLink } from '../utils/storage';
+import { loadDeliverySettings, generateNextOrderId, loadPaymentMethods, loadHowToOrderConfig, openWhatsAppLink, safeSetLocalStorage, STORAGE_KEYS } from '../utils/storage';
 import { getOrGenerateCustomerId } from '../utils/customerStorage';
 import { getProductPricingDetails, getVariantPricingDetails, getActiveProductPrice } from '../utils/pricingUtils';
 import { fetchPaymentMethodsFromSupabase, uploadMediaToSupabase, uploadPaymentProof, fetchHowToOrderConfigFromSupabase, fetchDeliveryCitiesFromSupabase } from '../services/supabaseService';
@@ -161,7 +161,8 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
       // 2. Background sync from Supabase
       try {
         const methods = await fetchPaymentMethodsFromSupabase();
-        if (isMounted && methods && Array.isArray(methods)) {
+        if (isMounted && methods && Array.isArray(methods) && methods.length > 0) {
+          safeSetLocalStorage(STORAGE_KEYS.PAYMENT_METHODS, methods);
           const enabled = methods.filter(m => m.isEnabled);
           if (enabled.length > 0) {
             setPaymentMethods(enabled);
