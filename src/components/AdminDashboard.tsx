@@ -79,7 +79,7 @@ import { speakAdminVoice } from '../utils/adminVoice';
 import { PatternLock } from './PatternLock';
 import { getPatternLockStatus, savePatternLock, togglePatternLock } from '../services/patternLockService';
 import { Product, ProductCategory, ProductVideo, BusinessConfig, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, ThemeSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig } from '../types';
-import { getAdminPin, setAdminPin, loadPlannerConfig, savePlannerConfig, loadBuildMaterialEstimatorConfig, saveBuildMaterialEstimatorConfig, loadAiAssistantConfig, saveAiAssistantConfig, loadThemeSettings, saveThemeSettings, loadHeroSettings, saveHeroSettings, loadSmartToolsSettings, saveSmartToolsSettings, loadFittingBuilderConfig, saveFittingBuilderConfig, deleteProductFromStorage, saveStoredProducts, saveStoredProductSingle, deleteCategoryFromStorage, saveStoredCategories, saveStoredCategorySingle, deleteBrandFromStorage, saveStoredBrands, saveStoredBrandSingle } from '../utils/storage';
+import { getAdminPin, setAdminPin, loadPlannerConfig, savePlannerConfig, loadBuildMaterialEstimatorConfig, saveBuildMaterialEstimatorConfig, loadAiAssistantConfig, saveAiAssistantConfig, loadThemeSettings, saveThemeSettings, loadHeroSettings, saveHeroSettings, loadSmartToolsSettings, saveSmartToolsSettings, loadFittingBuilderConfig, saveFittingBuilderConfig, loadAnnouncementSettings, saveAnnouncementSettings, deleteProductFromStorage, saveStoredProducts, saveStoredProductSingle, deleteCategoryFromStorage, saveStoredCategories, saveStoredCategorySingle, deleteBrandFromStorage, saveStoredBrands, saveStoredBrandSingle } from '../utils/storage';
 
 interface AdminDashboardProps {
   products: Product[];
@@ -1373,6 +1373,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* TAB: ANNOUNCEMENT BAR MANAGER */}
           {activeTab === 'announcements' && (
             <AdminAnnouncementManager
+              settings={loadAnnouncementSettings()}
+              onSaveSettings={(newSettings) => {
+                saveAnnouncementSettings(newSettings);
+              }}
               onShowToast={showToast}
             />
           )}

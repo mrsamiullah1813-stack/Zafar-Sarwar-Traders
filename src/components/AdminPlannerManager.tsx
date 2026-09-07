@@ -45,7 +45,10 @@ export const AdminPlannerManager: React.FC<AdminPlannerManagerProps> = ({
     setSaveErrorMsg(null);
 
     try {
-      const res = await onSaveConfig(toSave);
+      let res: any;
+      if (typeof onSaveConfig === 'function') {
+        res = await onSaveConfig(toSave);
+      }
       if (res && res.success === false) {
         setSaveErrorMsg(res.error || 'Failed to save configuration to database');
       } else {

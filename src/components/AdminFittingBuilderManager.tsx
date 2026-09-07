@@ -36,7 +36,7 @@ import { defaultFittingBuilderConfig } from '../data/defaultFittingBuilderData';
 interface AdminFittingBuilderManagerProps {
   config?: FittingBuilderConfig;
   products?: Product[];
-  onSaveConfig: (updated: FittingBuilderConfig) => void;
+  onSaveConfig?: (updated: FittingBuilderConfig) => void;
 }
 
 export const AdminFittingBuilderManager: React.FC<AdminFittingBuilderManagerProps> = ({
@@ -44,6 +44,12 @@ export const AdminFittingBuilderManager: React.FC<AdminFittingBuilderManagerProp
   products = [],
   onSaveConfig
 }) => {
+  const safeSaveConfig = (updated: FittingBuilderConfig) => {
+    if (typeof onSaveConfig === 'function') {
+      onSaveConfig(updated);
+    }
+  };
+
   const [currentConfig, setCurrentConfig] = useState<FittingBuilderConfig>(() => ({
     ...defaultFittingBuilderConfig,
     ...config
@@ -71,7 +77,7 @@ export const AdminFittingBuilderManager: React.FC<AdminFittingBuilderManagerProp
 
   // Save changes handler
   const handleSaveAll = () => {
-    onSaveConfig(currentConfig);
+    safeSaveConfig(currentConfig);
     setSuccessMsg('Smart Construction & Fitting Builder settings saved permanently in Supabase!');
     setTimeout(() => setSuccessMsg(null), 4000);
   };
@@ -148,7 +154,7 @@ export const AdminFittingBuilderManager: React.FC<AdminFittingBuilderManagerProp
     setCurrentConfig(updatedConfig);
     setIsItemModalOpen(false);
     setEditingItem(null);
-    onSaveConfig(updatedConfig);
+    safeSaveConfig(updatedConfig);
   };
 
   const handleDeleteItem = (itemId: string) => {
@@ -158,7 +164,7 @@ export const AdminFittingBuilderManager: React.FC<AdminFittingBuilderManagerProp
         items: currentConfig.items.filter(i => i.id !== itemId)
       };
       setCurrentConfig(updatedConfig);
-      onSaveConfig(updatedConfig);
+      safeSaveConfig(updatedConfig);
     }
   };
 
@@ -171,7 +177,7 @@ export const AdminFittingBuilderManager: React.FC<AdminFittingBuilderManagerProp
       })
     };
     setCurrentConfig(updatedConfig);
-    onSaveConfig(updatedConfig);
+    safeSaveConfig(updatedConfig);
   };
 
   // Quick Price updater handler
@@ -238,7 +244,7 @@ export const AdminFittingBuilderManager: React.FC<AdminFittingBuilderManagerProp
     setCurrentConfig(updatedConfig);
     setIsCategoryModalOpen(false);
     setEditingCategory(null);
-    onSaveConfig(updatedConfig);
+    safeSaveConfig(updatedConfig);
   };
 
   const handleDeleteCategory = (catId: string) => {
@@ -248,7 +254,7 @@ export const AdminFittingBuilderManager: React.FC<AdminFittingBuilderManagerProp
         categories: currentConfig.categories.filter(c => c.id !== catId)
       };
       setCurrentConfig(updatedConfig);
-      onSaveConfig(updatedConfig);
+      safeSaveConfig(updatedConfig);
     }
   };
 
@@ -291,7 +297,7 @@ export const AdminFittingBuilderManager: React.FC<AdminFittingBuilderManagerProp
     setCurrentConfig(updatedConfig);
     setIsPackageTypeModalOpen(false);
     setEditingPackageType(null);
-    onSaveConfig(updatedConfig);
+    safeSaveConfig(updatedConfig);
   };
 
   // Filter items in admin view

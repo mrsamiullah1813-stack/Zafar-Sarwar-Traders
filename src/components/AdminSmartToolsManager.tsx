@@ -62,7 +62,10 @@ export const AdminSmartToolsManager: React.FC<AdminSmartToolsManagerProps> = ({
     setSaveSuccess(false);
 
     try {
-      const res = await onSaveSettings(formData);
+      let res: any;
+      if (typeof onSaveSettings === 'function') {
+        res = await onSaveSettings(formData);
+      }
       if (res && res.success === false) {
         setErrorMessage(res.error || 'Failed to save Smart Tools configuration to database.');
       } else {

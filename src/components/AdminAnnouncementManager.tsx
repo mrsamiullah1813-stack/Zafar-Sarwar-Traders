@@ -77,7 +77,9 @@ export const AdminAnnouncementManager: React.FC<AdminAnnouncementManagerProps> =
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveSettings(formState);
+    if (typeof onSaveSettings === 'function') {
+      onSaveSettings(formState);
+    }
     saveAnnouncementSettings(formState);
     showToast('Announcement Bar Settings saved & updated live across the website!');
   };
@@ -85,7 +87,9 @@ export const AdminAnnouncementManager: React.FC<AdminAnnouncementManagerProps> =
   const handleReset = () => {
     if (confirm('Reset Announcement Bar to factory default messages?')) {
       setFormState(defaultAnnouncementSettings);
-      onSaveSettings(defaultAnnouncementSettings);
+      if (typeof onSaveSettings === 'function') {
+        onSaveSettings(defaultAnnouncementSettings);
+      }
       saveAnnouncementSettings(defaultAnnouncementSettings);
       showToast('Reset to default announcements.');
     }

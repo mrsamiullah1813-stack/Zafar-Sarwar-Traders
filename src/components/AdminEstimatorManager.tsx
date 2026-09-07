@@ -75,7 +75,10 @@ export const AdminEstimatorManager: React.FC<AdminEstimatorManagerProps> = ({
     setErrorMessage(null);
 
     try {
-      const res = await onSaveConfig(formState);
+      let res: any;
+      if (typeof onSaveConfig === 'function') {
+        res = await onSaveConfig(formState);
+      }
       if (res && res.success === false) {
         setErrorMessage(res.error || 'Failed to persist settings to Supabase.');
       } else {
