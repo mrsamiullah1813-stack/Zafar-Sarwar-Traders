@@ -419,6 +419,29 @@ html[data-theme="premium-blue"] body {
   animation: successTextAppear 0.55s ease-out 0.4s both;
 }
 
+/* -------------------------------------------------------------
+   MOBILE HEADER ACTION ICONS HORIZONTAL SCROLL
+   ------------------------------------------------------------- */
+@media (max-width: 768px) {
+  .mobile-header-actions-container {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .mobile-header-actions-container::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-header-actions-container > * {
+    flex-shrink: 0;
+  }
+}
+
+
 
 
 

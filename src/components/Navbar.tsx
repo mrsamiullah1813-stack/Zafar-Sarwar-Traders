@@ -232,7 +232,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between gap-4">
         
         {/* Left: Brand Emblem & Mobile Brand Name */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <a
             href="#hero"
             className="flex items-center gap-3 group"
@@ -267,7 +267,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Right: Search, Theme, Wishlist, Compare, Cart, WhatsApp Order */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="mobile-header-actions-container flex items-center gap-2 sm:gap-3">
           
           {/* Search Trigger */}
           <button
