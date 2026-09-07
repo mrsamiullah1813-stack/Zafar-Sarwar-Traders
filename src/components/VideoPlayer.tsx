@@ -60,6 +60,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, className = '' 
 
   if (isYouTube) {
     const embedUrl = getYouTubeEmbedUrl(url);
+    if (!embedUrl) return null;
     return (
       <div className={`relative w-full aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-slate-800 ${className}`}>
         <iframe
@@ -75,6 +76,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, className = '' 
 
   if (isVimeo) {
     const embedUrl = getVimeoEmbedUrl(url);
+    if (!embedUrl) return null;
     return (
       <div className={`relative w-full aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-slate-800 ${className}`}>
         <iframe
@@ -89,6 +91,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, className = '' 
   }
 
   if (isDirectVideo) {
+    if (!url) return null;
     return (
       <div className={`relative w-full aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-slate-800 ${className}`}>
         <video
@@ -113,6 +116,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, className = '' 
       />
     );
   }
+
+  if (!url) return null;
 
   return (
     <div className={`relative w-full aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-slate-800 ${className}`}>

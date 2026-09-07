@@ -400,7 +400,7 @@ export const VisualShadeSheetPicker: React.FC<VisualShadeSheetPickerProps> = ({
                 }}
               >
                 <img
-                  src={sheetUrl}
+                  src={sheetUrl || undefined}
                   alt="Manufacturer Paint Shade Sheet"
                   referrerPolicy="no-referrer"
                   className="max-w-full block select-none pointer-events-none"

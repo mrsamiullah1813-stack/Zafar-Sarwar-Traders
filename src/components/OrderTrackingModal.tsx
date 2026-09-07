@@ -4,7 +4,7 @@ import {
   AlertCircle, Calendar, MapPin, Phone, User, ShoppingBag, X, 
   ChevronRight, FileText, Lock, RefreshCw, MessageSquare, ExternalLink 
 } from 'lucide-react';
-import { CustomerOrder, OrderStatus } from '../types';
+import { CustomerOrder, OrderStatus, PaymentStatus } from '../types';
 import { loadStoredOrders, saveStoredOrders, openWhatsAppLink } from '../utils/storage';
 import { fetchOrdersFromSupabase, fetchSingleOrderFromSupabase, isSupabaseConfigured } from '../services/supabaseService';
 
@@ -46,8 +46,17 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
   useEffect(() => {
     const handleStatusEvent = (event: any) => {
       const updatedOrder = event?.detail?.order as CustomerOrder | undefined;
+      const orderId = event?.detail?.orderId as string | undefined;
+      const status = event?.detail?.status as OrderStatus | undefined;
+      const paymentStatus = event?.detail?.paymentStatus as PaymentStatus | undefined;
+
       if (updatedOrder && searchedOrder && (updatedOrder.id === searchedOrder.id || updatedOrder.orderNumber === searchedOrder.orderNumber)) {
         setSearchedOrder(prev => prev ? { ...prev, ...updatedOrder } : updatedOrder);
+      } else if (orderId && searchedOrder && (searchedOrder.id === orderId || searchedOrder.orderNumber === orderId)) {
+        setSearchedOrder(prev => prev ? {
+          ...prev,
+          ...(status ? { status: status || prev.status, paymentStatus: paymentStatus || prev.paymentStatus } : {})
+        } : null);
       }
     };
 

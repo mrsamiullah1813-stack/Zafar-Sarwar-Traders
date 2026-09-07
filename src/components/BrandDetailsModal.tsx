@@ -62,7 +62,7 @@ export const BrandDetailsModal: React.FC<BrandDetailsModalProps> = ({
           <div className="absolute bottom-4 left-6 sm:left-8 flex items-end gap-4">
             <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-slate-950 border-2 border-blue-500/50 p-2 shadow-2xl shrink-0 flex items-center justify-center overflow-hidden">
               <img
-                src={brand.logo}
+                src={brand.logo || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=200&q=80'}
                 alt={brand.name}
                 referrerPolicy="no-referrer"
                 className="w-full h-full object-cover rounded-xl"
@@ -119,7 +119,7 @@ export const BrandDetailsModal: React.FC<BrandDetailsModalProps> = ({
                   >
                     <div className="relative h-32 w-full rounded-xl overflow-hidden bg-slate-950 mb-2">
                       <img
-                        src={prod.image}
+                        src={prod.image || prod.images?.[0] || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=400&q=80'}
                         alt={prod.name}
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"

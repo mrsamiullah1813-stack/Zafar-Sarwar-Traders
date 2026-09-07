@@ -531,7 +531,7 @@ export const AdminDesignerManager: React.FC<AdminDesignerManagerProps> = ({
 
                   {assignedProduct && (
                     <div className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-                      <img src={assignedProduct.image} alt="" className="w-10 h-10 rounded-lg object-cover" />
+                      <img src={assignedProduct.image || assignedProduct.images?.[0] || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=200&q=80'} alt="" className="w-10 h-10 rounded-lg object-cover" />
                       <div>
                         <span className="font-bold text-white text-xs block">{assignedProduct.name}</span>
                         <span className="text-[10px] text-amber-400 font-mono">{assignedProduct.price || 'Catalog Item'}</span>
@@ -633,7 +633,7 @@ export const AdminDesignerManager: React.FC<AdminDesignerManagerProps> = ({
                 return (
                   <div key={p.id} className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
-                      <img src={p.image} alt="" className="w-12 h-12 rounded-xl object-cover shrink-0" />
+                      <img src={p.image || p.images?.[0] || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=200&q=80'} alt="" className="w-12 h-12 rounded-xl object-cover shrink-0" />
                       <div>
                         <h4 className="font-bold text-white text-xs line-clamp-1">{p.name}</h4>
                         <span className="text-[10px] text-slate-400 font-mono block">{p.category}</span>

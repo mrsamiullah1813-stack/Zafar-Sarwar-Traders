@@ -1331,7 +1331,8 @@ export const savePaymentMethods = async (methods: PaymentMethodConfig[]): Promis
 
     const res = await savePaymentMethodsToSupabase(methods);
     if (res && res.success === false) {
-      console.warn('Supabase savePaymentMethods notice:', res.error);
+      console.warn('Supabase savePaymentMethods warning:', res.error);
+      return { success: false, error: res.error || 'Failed to save payment methods to database' };
     }
     return { success: true };
   } catch (e: any) {

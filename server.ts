@@ -1989,14 +1989,23 @@ async function startServer() {
       const { id } = req.params;
       const { status, note } = req.body;
 
-      // Update CMS data store
+      if (!id || !status) {
+        return res.status(400).json({ success: false, error: "Order ID and new status are required." });
+      }
+
+      // 1. Update CMS data store (both zst_orders and zst_orders_v1)
       try {
         const currentOrders = Array.isArray(cmsDataStore["zst_orders"]) ? [...cmsDataStore["zst_orders"]] : [];
-        const idx = currentOrders.findIndex((o: any) => o.id === id);
+        const idx = currentOrders.findIndex((o: any) => 
+          o && (
+            String(o.id || "").toLowerCase() === String(id).toLowerCase() || 
+            String(o.orderNumber || o.order_number || "").toLowerCase() === String(id).toLowerCase()
+          )
+        );
         if (idx >= 0) {
           const existing = currentOrders[idx];
           const hist = Array.isArray(existing.statusHistory || existing.status_history) ? [...(existing.statusHistory || existing.status_history)] : [];
-          hist.push({ status, timestamp: new Date().toISOString(), note });
+          hist.push({ status, timestamp: new Date().toISOString(), note: note || `Status updated to ${status}` });
           currentOrders[idx] = {
             ...existing,
             status,
@@ -2013,22 +2022,37 @@ async function startServer() {
         console.warn("[Orders Status] CMS store update warning:", cmsErr);
       }
 
-      broadcastOrderEvent("order_status_updated", { orderId: id, status, note, timestamp: Date.now() });
-
+      // 2. Update Supabase Database
       if (dbClient) {
-        const { data: existing } = await dbClient.from("orders").select("status_history").eq("id", id).maybeSingle();
+        const filterStr = `id.eq.${id},order_number.eq.${id}`;
+        const { data: existing } = await dbClient.from("orders").select("status_history, status").or(filterStr).maybeSingle();
         const history = existing && Array.isArray(existing.status_history) ? existing.status_history : [];
-        const updatedHistory = [...history, { status, timestamp: new Date().toISOString(), note }];
+        const updatedHistory = [...history, { status, timestamp: new Date().toISOString(), note: note || `Status updated to ${status}` }];
 
-        const { error } = await dbClient
-          .from("orders")
-          .update({ status, status_history: updatedHistory, updated_at: new Date().toISOString() })
-          .eq("id", id);
-        if (error) return res.status(500).json({ success: false, error: error.message });
+        // Attempt update with both 'status' and 'order_status' columns for schema compatibility
+        let updatePayload: Record<string, any> = {
+          status,
+          order_status: status,
+          status_history: updatedHistory,
+          updated_at: new Date().toISOString()
+        };
+
+        const { error: primaryErr } = await dbClient.from("orders").update(updatePayload).or(filterStr);
+        if (primaryErr) {
+          // If order_status column doesn't exist in Supabase table schema, retry without it
+          const fallbackPayload = { status, status_history: updatedHistory, updated_at: new Date().toISOString() };
+          const { error: secondaryErr } = await dbClient.from("orders").update(fallbackPayload).or(filterStr);
+          if (secondaryErr) {
+            console.error("[Orders Status Update Error]", secondaryErr);
+            return res.status(500).json({ success: false, error: secondaryErr.message });
+          }
+        }
       }
 
-      return res.json({ success: true });
+      broadcastOrderEvent("order_status_updated", { orderId: id, status, note, timestamp: Date.now() });
+      return res.json({ success: true, message: `Order #${id} status successfully updated to "${status}" in Supabase!` });
     } catch (err: any) {
+      console.error("[Orders Status Exception]", err);
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
   });
@@ -2039,10 +2063,15 @@ async function startServer() {
       const { paymentStatus, orderStatus, note, rejectionReason, verifiedBy } = req.body;
       const effectiveStatus = orderStatus || (paymentStatus === 'Payment Verified' ? 'Order Confirmed' : (paymentStatus === 'Payment Rejected' ? 'Payment Rejected' : undefined));
 
-      // Update CMS data store
+      // 1. Update CMS data store
       try {
         const currentOrders = Array.isArray(cmsDataStore["zst_orders"]) ? [...cmsDataStore["zst_orders"]] : [];
-        const idx = currentOrders.findIndex((o: any) => o.id === id);
+        const idx = currentOrders.findIndex((o: any) => 
+          o && (
+            String(o.id || "").toLowerCase() === String(id).toLowerCase() || 
+            String(o.orderNumber || o.order_number || "").toLowerCase() === String(id).toLowerCase()
+          )
+        );
         if (idx >= 0) {
           const existing = currentOrders[idx];
           const finalStatus = effectiveStatus || existing.status || 'Order Received';
@@ -2070,14 +2099,17 @@ async function startServer() {
             updated_at: new Date().toISOString()
           };
           cmsDataStore["zst_orders"] = currentOrders;
+          cmsDataStore["zst_orders_v1"] = currentOrders;
           persistDataStoreToDisk().catch(() => {});
         }
       } catch (cmsErr) {
         console.warn("[Payment Status] CMS store update warning:", cmsErr);
       }
 
+      // 2. Update Supabase Database
       if (dbClient) {
-        const { data: existing } = await dbClient.from("orders").select("status, status_history, payment_notes").eq("id", id).maybeSingle();
+        const filterStr = `id.eq.${id},order_number.eq.${id}`;
+        const { data: existing } = await dbClient.from("orders").select("status, status_history, payment_notes").or(filterStr).maybeSingle();
         const history = existing && Array.isArray(existing.status_history) ? existing.status_history : [];
         const finalStatus = effectiveStatus || existing?.status || 'Order Received';
         const updatedHistory = [...history, { 
@@ -2089,33 +2121,42 @@ async function startServer() {
 
         const updatePayload: Record<string, any> = {
           status: finalStatus,
+          order_status: finalStatus,
+          payment_status: paymentStatus,
           status_history: updatedHistory,
           updated_at: new Date().toISOString()
         };
-
-        try {
-          updatePayload.payment_status = paymentStatus;
-          if (note) updatePayload.payment_notes = note;
-          if (rejectionReason) updatePayload.payment_rejection_reason = rejectionReason;
-          if (paymentStatus === 'Payment Verified') {
-            updatePayload.payment_verified_at = new Date().toISOString();
-            updatePayload.payment_verified_by = verifiedBy || 'Admin';
-          }
-          const { error: fullUpdateErr } = await dbClient.from("orders").update(updatePayload).eq("id", id);
-          if (!fullUpdateErr) return res.json({ success: true });
-        } catch (colErr) {
-          // Table may not have all payment columns yet; fallback to status + status_history
+        if (note) updatePayload.payment_notes = note;
+        if (rejectionReason) updatePayload.payment_rejection_reason = rejectionReason;
+        if (paymentStatus === 'Payment Verified') {
+          updatePayload.payment_verified_at = new Date().toISOString();
+          updatePayload.payment_verified_by = verifiedBy || 'Admin';
         }
 
-        const { error: fallbackErr } = await dbClient
-          .from("orders")
-          .update({ status: finalStatus, status_history: updatedHistory, updated_at: new Date().toISOString() })
-          .eq("id", id);
-        if (fallbackErr) return res.status(500).json({ success: false, error: fallbackErr.message });
+        try {
+          const { error: fullUpdateErr } = await dbClient.from("orders").update(updatePayload).or(filterStr);
+          if (fullUpdateErr) {
+            // Fallback without payment-specific columns if schema doesn't have them
+            const fallbackPayload = { 
+              status: finalStatus, 
+              status_history: updatedHistory, 
+              updated_at: new Date().toISOString() 
+            };
+            const { error: fallbackErr } = await dbClient.from("orders").update(fallbackPayload).or(filterStr);
+            if (fallbackErr) {
+              console.error("[Payment Status Fallback Update Error]", fallbackErr);
+              return res.status(500).json({ success: false, error: fallbackErr.message });
+            }
+          }
+        } catch (colErr: any) {
+          console.warn("[Payment Status Sync Warning]", colErr);
+        }
       }
 
-      return res.json({ success: true });
+      broadcastOrderEvent("order_status_updated", { orderId: id, status: effectiveStatus, paymentStatus, note, timestamp: Date.now() });
+      return res.json({ success: true, message: `Payment status updated to "${paymentStatus}" in Supabase!` });
     } catch (err: any) {
+      console.error("[Payment Status Exception]", err);
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
   });
@@ -2124,7 +2165,26 @@ async function startServer() {
     try {
       const { id } = req.params;
       const currentOrders = Array.isArray(cmsDataStore["zst_orders"]) ? [...cmsDataStore["zst_orders"]] : [];
-      const targetOrder = currentOrders.find((o: any) => o && (o.id === id || o.orderNumber === id));
+      let targetOrder = currentOrders.find((o: any) => o && (o.id === id || o.orderNumber === id));
+
+      // If not in cmsDataStore, query Supabase DB for target order details
+      if (!targetOrder && dbClient) {
+        try {
+          const { data: dbOrd } = await dbClient.from("orders").select("*").eq("id", id).maybeSingle();
+          if (dbOrd) targetOrder = dbOrd;
+        } catch {}
+      }
+
+      // STRICT RULE: Only Delivered or Storage-Optimized orders can be deleted
+      const currentStatus = targetOrder?.status || targetOrder?.order_status;
+      const isDelivered = currentStatus === 'Delivered' || Boolean(targetOrder?.isStorageOptimized);
+
+      if (!isDelivered) {
+        return res.status(400).json({
+          success: false,
+          error: "Only orders marked as Delivered can be permanently deleted. Please verify or update the order status to Delivered first before deleting to clear database storage."
+        });
+      }
 
       // Build lightweight placeholder to protect customer order history
       let placeholder: any = null;
@@ -2163,6 +2223,40 @@ async function startServer() {
         };
       }
 
+      // Cleanup payment proof files from storage bucket & local disk
+      const proofUrl = targetOrder?.paymentProofUrl || targetOrder?.payment_proof_url;
+      if (proofUrl && typeof proofUrl === 'string') {
+        try {
+          if (proofUrl.includes('/uploads/')) {
+            const fname = proofUrl.split('/uploads/').pop()?.split('?')[0];
+            if (fname) {
+              const localFile = path.join(process.cwd(), 'public', 'uploads', fname);
+              try {
+                await fs.access(localFile);
+                await fs.unlink(localFile);
+                console.log(`[Storage Cleanup] Deleted local proof file: ${localFile}`);
+              } catch (fsErr) {}
+            }
+          }
+          if (dbClient && proofUrl.includes('/storage/v1/object/public/')) {
+            const urlParts = proofUrl.split('/storage/v1/object/public/')[1];
+            if (urlParts) {
+              const firstSlash = urlParts.indexOf('/');
+              if (firstSlash > 0) {
+                const bucket = urlParts.substring(0, firstSlash);
+                const filePath = urlParts.substring(firstSlash + 1).split('?')[0];
+                if (bucket && filePath) {
+                  await dbClient.storage.from(bucket).remove([filePath]).catch(() => {});
+                  console.log(`[Storage Cleanup] Removed proof file from Supabase storage bucket "${bucket}": ${filePath}`);
+                }
+              }
+            }
+          }
+        } catch (stErr) {
+          console.warn("[Storage Cleanup] Payment proof file deletion notice:", stErr);
+        }
+      }
+
       // 1. Remove heavy order from CMS data store
       try {
         cmsDataStore["zst_orders"] = currentOrders.filter((o: any) => o.id !== id && o.orderNumber !== id);
@@ -2191,10 +2285,10 @@ async function startServer() {
         }
       }
 
-      console.log(`[Storage Optimization] Order ${id} heavy data purged from database. Lightweight placeholder retained.`);
+      console.log(`[Storage Optimization] Delivered Order ${id} purged from database. Payment proof files cleaned.`);
       return res.json({ 
         success: true, 
-        message: "Heavy order data removed from backend database to free capacity. Lightweight placeholder retained.",
+        message: "Delivered order and associated payment files permanently removed from database.",
         placeholder 
       });
     } catch (err: any) {
@@ -2355,6 +2449,7 @@ async function startServer() {
       const result = await robustUpsert("delivery_cities", payloads, { onConflict: "id" });
       if (!result.success) {
         console.warn("[Server DB] Delivery cities upsert warning:", result.error);
+        return res.status(500).json({ success: false, error: result.error || "Failed to update delivery cities in database" });
       }
       return res.json({ success: true });
     } catch (err: any) {
@@ -2393,6 +2488,12 @@ async function startServer() {
           const pTypo = themeData?.theme_settings?.pricingTypography || themeData?.theme_settings?.pricing_typography;
           if (pTypo) {
             return res.json({ success: true, data: pTypo });
+          }
+        } else if (k.includes("payment")) {
+          const { data: chkData } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
+          const pm = chkData?.checkout_settings?.payment_methods || chkData?.checkout_settings?.paymentMethods;
+          if (pm && Array.isArray(pm)) {
+            return res.json({ success: true, data: pm });
           }
         } else if (k.includes("coupon") || k.includes("promo")) {
           const { data: chkData } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
@@ -2498,6 +2599,28 @@ async function startServer() {
           return res.status(500).json({ success: false, error: updateErr.message });
         }
         console.log("[Supabase Proxy] Successfully saved pricing typography to site_settings.theme_settings");
+        return res.json({ success: true });
+      }
+
+      // 2a-2. Payment Methods -> stored in checkout_settings.payment_methods
+      if (k.includes("payment")) {
+        const { data: cur } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
+        const curCheckout = (cur && cur.checkout_settings) || {};
+        const updatedCheckout = {
+          ...curCheckout,
+          payment_methods: value,
+          paymentMethods: value
+        };
+        const { error: updateErr } = await dbClient.from("site_settings").update({
+          checkout_settings: updatedCheckout,
+          updated_at: new Date().toISOString()
+        }).eq("id", "config");
+
+        if (updateErr) {
+          console.error("[Supabase Proxy] Failed to update payment methods in checkout_settings:", updateErr.message);
+          return res.status(500).json({ success: false, error: updateErr.message });
+        }
+        console.log("[Supabase Proxy] Successfully saved payment methods to site_settings.checkout_settings");
         return res.json({ success: true });
       }
 

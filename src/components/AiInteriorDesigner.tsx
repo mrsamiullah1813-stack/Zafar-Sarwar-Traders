@@ -668,7 +668,7 @@ export const AiInteriorDesigner: React.FC<AiInteriorDesignerProps> = ({
                     key={p.id}
                     className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 shrink-0 text-xs"
                   >
-                    <img src={p.image} alt={p.name} className="w-8 h-8 rounded-lg object-cover" />
+                    <img src={p.image || p.images?.[0] || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=200&q=80'} alt={p.name} className="w-8 h-8 rounded-lg object-cover" />
                     <div>
                       <span className="font-bold text-white block line-clamp-1 max-w-[120px]">{p.name}</span>
                       <span className="text-[10px] text-amber-400 font-mono">{p.chosenColor}</span>
@@ -722,7 +722,7 @@ export const AiInteriorDesigner: React.FC<AiInteriorDesignerProps> = ({
                       {/* Product Image */}
                       <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-slate-950 border border-slate-800/80 group-hover:border-amber-500/30 transition-all">
                         <img
-                          src={p.image}
+                          src={p.image || p.images?.[0] || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=400&q=80'}
                           alt={p.name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         />
@@ -849,7 +849,7 @@ export const AiInteriorDesigner: React.FC<AiInteriorDesignerProps> = ({
                       onClick={() => replacingCategory && handleReplaceProduct(replacingCategory, p)}
                       className="p-4 rounded-2xl bg-slate-950 border border-slate-800/80 hover:border-amber-400 transition-all flex items-start gap-4 cursor-pointer group"
                     >
-                      <img src={p.image} alt={p.name} className="w-16 h-16 rounded-xl object-cover shrink-0" />
+                      <img src={p.image || p.images?.[0] || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=200&q=80'} alt={p.name} className="w-16 h-16 rounded-xl object-cover shrink-0" />
                       <div className="space-y-1">
                         <h4 className="font-bold text-white text-sm group-hover:text-amber-300 transition-colors line-clamp-1">{p.name}</h4>
                         <p className="text-xs text-slate-400 line-clamp-1">{p.description}</p>

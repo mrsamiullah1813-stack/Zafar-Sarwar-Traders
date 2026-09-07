@@ -466,7 +466,7 @@ export const AdminHeroManager: React.FC<AdminHeroManagerProps> = ({
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="text-xs font-mono font-bold text-slate-400">0{idx + 1}</span>
                       <img
-                        src={settings.productImageOverrides?.[prod.id] || prod.image || prod.images?.[0]}
+                        src={settings.productImageOverrides?.[prod.id] || prod.image || prod.images?.[0] || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=200&q=80'}
                         alt={prod.name}
                         className="w-10 h-10 object-contain bg-white dark:bg-slate-900 rounded-lg p-1 border border-slate-200 dark:border-slate-700 shrink-0"
                       />
@@ -558,7 +558,7 @@ export const AdminHeroManager: React.FC<AdminHeroManagerProps> = ({
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <img 
-                          src={customImage || prod.image || prod.images?.[0]} 
+                          src={customImage || prod.image || prod.images?.[0] || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=200&q=80'} 
                           alt={prod.name} 
                           className="w-12 h-12 object-contain bg-slate-100 dark:bg-slate-800 rounded-xl p-1"
                         />

@@ -1531,7 +1531,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <td className="py-3 px-4">
                                 <div className="flex items-center gap-3">
                                   <img
-                                    src={prod.image}
+                                    src={prod.image || prod.images?.[0] || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=200&q=80'}
                                     alt={prod.name}
                                     className="w-12 h-12 rounded-lg object-cover bg-slate-950 border border-slate-800 shrink-0"
                                   />
@@ -1810,7 +1810,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div>
                         <div className="relative h-36 w-full rounded-xl overflow-hidden bg-slate-950 mb-3 border border-slate-800">
                           <img 
-                            src={cat.image} 
+                            src={cat.image || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=400&q=80'} 
                             alt={cat.name} 
                             className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${
                               !isActive ? 'opacity-40 grayscale' : ''
@@ -2026,7 +2026,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <div className="flex items-start gap-3">
                           <div className="w-14 h-14 rounded-xl bg-slate-950 border border-slate-800 p-1.5 shrink-0 flex items-center justify-center overflow-hidden">
                             <img
-                              src={brand.logo}
+                              src={brand.logo || 'https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&w=200&q=80'}
                               alt={brand.name}
                               referrerPolicy="no-referrer"
                               className="w-full h-full object-cover rounded-lg"

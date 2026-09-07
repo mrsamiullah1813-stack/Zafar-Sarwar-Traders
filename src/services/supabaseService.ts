@@ -1662,6 +1662,7 @@ export async function trackCustomerOrderInSupabase(orderId: string, phoneNumber:
 export async function updateOrderStatusInSupabase(orderId: string, status: CustomerOrder['status'], note?: string): Promise<{ success: boolean; error?: string }> {
   await initializeSupabaseRuntime();
 
+  // 1. Primary: Secure Server API Route
   try {
     const headers = await getAuthHeaders();
     const res = await fetch(`/api/db/orders/${encodeURIComponent(orderId)}/status`, {
@@ -1670,17 +1671,54 @@ export async function updateOrderStatusInSupabase(orderId: string, status: Custo
       body: JSON.stringify({ status, note })
     });
     const result = await res.json().catch(() => null);
-    if (!res.ok || (result && result.success === false)) {
-      const errMsg = result?.error || (res.statusText ? `${res.statusText} (${res.status})` : `Server returned error ${res.status}`);
-      const err = formatSupabaseError(errMsg);
-      console.error(`[Supabase API] Order status update failed: ${err}`);
-      return { success: false, error: err };
+    if (res.ok && result && result.success !== false) {
+      console.log(`[Supabase API] Updated order ${orderId} to status: ${status}`);
+      return { success: true };
     }
-    console.log(`[Supabase API] Updated order ${orderId} to status: ${status}`);
-    return { success: true };
   } catch (err: any) {
-    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
+    console.warn(`[Supabase API] Proxy status update notice for order ${orderId}:`, err?.message || err);
   }
+
+  // 2. Secondary: Direct Supabase SDK Fallback (for static/standalone client deployments)
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const filterStr = `id.eq.${orderId},order_number.eq.${orderId}`;
+      const { data: existing } = await supabase.from('orders').select('status_history').or(filterStr).maybeSingle();
+      const history = existing && Array.isArray(existing.status_history) ? existing.status_history : [];
+      const updatedHistory = [...history, { status, timestamp: new Date().toISOString(), note: note || `Status updated to ${status}` }];
+
+      const { error: directErr } = await supabase.from('orders').update({
+        status,
+        order_status: status,
+        status_history: updatedHistory,
+        updated_at: new Date().toISOString()
+      }).or(filterStr);
+
+      if (!directErr) {
+        console.log(`[Supabase SDK] Direct status update SUCCESS for order ${orderId} -> ${status}`);
+        return { success: true };
+      }
+
+      // Retry without order_status column if column error
+      const { error: secondaryDirectErr } = await supabase.from('orders').update({
+        status,
+        status_history: updatedHistory,
+        updated_at: new Date().toISOString()
+      }).or(filterStr);
+
+      if (!secondaryDirectErr) {
+        console.log(`[Supabase SDK] Direct status fallback update SUCCESS for order ${orderId} -> ${status}`);
+        return { success: true };
+      }
+
+      return { success: false, error: formatSupabaseError(directErr?.message || secondaryDirectErr?.message) };
+    } catch (sdkErr: any) {
+      console.error(`[Supabase SDK Exception] Status update failed:`, sdkErr);
+      return { success: false, error: formatSupabaseError(sdkErr?.message || String(sdkErr)) };
+    }
+  }
+
+  return { success: false, error: 'Could not connect to database endpoint.' };
 }
 
 export async function updateOrderPaymentStatusInSupabase(
@@ -1693,6 +1731,7 @@ export async function updateOrderPaymentStatusInSupabase(
 ): Promise<{ success: boolean; error?: string }> {
   await initializeSupabaseRuntime();
 
+  // 1. Primary: Secure Server API Route
   try {
     const headers = await getAuthHeaders();
     const res = await fetch(`/api/db/orders/${encodeURIComponent(orderId)}/payment-status`, {
@@ -1701,21 +1740,71 @@ export async function updateOrderPaymentStatusInSupabase(
       body: JSON.stringify({ paymentStatus, orderStatus, note, rejectionReason, verifiedBy })
     });
     const result = await res.json().catch(() => null);
-    if (!res.ok || (result && result.success === false)) {
-      // Fallback to updating order status endpoint
-      if (orderStatus) {
-        return updateOrderStatusInSupabase(orderId, orderStatus, note);
-      }
-      return { success: false, error: result?.error || 'Failed to update payment status' };
+    if (res.ok && result && result.success !== false) {
+      console.log(`[Supabase API] Updated order ${orderId} payment status: ${paymentStatus}`);
+      return { success: true };
     }
-    console.log(`[Supabase API] Updated order ${orderId} payment status: ${paymentStatus}`);
-    return { success: true };
   } catch (err: any) {
-    if (orderStatus) {
-      return updateOrderStatusInSupabase(orderId, orderStatus, note);
-    }
-    return { success: false, error: formatSupabaseError(err?.message || String(err)) };
+    console.warn(`[Supabase API] Proxy payment status update notice for order ${orderId}:`, err?.message || err);
   }
+
+  // 2. Secondary: Direct Supabase SDK Fallback
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const filterStr = `id.eq.${orderId},order_number.eq.${orderId}`;
+      const { data: existing } = await supabase.from('orders').select('status_history, status').or(filterStr).maybeSingle();
+      const history = existing && Array.isArray(existing.status_history) ? existing.status_history : [];
+      const finalStatus = orderStatus || (paymentStatus === 'Payment Verified' ? 'Order Confirmed' : (paymentStatus === 'Payment Rejected' ? 'Payment Rejected' : existing?.status || 'Order Received'));
+      const updatedHistory = [...history, { 
+        status: finalStatus, 
+        timestamp: new Date().toISOString(), 
+        note: note || `Payment status updated to ${paymentStatus}`,
+        updatedBy: verifiedBy || 'Admin'
+      }];
+
+      const payload: Record<string, any> = {
+        status: finalStatus,
+        order_status: finalStatus,
+        payment_status: paymentStatus,
+        status_history: updatedHistory,
+        updated_at: new Date().toISOString()
+      };
+      if (note) payload.payment_notes = note;
+      if (rejectionReason) payload.payment_rejection_reason = rejectionReason;
+      if (paymentStatus === 'Payment Verified') {
+        payload.payment_verified_at = new Date().toISOString();
+        payload.payment_verified_by = verifiedBy || 'Admin';
+      }
+
+      const { error: directErr } = await supabase.from('orders').update(payload).or(filterStr);
+      if (!directErr) {
+        console.log(`[Supabase SDK] Direct payment status update SUCCESS for order ${orderId}`);
+        return { success: true };
+      }
+
+      // Retry without payment-specific columns if table lacks them
+      const fallbackPayload = {
+        status: finalStatus,
+        status_history: updatedHistory,
+        updated_at: new Date().toISOString()
+      };
+      const { error: secondaryErr } = await supabase.from('orders').update(fallbackPayload).or(filterStr);
+      if (!secondaryErr) {
+        return { success: true };
+      }
+
+      return { success: false, error: formatSupabaseError(directErr?.message || secondaryErr?.message) };
+    } catch (sdkErr: any) {
+      return { success: false, error: formatSupabaseError(sdkErr?.message || String(sdkErr)) };
+    }
+  }
+
+  // Final fallback to updateOrderStatusInSupabase
+  if (orderStatus) {
+    return updateOrderStatusInSupabase(orderId, orderStatus, note);
+  }
+
+  return { success: false, error: 'Could not connect to database endpoint.' };
 }
 
 export async function deleteOrderFromSupabase(orderId: string): Promise<{ success: boolean; error?: string }> {
@@ -2063,6 +2152,27 @@ export async function saveSiteSettingToSupabase(key: string, value: any): Promis
 
       if (!updateErr) {
         console.log(`[Supabase Direct SDK] Persisted coupons to site_settings.checkout_settings`);
+        return { success: true };
+      }
+      return { success: false, error: formatSupabaseError(updateErr.message) };
+    }
+
+    // 2b-2. Payment Methods -> checkout_settings.payment_methods (id = 'config')
+    if (k.includes('payment')) {
+      const { data: cur } = await supabase.from('site_settings').select('checkout_settings').eq('id', 'config').maybeSingle();
+      const curCheckout = cur?.checkout_settings || {};
+      const updatedCheckout = {
+        ...curCheckout,
+        payment_methods: value,
+        paymentMethods: value
+      };
+      const { error: updateErr } = await supabase.from('site_settings').update({
+        checkout_settings: updatedCheckout,
+        updated_at: new Date().toISOString()
+      }).eq('id', 'config');
+
+      if (!updateErr) {
+        console.log(`[Supabase Direct SDK] Persisted payment methods to site_settings.checkout_settings`);
         return { success: true };
       }
       return { success: false, error: formatSupabaseError(updateErr.message) };

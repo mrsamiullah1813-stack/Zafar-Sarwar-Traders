@@ -247,7 +247,7 @@ export const MultiImageUploader: React.FC<MultiImageUploaderProps> = ({
               className="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800 group h-28 flex flex-col justify-between"
             >
               <img 
-                src={imgUrl} 
+                src={imgUrl || undefined} 
                 alt={`Uploaded ${idx + 1}`}
                 className="w-full h-full object-cover" 
               />

@@ -306,7 +306,9 @@ export const VideoUploader: React.FC<VideoUploaderProps> = ({ videos = [], onCha
               </div>
 
               <div className="rounded-xl overflow-hidden bg-black aspect-video max-h-48 border border-slate-800">
-                <video src={previewVideo.url} controls className="w-full h-full object-contain" />
+                {previewVideo.url ? (
+                  <video src={previewVideo.url} controls className="w-full h-full object-contain" />
+                ) : null}
               </div>
 
               <div className="flex items-center justify-between gap-3">
@@ -425,13 +427,26 @@ export const VideoUploader: React.FC<VideoUploaderProps> = ({ videos = [], onCha
                 {/* Direct Inline Video Preview */}
                 <div className="rounded-xl overflow-hidden bg-black aspect-video border border-slate-800/80">
                   {vid.type === 'mp4' || vid.url.startsWith('data:video') ? (
-                    <video src={vid.url} controls className="w-full h-full object-contain" />
+                    <video src={vid.url || undefined} controls className="w-full h-full object-contain" />
                   ) : vid.type === 'youtube' ? (
-                    <iframe
-                      src={vid.url.includes('embed') ? vid.url : `https://www.youtube.com/embed/${vid.url.split('v=')[1]?.split('&')[0] || ''}`}
-                      title={vid.title}
-                      className="w-full h-full"
-                    />
+                    (() => {
+                      const ytId = vid.url.includes('v=') ? vid.url.split('v=')[1]?.split('&')[0] : (vid.url.includes('youtu.be/') ? vid.url.split('youtu.be/')[1]?.split('?')[0] : null);
+                      const embedSrc = vid.url.includes('embed') ? vid.url : (ytId ? `https://www.youtube.com/embed/${ytId}` : null);
+                      if (!embedSrc) {
+                        return (
+                          <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs font-mono p-2 text-center">
+                            {vid.url}
+                          </div>
+                        );
+                      }
+                      return (
+                        <iframe
+                          src={embedSrc}
+                          title={vid.title}
+                          className="w-full h-full"
+                        />
+                      );
+                    })()
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs font-mono p-2 text-center">
                       {vid.url}

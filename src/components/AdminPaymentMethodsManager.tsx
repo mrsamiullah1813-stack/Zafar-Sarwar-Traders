@@ -467,7 +467,7 @@ export const AdminPaymentMethodsManager: React.FC<AdminPaymentMethodsManagerProp
                 {method.qrCodeUrl && (
                   <div className="flex items-center gap-2 text-xs text-stone-600 mb-3 bg-amber-50/60 p-2 rounded-lg border border-amber-200/60">
                     <img 
-                      src={method.qrCodeUrl} 
+                      src={method.qrCodeUrl || undefined} 
                       alt="Payment QR" 
                       className="w-8 h-8 rounded border border-stone-300 object-cover bg-white"
                       referrerPolicy="no-referrer"

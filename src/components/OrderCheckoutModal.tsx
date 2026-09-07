@@ -14,7 +14,7 @@ import {
 import { loadDeliverySettings, generateNextOrderId, loadPaymentMethods, loadHowToOrderConfig, openWhatsAppLink } from '../utils/storage';
 import { getOrGenerateCustomerId } from '../utils/customerStorage';
 import { getProductPricingDetails, getVariantPricingDetails, getActiveProductPrice } from '../utils/pricingUtils';
-import { fetchPaymentMethodsFromSupabase, uploadMediaToSupabase, uploadPaymentProof, fetchHowToOrderConfigFromSupabase } from '../services/supabaseService';
+import { fetchPaymentMethodsFromSupabase, uploadMediaToSupabase, uploadPaymentProof, fetchHowToOrderConfigFromSupabase, fetchDeliveryCitiesFromSupabase } from '../services/supabaseService';
 import { CouponPromoBox } from './CouponPromoBox';
 
 type CheckoutStep = 'cart' | 'customer' | 'address' | 'payment_method' | 'payment_instructions' | 'payment_proof' | 'confirmation';
@@ -41,10 +41,22 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
   const [currentStep, setCurrentStep] = useState<CheckoutStep>('cart');
   const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>(() => loadDeliverySettings());
 
-  // Listen to delivery settings updates
+  // Listen to delivery settings updates and sync from Supabase
   useEffect(() => {
     if (!isOpen) return;
     setDeliverySettings(loadDeliverySettings());
+
+    fetchDeliveryCitiesFromSupabase().then(cities => {
+      if (cities && Array.isArray(cities) && cities.length > 0) {
+        setDeliverySettings(prev => ({
+          ...prev,
+          cities
+        }));
+      }
+    }).catch(err => {
+      console.warn('Could not fetch delivery cities from Supabase:', err);
+    });
+
     const handleDeliveryUpdated = () => {
       setDeliverySettings(loadDeliverySettings());
     };
@@ -912,7 +924,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                     return (
                       <div key={idx} className="pt-2.5 first:pt-0 flex items-center gap-3">
                         <img
-                          src={p.images?.[0] || p.image}
+                          src={p.images?.[0] || p.image || undefined}
                           alt={p.name}
                           className="w-14 h-14 rounded-xl object-cover border border-slate-200 bg-white shrink-0"
                         />
@@ -1584,7 +1596,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                         <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <img
-                              src={activeAdvanceTransferMethod.qrCodeUrl}
+                              src={activeAdvanceTransferMethod.qrCodeUrl || undefined}
                               alt="Payment QR"
                               className="w-12 h-12 rounded-lg bg-white p-1 object-contain border border-slate-700 cursor-pointer hover:scale-105 transition-transform"
                               onClick={() => setZoomQrCode(true)}
@@ -1715,7 +1727,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                       <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <img
-                            src={activePaymentMethod.qrCodeUrl}
+                            src={activePaymentMethod.qrCodeUrl || undefined}
                             alt="Payment QR"
                             className="w-12 h-12 rounded-lg bg-white p-1 object-contain border border-slate-700 cursor-pointer hover:scale-105 transition-transform"
                             onClick={() => setZoomQrCode(true)}
@@ -1857,7 +1869,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                       /* Preview Box with remove and upload status */
                       <div className="relative rounded-2xl border-2 border-slate-200 bg-slate-50 p-3.5 flex items-center gap-4">
                         <img
-                          src={proofPreviewUrl}
+                          src={proofPreviewUrl || undefined}
                           alt="Payment Receipt Preview"
                           className="w-20 h-20 rounded-xl object-cover border border-slate-300 bg-white shadow-sm flex-shrink-0"
                         />
@@ -2339,7 +2351,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 inline-block">
               <img
-                src={activePaymentMethod.qrCodeUrl}
+                src={activePaymentMethod.qrCodeUrl || undefined}
                 alt="Enlarged Payment QR"
                 className="w-64 h-64 object-contain mx-auto"
               />

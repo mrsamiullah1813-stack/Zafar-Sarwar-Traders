@@ -338,7 +338,7 @@ export const AdminGalleryManager: React.FC<AdminGalleryManagerProps> = ({
                 {/* Image Section */}
                 <div className="relative h-52 bg-slate-950 overflow-hidden">
                   <img
-                    src={item.image}
+                    src={item.image || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80'}
                     alt={item.title}
                     onError={(e) => {
                       const target = e.currentTarget;
@@ -705,7 +705,7 @@ export const AdminGalleryManager: React.FC<AdminGalleryManagerProps> = ({
 
             {/* Thumbnail Preview */}
             <div className="rounded-xl overflow-hidden h-32 bg-slate-950 border border-slate-800">
-              <img src={itemToDelete.image} alt={itemToDelete.title} className="w-full h-full object-cover" />
+              <img src={itemToDelete.image || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=400&q=80'} alt={itemToDelete.title} className="w-full h-full object-cover" />
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2">
@@ -740,7 +740,7 @@ export const AdminGalleryManager: React.FC<AdminGalleryManagerProps> = ({
 
           <div className="max-w-4xl w-full max-h-[85vh] flex flex-col items-center">
             <img
-              src={previewItem.image}
+              src={previewItem.image || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1200&q=80'}
               alt={previewItem.title}
               className="max-h-[60vh] w-auto object-contain rounded-2xl border border-slate-800 shadow-2xl"
             />

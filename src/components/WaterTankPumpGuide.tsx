@@ -310,7 +310,7 @@ export const WaterTankPumpGuide: React.FC<WaterTankPumpGuideProps> = ({
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         {prod.image && (
-                          <img src={prod.image} alt={prod.name} className="w-8 h-8 rounded-lg object-cover bg-slate-950 shrink-0" />
+                          <img src={prod.image || undefined} alt={prod.name} className="w-8 h-8 rounded-lg object-cover bg-slate-950 shrink-0" />
                         )}
                         <div className="min-w-0">
                           <div className="font-bold text-white truncate text-xs">{prod.name}</div>

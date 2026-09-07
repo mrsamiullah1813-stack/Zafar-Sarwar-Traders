@@ -1008,7 +1008,7 @@ export const AdminPaintShadesManager: React.FC<AdminPaintShadesManagerProps> = (
                 <div className="relative inline-block" style={{ transform: `scale(${pickerZoom})`, transformOrigin: 'center center', transition: 'transform 0.15s ease-out' }}>
                   <img
                     ref={sheetImgRef}
-                    src={currentShadeSheet}
+                    src={currentShadeSheet || undefined}
                     alt="Manufacturer Shade Sheet"
                     crossOrigin="anonymous"
                     referrerPolicy="no-referrer"
@@ -1249,7 +1249,7 @@ export const AdminPaintShadesManager: React.FC<AdminPaintShadesManagerProps> = (
 
             <div className="p-4 overflow-auto flex-1 flex items-center justify-center bg-slate-950">
               <img
-                src={currentShadeSheet}
+                src={currentShadeSheet || undefined}
                 alt="Manufacturer Shade Sheet Reference"
                 referrerPolicy="no-referrer"
                 className="max-w-full max-h-[70vh] object-contain rounded-xl border border-slate-800 shadow-2xl"

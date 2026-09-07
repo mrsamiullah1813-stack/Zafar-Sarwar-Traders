@@ -36,7 +36,7 @@ import {
 import { CustomerOrder, CheckoutSettings, OrderStatus, OrderStatusHistoryItem, PaymentStatus } from '../types';
 import { loadStoredOrders, saveStoredOrders, loadCheckoutSettings, saveCheckoutSettings, updateOrderPaymentStatusInStorage, createLightweightOrderPlaceholder } from '../utils/storage';
 import { subscribeToRealtimeOrderEvents, playNewOrderAlertSound } from '../utils/orderNotificationUtils';
-import { fetchOrdersFromSupabase, updateOrderStatusInSupabase, deleteOrderFromSupabase, isSupabaseConfigured } from '../services/supabaseService';
+import { fetchOrdersFromSupabase, updateOrderStatusInSupabase, updateOrderPaymentStatusInSupabase, deleteOrderFromSupabase, isSupabaseConfigured } from '../services/supabaseService';
 import { supabase } from '../lib/supabase';
 import { AdminPaymentMethodsManager } from './AdminPaymentMethodsManager';
 import { AdminHowToOrderManager } from './AdminHowToOrderManager';
@@ -294,20 +294,34 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
   const uniqueCities = Array.from(new Set(orders.map(o => o.city).filter(Boolean)));
 
   const handleUpdateStatus = async (orderId: string, newStatus: string, note?: string) => {
+    if (!orderId || !newStatus) return;
+
     const isApproval = ['approved', 'confirmed', 'payment verified', 'verified'].includes(newStatus.toLowerCase());
 
+    // Execute real database update
+    let dbRes: { success: boolean; error?: string };
+    if (isApproval) {
+      dbRes = await updateOrderPaymentStatusInSupabase(orderId, 'Payment Verified', newStatus as any, note, undefined, 'Admin');
+    } else {
+      dbRes = await updateOrderStatusInSupabase(orderId, newStatus as any, note);
+    }
+
+    if (!dbRes.success) {
+      onShowToast(`❌ Database update failed: ${dbRes.error || 'Connection error'}`);
+      alert(`Could not update order in Supabase database: ${dbRes.error || 'Database error'}. Please try again.`);
+      return;
+    }
+
+    // Sync local storage as secondary backup
     if (isApproval) {
       await updateOrderPaymentStatusInStorage(orderId, 'Payment Verified', newStatus as any, note);
-    } else {
-      const res = await updateOrderStatusInSupabase(orderId, newStatus as any, note);
-      if (!res.success) {
-        console.warn('[Admin Orders] Status update notice from server/database:', res.error);
-      }
     }
 
     const nowStr = new Date().toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' });
+    let updatedItem: CustomerOrder | null = null;
+
     const updated: CustomerOrder[] = orders.map(o => {
-      if (o.id === orderId) {
+      if (o.id === orderId || o.orderNumber === orderId) {
         const existingHistory = o.statusHistory || [];
         const newHistoryItem: OrderStatusHistoryItem = {
           status: newStatus as OrderStatus,
@@ -315,7 +329,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
           note: note || `Status updated to ${newStatus} by Admin`,
           updatedBy: 'Admin'
         };
-        return {
+        const item: CustomerOrder = {
           ...o,
           status: newStatus as OrderStatus,
           paymentStatus: isApproval ? ('Payment Verified' as PaymentStatus) : o.paymentStatus,
@@ -323,19 +337,33 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
           paymentVerifiedBy: isApproval ? 'Admin' : o.paymentVerifiedBy,
           statusHistory: [...existingHistory, newHistoryItem]
         };
+        updatedItem = item;
+        return item;
       }
       return o;
     });
+
     setOrders(updated);
     saveStoredOrders(updated);
-    if (editingOrder && editingOrder.id === orderId) {
-      setEditingOrder(updated.find(o => o.id === orderId) || null);
+    if (editingOrder && (editingOrder.id === orderId || editingOrder.orderNumber === orderId)) {
+      setEditingOrder(updated.find(o => o.id === orderId || o.orderNumber === orderId) || null);
     }
-    onShowToast(`Order #${orderId.slice(-6)} status updated to "${newStatus}"${isApproval ? ' & Payment Verified' : ''}`);
+
+    // Broadcast live event across browser app
+    window.dispatchEvent(new CustomEvent('zst_order_status_updated', {
+      detail: {
+        orderId,
+        status: newStatus,
+        paymentStatus: isApproval ? 'Payment Verified' : undefined,
+        order: updatedItem
+      }
+    }));
+
+    onShowToast(`Order #${orderId.slice(-6)} status updated to "${newStatus}" in database!`);
   };
 
   const handleVerifyPayment = async (orderId: string, customNote?: string) => {
-    const targetOrder = orders.find(o => o.id === orderId);
+    const targetOrder = orders.find(o => o.id === orderId || o.orderNumber === orderId);
     const isCodAdvance = Boolean(targetOrder?.isCodAdvanceRequired);
     const advanceAmount = targetOrder?.codAdvanceAmountPaid || targetOrder?.codAdvanceAmountRequired || 0;
     const remainingBalance = targetOrder?.codRemainingBalance || 0;
@@ -347,10 +375,21 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
     const note = customNote || defaultNote;
     const nextOrderStatus: OrderStatus = isCodAdvance ? 'Confirmed' : 'Payment Verified';
 
+    // 1. Execute real database update first
+    const dbRes = await updateOrderPaymentStatusInSupabase(orderId, 'Payment Verified', nextOrderStatus, note, undefined, 'Admin');
+    if (!dbRes.success) {
+      onShowToast(`❌ Payment verification failed: ${dbRes.error || 'DB Error'}`);
+      alert(`Could not verify payment in Supabase database: ${dbRes.error || 'Database connection error'}. Please check your connection and try again.`);
+      return;
+    }
+
+    // 2. Sync local storage as secondary backup
     await updateOrderPaymentStatusInStorage(orderId, 'Payment Verified', nextOrderStatus, note);
     
+    // 3. Update React component state
+    let updatedItem: CustomerOrder | null = null;
     const updated = orders.map(o => {
-      if (o.id === orderId) {
+      if (o.id === orderId || o.orderNumber === orderId) {
         const history = Array.isArray(o.statusHistory) ? [...o.statusHistory] : [];
         history.push({
           status: nextOrderStatus,
@@ -358,7 +397,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
           note,
           updatedBy: 'Admin'
         });
-        return {
+        const item: CustomerOrder = {
           ...o,
           paymentStatus: 'Payment Verified' as PaymentStatus,
           status: nextOrderStatus,
@@ -368,30 +407,55 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
           paymentNotes: note,
           statusHistory: history
         };
+        updatedItem = item;
+        return item;
       }
       return o;
     });
 
     setOrders(updated);
-    if (editingOrder && editingOrder.id === orderId) {
-      setEditingOrder(updated.find(o => o.id === orderId) || null);
+    saveStoredOrders(updated);
+    if (editingOrder && (editingOrder.id === orderId || editingOrder.orderNumber === orderId)) {
+      setEditingOrder(updated.find(o => o.id === orderId || o.orderNumber === orderId) || null);
     }
-    if (viewingProofOrder && viewingProofOrder.id === orderId) {
-      setViewingProofOrder(updated.find(o => o.id === orderId) || null);
+    if (viewingProofOrder && (viewingProofOrder.id === orderId || viewingProofOrder.orderNumber === orderId)) {
+      setViewingProofOrder(updated.find(o => o.id === orderId || o.orderNumber === orderId) || null);
     }
-    onShowToast(`Payment verified for Order #${orderId.slice(-6)}! Status updated to ${nextOrderStatus}.`);
+
+    // Broadcast live event across browser app
+    window.dispatchEvent(new CustomEvent('zst_order_status_updated', {
+      detail: {
+        orderId,
+        status: nextOrderStatus,
+        paymentStatus: 'Payment Verified',
+        order: updatedItem
+      }
+    }));
+
+    onShowToast(`Payment verified for Order #${orderId.slice(-6)} in Supabase! Status updated to ${nextOrderStatus}.`);
   };
 
   const handleRejectPayment = async (orderId: string, reason: string) => {
-    const targetOrder = orders.find(o => o.id === orderId);
+    const targetOrder = orders.find(o => o.id === orderId || o.orderNumber === orderId);
     const isCodAdvance = Boolean(targetOrder?.isCodAdvanceRequired);
     const cleanReason = reason || 'Invalid or unreadable screenshot receipt';
     const note = `${isCodAdvance ? 'COD Advance' : 'Payment'} proof rejected by Admin: ${cleanReason}`;
     
+    // 1. Execute real database update first
+    const dbRes = await updateOrderPaymentStatusInSupabase(orderId, 'Payment Rejected', 'Payment Rejected', note, cleanReason, 'Admin');
+    if (!dbRes.success) {
+      onShowToast(`❌ Payment rejection failed: ${dbRes.error || 'DB Error'}`);
+      alert(`Could not reject payment in Supabase database: ${dbRes.error || 'Database connection error'}. Please try again.`);
+      return;
+    }
+
+    // 2. Sync local storage
     await updateOrderPaymentStatusInStorage(orderId, 'Payment Rejected', 'Payment Rejected', note, cleanReason);
 
+    // 3. Update React state
+    let updatedItem: CustomerOrder | null = null;
     const updated = orders.map(o => {
-      if (o.id === orderId) {
+      if (o.id === orderId || o.orderNumber === orderId) {
         const history = Array.isArray(o.statusHistory) ? [...o.statusHistory] : [];
         history.push({
           status: 'Payment Rejected',
@@ -399,7 +463,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
           note,
           updatedBy: 'Admin'
         });
-        return {
+        const item: CustomerOrder = {
           ...o,
           paymentStatus: 'Payment Rejected' as PaymentStatus,
           status: 'Payment Rejected' as OrderStatus,
@@ -407,20 +471,34 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
           paymentNotes: note,
           statusHistory: history
         };
+        updatedItem = item;
+        return item;
       }
       return o;
     });
 
     setOrders(updated);
-    if (editingOrder && editingOrder.id === orderId) {
-      setEditingOrder(updated.find(o => o.id === orderId) || null);
+    saveStoredOrders(updated);
+    if (editingOrder && (editingOrder.id === orderId || editingOrder.orderNumber === orderId)) {
+      setEditingOrder(updated.find(o => o.id === orderId || o.orderNumber === orderId) || null);
     }
-    if (viewingProofOrder && viewingProofOrder.id === orderId) {
-      setViewingProofOrder(updated.find(o => o.id === orderId) || null);
+    if (viewingProofOrder && (viewingProofOrder.id === orderId || viewingProofOrder.orderNumber === orderId)) {
+      setViewingProofOrder(updated.find(o => o.id === orderId || o.orderNumber === orderId) || null);
     }
+
+    // Broadcast live event across browser app
+    window.dispatchEvent(new CustomEvent('zst_order_status_updated', {
+      detail: {
+        orderId,
+        status: 'Payment Rejected',
+        paymentStatus: 'Payment Rejected',
+        order: updatedItem
+      }
+    }));
+
     setShowRejectInput(false);
     setRejectionReason('');
-    onShowToast(`Payment rejected for Order #${orderId.slice(-6)}.`);
+    onShowToast(`Payment rejected for Order #${orderId.slice(-6)} in Supabase database.`);
   };
 
   const handleSaveDeliveryAndDelay = async (
@@ -430,14 +508,15 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
     isDelayed: boolean, 
     delayReason: string
   ) => {
-    if (isSupabaseConfigured) {
+    if (isSupabaseConfigured && supabase) {
+      const filterStr = `id.eq.${orderId},order_number.eq.${orderId}`;
       const { error } = await supabase.from('orders').update({
         estimated_delivery_days: estDays || null,
         tracking_reference: trackingRef || null,
         is_delayed: isDelayed,
         delivery_delay_note: delayReason || null,
         updated_at: new Date().toISOString()
-      }).eq('id', orderId);
+      }).or(filterStr);
 
       if (error) {
         onShowToast(`Failed to save preferences in Supabase: ${error.message}`);
@@ -446,7 +525,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
     }
 
     const updated = orders.map(o => {
-      if (o.id === orderId) {
+      if (o.id === orderId || o.orderNumber === orderId) {
         return {
           ...o,
           estimatedDeliveryDays: estDays,
@@ -459,33 +538,30 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
     });
     setOrders(updated);
     saveStoredOrders(updated);
-    if (editingOrder && editingOrder.id === orderId) {
-      setEditingOrder(updated.find(o => o.id === orderId) || null);
+    if (editingOrder && (editingOrder.id === orderId || editingOrder.orderNumber === orderId)) {
+      setEditingOrder(updated.find(o => o.id === orderId || o.orderNumber === orderId) || null);
     }
     onShowToast(`Delivery & delay preferences saved for Order #${orderId.slice(-6)}`);
   };
 
   const handleDeleteOrder = async (orderId: string) => {
     const targetOrder = orders.find(o => o.id === orderId);
-    const isDelivered = targetOrder?.status === 'Delivered' || targetOrder?.isStorageOptimized;
+    const isDelivered = targetOrder?.status === 'Delivered' || Boolean(targetOrder?.isStorageOptimized);
 
-    const confirmMsg = isDelivered
-      ? `Free Up Database Storage for Order #${(targetOrder?.orderNumber || orderId).slice(-6)}?\n\nThis action will completely remove heavy order data and receipts from the backend database to save storage capacity.\n\nA lightweight "Delivered" receipt placeholder will be retained for the customer so their order history remains intact.`
-      : `Delete Order #${(targetOrder?.orderNumber || orderId).slice(-6)}?\n\nThis will remove heavy order data from the backend database to free storage capacity.`;
+    if (!isDelivered) {
+      alert(`⚠️ Deletion Restricted:\n\nOrder #${(targetOrder?.orderNumber || orderId).slice(-6)} is currently "${targetOrder?.status || 'Active'}".\n\nOnly orders marked as "Delivered" can be permanently deleted to free up database storage capacity.\n\nPlease verify or update the order status to "Delivered" first before deleting.`);
+      onShowToast('⚠️ Only Delivered orders can be deleted from database.');
+      return;
+    }
+
+    const confirmMsg = `Free Up Database Storage & Delete Delivered Order #${(targetOrder?.orderNumber || orderId).slice(-6)}?\n\nThis action will completely remove order details, item records, and uploaded payment receipt files from the backend database and storage.\n\nA lightweight "Delivered" receipt placeholder will be retained so the customer's order history remains intact.`;
 
     if (confirm(confirmMsg)) {
-      try {
-        if (isSupabaseConfigured) {
-          await deleteOrderFromSupabase(orderId);
-        } else {
-          const token = localStorage.getItem('zst_admin_token');
-          await fetch(`/api/db/orders/${encodeURIComponent(orderId)}`, {
-            method: 'DELETE',
-            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-          });
-        }
-      } catch (e) {
-        console.warn('Server storage optimization notice:', e);
+      const res = await deleteOrderFromSupabase(orderId);
+      if (!res.success) {
+        onShowToast(`❌ Deletion failed: ${res.error || 'Database error'}`);
+        alert(`Could not delete order: ${res.error || 'Failed to remove order from database.'}`);
+        return;
       }
 
       let updated: CustomerOrder[];
@@ -500,7 +576,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
       setOrders(updated);
       saveStoredOrders(updated);
       if (editingOrder?.id === orderId) setEditingOrder(null);
-      onShowToast(`Database storage capacity freed for Order #${(targetOrder?.orderNumber || orderId).slice(-6)}! Customer history retained.`);
+      onShowToast(`Delivered Order #${(targetOrder?.orderNumber || orderId).slice(-6)} and payment proof files deleted from database.`);
     }
   };
 
@@ -1740,7 +1816,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                     className="relative cursor-pointer group rounded-xl overflow-hidden border border-slate-800 bg-slate-950 flex justify-center items-center max-h-56"
                   >
                     <img 
-                      src={formatProofUrl(editingOrder.paymentProofUrl || (editingOrder as any).payment_proof_url)} 
+                      src={formatProofUrl(editingOrder.paymentProofUrl || (editingOrder as any).payment_proof_url) || undefined} 
                       alt="Payment proof receipt" 
                       className="max-h-56 w-auto object-contain rounded-xl transition-transform group-hover:scale-105"
                     />
@@ -1951,7 +2027,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                   {activeProof ? (
                     <div className="rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex justify-center items-center p-3">
                       <img 
-                        src={formatProofUrl(activeProof)} 
+                        src={formatProofUrl(activeProof) || undefined} 
                         alt="Customer Payment Receipt" 
                         className="max-h-[50vh] w-auto object-contain rounded-xl"
                       />
