@@ -1905,9 +1905,15 @@ export const syncWithServerCMS = async (callbacks: {
     if (announcementResult.status === 'fulfilled' && announcementResult.value && typeof announcementResult.value === 'object') {
       if (callbacks.setAnnouncementSettings) callbacks.setAnnouncementSettings(announcementResult.value);
       safeSetLocalStorage(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, announcementResult.value);
+      try {
+        window.dispatchEvent(new CustomEvent('zst_announcements_updated', { detail: announcementResult.value }));
+      } catch {}
     } else {
       const fallbackAnn = loadAnnouncementSettings();
       if (callbacks.setAnnouncementSettings) callbacks.setAnnouncementSettings(fallbackAnn);
+      try {
+        window.dispatchEvent(new CustomEvent('zst_announcements_updated', { detail: fallbackAnn }));
+      } catch {}
     }
 
     // Theme

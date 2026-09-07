@@ -21,7 +21,8 @@ import {
   Palette
 } from 'lucide-react';
 import { AnnouncementBar } from './AnnouncementBar';
-import { BusinessConfig, ProductCategory } from '../types';
+import { BusinessConfig, ProductCategory, AnnouncementBarSettings } from '../types';
+import { loadAnnouncementSettings } from '../utils/storage';
 
 interface NavbarProps {
   config: BusinessConfig;
@@ -71,6 +72,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
+  const [announcementSettings, setAnnouncementSettings] = useState<AnnouncementBarSettings>(() => loadAnnouncementSettings());
 
   useEffect(() => {
     const handleScroll = () => {
@@ -81,6 +83,19 @@ export const Navbar: React.FC<NavbarProps> = ({
     };
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    const handleAnnouncementsUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<AnnouncementBarSettings>;
+      if (customEvent.detail) {
+        setAnnouncementSettings(customEvent.detail);
+      } else {
+        setAnnouncementSettings(loadAnnouncementSettings());
+      }
+    };
+    window.addEventListener('zst_announcements_updated', handleAnnouncementsUpdated);
+    return () => window.removeEventListener('zst_announcements_updated', handleAnnouncementsUpdated);
   }, []);
 
   const targetWhatsAppNumber = (config?.whatsapp || config?.phone || '923108002863').replace(/[^0-9]/g, '');
@@ -121,7 +136,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </div>
 
       {/* ANNOUNCEMENT BAR */}
-      <AnnouncementBar />
+      <AnnouncementBar settings={announcementSettings} />
 
       {/* TOP UTILITY BAR */}
       <div className="bg-[#0b1324] text-slate-300 text-[11px] py-1.5 px-4 border-b border-slate-800/80">
