@@ -21,6 +21,9 @@ export const CinematicParticles: React.FC<CinematicParticlesProps> = ({
     if (!ctx) return;
 
     let animationFrameId: number;
+    let isVisible = true;
+    const isMobile = window.innerWidth < 768;
+    const effectiveDensity = isMobile ? Math.min(density, 16) : density;
     let width = (canvas.width = canvas.parentElement?.clientWidth || window.innerWidth);
     let height = (canvas.height = canvas.parentElement?.clientHeight || window.innerHeight);
 
@@ -30,10 +33,26 @@ export const CinematicParticles: React.FC<CinematicParticlesProps> = ({
       height = canvas.height = canvas.parentElement?.clientHeight || window.innerHeight;
     };
 
-    window.addEventListener('resize', handleResize);
+    window.addEventListener('resize', handleResize, { passive: true });
+
+    // Pause rendering when canvas is scrolled off-screen to save mobile CPU/GPU
+    let observer: IntersectionObserver | null = null;
+    if ('IntersectionObserver' in window) {
+      observer = new IntersectionObserver(
+        ([entry]) => {
+          isVisible = entry.isIntersecting;
+          if (isVisible) {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = requestAnimationFrame(render);
+          }
+        },
+        { threshold: 0.05 }
+      );
+      observer.observe(canvas);
+    }
 
     // Particle array setup
-    const particles = Array.from({ length: density }, () => ({
+    const particles = Array.from({ length: effectiveDensity }, () => ({
       x: Math.random() * width,
       y: Math.random() * height,
       size: Math.random() * 2 + 0.8,
@@ -45,6 +64,7 @@ export const CinematicParticles: React.FC<CinematicParticlesProps> = ({
     }));
 
     const render = () => {
+      if (!isVisible) return;
       ctx.clearRect(0, 0, width, height);
 
       particles.forEach((p) => {
@@ -62,14 +82,18 @@ export const CinematicParticles: React.FC<CinematicParticlesProps> = ({
 
         const alpha = Math.max(0.1, Math.min(0.7, p.opacity));
 
-        // Draw glowing particle
+        // Draw particle
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fillStyle = `hsla(${p.hue}, 90%, 65%, ${alpha})`;
-        ctx.shadowBlur = p.size * 4;
-        ctx.shadowColor = `hsla(${p.hue}, 90%, 60%, 0.8)`;
+        if (!isMobile) {
+          ctx.shadowBlur = p.size * 4;
+          ctx.shadowColor = `hsla(${p.hue}, 90%, 60%, 0.8)`;
+        }
         ctx.fill();
-        ctx.shadowBlur = 0; // Reset for performance
+        if (!isMobile) {
+          ctx.shadowBlur = 0; // Reset for performance
+        }
       });
 
       animationFrameId = requestAnimationFrame(render);
@@ -79,6 +103,7 @@ export const CinematicParticles: React.FC<CinematicParticlesProps> = ({
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      if (observer) observer.disconnect();
       cancelAnimationFrame(animationFrameId);
     };
   }, [density, speed]);

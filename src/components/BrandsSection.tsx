@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'motion/react';
 import { ShieldCheck, Award } from 'lucide-react';
 import { ProductBrand, Product } from '../types';
@@ -13,10 +13,23 @@ export const BrandsSection: React.FC<BrandsSectionProps> = ({
   brands,
   products
 }) => {
-  const safeBrands = Array.isArray(brands) ? brands : [];
-  const activeBrands = [...safeBrands]
-    .filter(b => b.isActive !== false)
-    .sort((a, b) => (a.displayOrder || 99) - (b.displayOrder || 99));
+  const activeBrands = useMemo(() => {
+    const safeBrands = Array.isArray(brands) ? brands : [];
+    return [...safeBrands]
+      .filter(b => b.isActive !== false)
+      .sort((a, b) => (a.displayOrder || 99) - (b.displayOrder || 99));
+  }, [brands]);
+
+  const brandCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const safeProducts = Array.isArray(products) ? products : [];
+    activeBrands.forEach(brand => {
+      counts[brand.id] = safeProducts.filter(
+        p => p && brand && (p.brandId === brand.id || (p.brand && brand.name && p.brand.toLowerCase() === brand.name.toLowerCase()))
+      ).length;
+    });
+    return counts;
+  }, [products, activeBrands]);
 
   if (activeBrands.length === 0) return null;
 
@@ -49,7 +62,7 @@ export const BrandsSection: React.FC<BrandsSectionProps> = ({
         <motion.div
           initial="hidden"
           whileInView="visible"
-          viewport={{ once: false, amount: 0.15 }}
+          viewport={{ once: true, amount: 0.1 }}
           variants={{
             hidden: { opacity: 0 },
             visible: {
@@ -60,9 +73,7 @@ export const BrandsSection: React.FC<BrandsSectionProps> = ({
           className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-6"
         >
           {activeBrands.map((brand) => {
-            const count = (products || []).filter(
-              p => p && brand && (p.brandId === brand.id || (p.brand && brand.name && p.brand.toLowerCase() === brand.name.toLowerCase()))
-            ).length;
+            const count = brandCounts[brand.id] || 0;
 
             return (
               <motion.div
@@ -80,6 +91,8 @@ export const BrandsSection: React.FC<BrandsSectionProps> = ({
                     <img
                       src={brand.logo || 'https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&w=300&q=80'}
                       alt={brand.name}
+                      loading="lazy"
+                      decoding="async"
                       referrerPolicy="no-referrer"
                       className="w-full h-full object-cover rounded-lg pointer-events-none"
                     />

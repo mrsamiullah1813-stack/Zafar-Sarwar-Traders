@@ -25,10 +25,9 @@ export const CinematicSection: React.FC<CinematicSectionProps> = ({
     switch (variant) {
       case 'blur':
         return {
-          hidden: { opacity: 0, filter: 'blur(14px)', y: 35, scale: 0.97 },
+          hidden: { opacity: 0, y: 28, scale: 0.98 },
           visible: {
             opacity: 1,
-            filter: 'blur(0px)',
             y: 0,
             scale: 1,
             transition: {
@@ -40,11 +39,11 @@ export const CinematicSection: React.FC<CinematicSectionProps> = ({
         };
       case 'scale':
         return {
-          hidden: { opacity: 0, scale: 0.92, filter: 'blur(8px)' },
+          hidden: { opacity: 0, scale: 0.94, y: 20 },
           visible: {
             opacity: 1,
             scale: 1,
-            filter: 'blur(0px)',
+            y: 0,
             transition: {
               duration,
               delay,
@@ -54,13 +53,13 @@ export const CinematicSection: React.FC<CinematicSectionProps> = ({
         };
       case 'clip':
         return {
-          hidden: { opacity: 0, clipPath: 'inset(8% 0% 8% 0% round 32px)', y: 20 },
+          hidden: { opacity: 0, clipPath: 'inset(6% 0% 6% 0% round 24px)', y: 20 },
           visible: {
             opacity: 1,
             clipPath: 'inset(0% 0% 0% 0% round 0px)',
             y: 0,
             transition: {
-              duration: duration * 1.1,
+              duration: duration * 1.05,
               delay,
               ease: [0.16, 1, 0.3, 1]
             }
@@ -69,11 +68,10 @@ export const CinematicSection: React.FC<CinematicSectionProps> = ({
       case 'fadeUp':
       default:
         return {
-          hidden: { opacity: 0, y: 40, filter: 'blur(6px)' },
+          hidden: { opacity: 0, y: 28 },
           visible: {
             opacity: 1,
             y: 0,
-            filter: 'blur(0px)',
             transition: {
               duration,
               delay,
@@ -89,9 +87,9 @@ export const CinematicSection: React.FC<CinematicSectionProps> = ({
       id={id}
       initial="hidden"
       whileInView="visible"
-      viewport={{ once: false, amount: 0.12 }}
+      viewport={{ once: true, amount: 0.08 }}
       variants={getVariants()}
-      className={`will-change-transform ${className}`}
+      className={className}
     >
       {children}
     </motion.section>

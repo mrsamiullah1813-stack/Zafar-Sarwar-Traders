@@ -155,13 +155,9 @@ html[data-theme="premium-blue"] {
 
 /* Smooth theme color transition on major structural surfaces */
 body, 
-section, 
-header, 
-nav, 
-footer, 
 .glass-panel, 
 .glass-card {
-  transition: background-color 250ms ease, color 250ms ease, border-color 250ms ease, box-shadow 250ms ease;
+  transition: background-color 250ms ease, color 250ms ease, border-color 250ms ease;
 }
 
 /* Dynamic Theme Card & Panel Rules */
@@ -438,6 +434,23 @@ html[data-theme="premium-blue"] body {
 
   .mobile-header-actions-container > * {
     flex-shrink: 0;
+  }
+
+  /* Optimize heavy GPU backdrop filters on mobile for smooth 60fps scrolling */
+  .glass-panel,
+  .glass-card {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  /* Defer rendering of off-screen sections until user scrolls near them */
+  #reviews,
+  #faq,
+  #why-choose-us,
+  #stats,
+  #gallery {
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 500px;
   }
 }
 

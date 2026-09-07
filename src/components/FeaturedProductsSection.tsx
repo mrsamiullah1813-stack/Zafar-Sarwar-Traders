@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Sparkles, 
@@ -71,58 +71,62 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
   const safeCategories = Array.isArray(categories) ? categories : [];
   const activeFilter = filter || 'all';
 
-  // Build lookup helpers for robust category resolution
-  const matchedCategoryObj = safeCategories.find(c => 
-    c && (
-      c.id === activeFilter ||
-      c.slug === activeFilter ||
-      (c.name && c.name.toLowerCase() === activeFilter.toLowerCase()) ||
-      (c.slug && activeFilter.toLowerCase() === c.slug.toLowerCase())
-    )
-  );
-
-  const matchedFilterValues = new Set<string>();
-  if (activeFilter !== 'all' && activeFilter !== 'featured') {
-    matchedFilterValues.add(activeFilter.toLowerCase());
-  }
-  if (matchedCategoryObj) {
-    if (matchedCategoryObj.id) matchedFilterValues.add(matchedCategoryObj.id.toLowerCase());
-    if (matchedCategoryObj.slug) matchedFilterValues.add(matchedCategoryObj.slug.toLowerCase());
-    if (matchedCategoryObj.name) matchedFilterValues.add(matchedCategoryObj.name.toLowerCase());
-  }
-
-  const filteredProducts = safeProducts.filter((p) => {
-    if (!p) return false;
-    if (activeFilter === 'all') return true;
-    if (activeFilter === 'featured') return p.isFeatured;
-
-    const pCatId = (p.categoryId || '').toLowerCase();
-    const pCatName = (p.category || '').toLowerCase();
-    const filterLower = activeFilter.toLowerCase();
-
-    // Check direct Set match
-    if (matchedFilterValues.has(pCatId) || matchedFilterValues.has(pCatName)) {
-      return true;
-    }
-
-    // Check if category name matches
-    if (matchedCategoryObj) {
-      if (pCatName === matchedCategoryObj.name.toLowerCase() || pCatId === matchedCategoryObj.id.toLowerCase()) {
-        return true;
-      }
-      if (matchedCategoryObj.slug && (pCatId === matchedCategoryObj.slug.toLowerCase() || pCatName === matchedCategoryObj.slug.toLowerCase())) {
-        return true;
-      }
-    }
-
-    // Partial substring fallback
-    return (
-      pCatId === filterLower ||
-      pCatName === filterLower ||
-      (pCatId && pCatId.includes(filterLower)) ||
-      (filterLower.length >= 3 && pCatName.includes(filterLower))
+  // Build lookup helpers for robust category resolution (memoized for performance)
+  const { matchedCategoryObj, filteredProducts } = useMemo(() => {
+    const matched = safeCategories.find(c => 
+      c && (
+        c.id === activeFilter ||
+        c.slug === activeFilter ||
+        (c.name && c.name.toLowerCase() === activeFilter.toLowerCase()) ||
+        (c.slug && activeFilter.toLowerCase() === c.slug.toLowerCase())
+      )
     );
-  });
+
+    const filterValues = new Set<string>();
+    if (activeFilter !== 'all' && activeFilter !== 'featured') {
+      filterValues.add(activeFilter.toLowerCase());
+    }
+    if (matched) {
+      if (matched.id) filterValues.add(matched.id.toLowerCase());
+      if (matched.slug) filterValues.add(matched.slug.toLowerCase());
+      if (matched.name) filterValues.add(matched.name.toLowerCase());
+    }
+
+    const filtered = safeProducts.filter((p) => {
+      if (!p) return false;
+      if (activeFilter === 'all') return true;
+      if (activeFilter === 'featured') return p.isFeatured;
+
+      const pCatId = (p.categoryId || '').toLowerCase();
+      const pCatName = (p.category || '').toLowerCase();
+      const filterLower = activeFilter.toLowerCase();
+
+      // Check direct Set match
+      if (filterValues.has(pCatId) || filterValues.has(pCatName)) {
+        return true;
+      }
+
+      // Check if category name matches
+      if (matched) {
+        if (pCatName === matched.name.toLowerCase() || pCatId === matched.id.toLowerCase()) {
+          return true;
+        }
+        if (matched.slug && (pCatId === matched.slug.toLowerCase() || pCatName === matched.slug.toLowerCase())) {
+          return true;
+        }
+      }
+
+      // Partial substring fallback
+      return (
+        pCatId === filterLower ||
+        pCatName === filterLower ||
+        (pCatId && pCatId.includes(filterLower)) ||
+        (filterLower.length >= 3 && pCatName.includes(filterLower))
+      );
+    });
+
+    return { matchedCategoryObj: matched, filteredProducts: filtered };
+  }, [safeProducts, safeCategories, activeFilter]);
 
   useEffect(() => {
     console.log(`[UI Diagnostics] FeaturedProductsSection: received ${safeCategories.length} categories, rendering ${safeCategories.filter(c => c && c.showOnHomepage !== false).length} category filter pills`);
@@ -268,7 +272,6 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
               return (
                 <motion.div
                   key={product.id}
-                  layout
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95 }}

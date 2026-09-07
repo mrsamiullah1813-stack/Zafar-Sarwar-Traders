@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Phone, 
   MessageSquare, 
@@ -71,17 +71,32 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [scrollProgress, setScrollProgress] = useState(0);
+  const progressBarRef = useRef<HTMLDivElement>(null);
+  const isScrolledRef = useRef(false);
   const [announcementSettings, setAnnouncementSettings] = useState<AnnouncementBarSettings>(() => loadAnnouncementSettings());
 
   useEffect(() => {
+    let ticking = false;
     const handleScroll = () => {
-      const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
-      const progress = totalHeight > 0 ? (window.scrollY / totalHeight) * 100 : 0;
-      setScrollProgress(progress);
-      setIsScrolled(window.scrollY > 20);
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const scrollY = window.scrollY || document.documentElement.scrollTop;
+          const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
+          const progress = totalHeight > 0 ? Math.min(100, Math.max(0, (scrollY / totalHeight) * 100)) : 0;
+          if (progressBarRef.current) {
+            progressBarRef.current.style.width = `${progress}%`;
+          }
+          const nextScrolled = scrollY > 20;
+          if (nextScrolled !== isScrolledRef.current) {
+            isScrolledRef.current = nextScrolled;
+            setIsScrolled(nextScrolled);
+          }
+          ticking = false;
+        });
+        ticking = true;
+      }
     };
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
@@ -120,9 +135,11 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'pvc-pipes', name: 'PVC Pipes' }
   ];
 
-  const activeCategoriesList = categories && categories.length > 0
-    ? categories.filter(c => c.isActive !== false).map(c => ({ id: c.id, name: c.name }))
-    : defaultCategoryQuickList;
+  const activeCategoriesList = useMemo(() => {
+    return categories && categories.length > 0
+      ? categories.filter(c => c.isActive !== false).map(c => ({ id: c.id, name: c.name }))
+      : defaultCategoryQuickList;
+  }, [categories]);
 
   return (
     <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200/90 shadow-sm transition-all">
@@ -130,8 +147,9 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Scroll Progress Indicator */}
       <div className="fixed top-0 left-0 right-0 h-[2.5px] bg-slate-100 z-[100] pointer-events-none">
         <div 
+          ref={progressBarRef}
           className="h-full bg-blue-600 transition-all duration-75 ease-out shadow-[0_0_8px_rgba(37,99,235,0.6)]"
-          style={{ width: `${scrollProgress}%` }}
+          style={{ width: '0%' }}
         />
       </div>
 

@@ -178,7 +178,7 @@ export const StatsSection: React.FC<StatsSectionProps> = ({ stats }) => {
         <motion.div
           initial="hidden"
           whileInView="visible"
-          viewport={{ once: false, amount: 0.15 }}
+          viewport={{ once: true, amount: 0.1 }}
           variants={{
             hidden: { opacity: 0 },
             visible: {

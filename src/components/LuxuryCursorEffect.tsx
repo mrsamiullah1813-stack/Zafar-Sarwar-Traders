@@ -1,28 +1,62 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 
 export const LuxuryCursorEffect: React.FC = () => {
   const [pos, setPos] = useState({ x: -100, y: -100 });
   const [visible, setVisible] = useState(false);
+  const visibleRef = useRef(false);
 
   useEffect(() => {
-    // Only active on desktop/pointing devices
-    if (window.matchMedia('(pointer: coarse)').matches) return;
+    // Strictly disable on mobile/touch devices
+    if (
+      typeof window === 'undefined' ||
+      window.matchMedia('(pointer: coarse)').matches ||
+      window.matchMedia('(hover: none)').matches ||
+      ('ontouchstart' in window && window.innerWidth < 1024)
+    ) {
+      return;
+    }
+
+    let rafId: number | null = null;
+    let latestX = -100;
+    let latestY = -100;
 
     const handleMouseMove = (e: MouseEvent) => {
-      setPos({ x: e.clientX, y: e.clientY });
-      if (!visible) setVisible(true);
+      latestX = e.clientX;
+      latestY = e.clientY;
+
+      if (!visibleRef.current) {
+        visibleRef.current = true;
+        setVisible(true);
+      }
+
+      if (rafId === null) {
+        rafId = window.requestAnimationFrame(() => {
+          setPos({ x: latestX, y: latestY });
+          rafId = null;
+        });
+      }
     };
 
-    const handleMouseLeave = () => setVisible(false);
+    const handleMouseLeave = () => {
+      visibleRef.current = false;
+      setVisible(false);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    };
 
-    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
     document.addEventListener('mouseleave', handleMouseLeave);
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseleave', handleMouseLeave);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
     };
-  }, [visible]);
+  }, []);
 
   if (!visible) return null;
 

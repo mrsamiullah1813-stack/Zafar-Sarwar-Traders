@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Sparkles, 
   X, 
@@ -31,9 +31,11 @@ export const GallerySection: React.FC<GallerySectionProps> = ({ items }) => {
   const [activeLightboxIndex, setActiveLightboxIndex] = useState<number | null>(null);
 
   const safeItems = Array.isArray(items) ? items : [];
-  const filteredItems = safeItems
-    .filter((item) => filter === 'all' || item.category === filter)
-    .sort((a, b) => (a.displayOrder ?? 999) - (b.displayOrder ?? 999));
+  const filteredItems = useMemo(() => {
+    return safeItems
+      .filter((item) => filter === 'all' || item.category === filter)
+      .sort((a, b) => (a.displayOrder ?? 999) - (b.displayOrder ?? 999));
+  }, [safeItems, filter]);
 
   const handleOpenLightbox = (index: number) => {
     setActiveLightboxIndex(index);
@@ -127,6 +129,8 @@ export const GallerySection: React.FC<GallerySectionProps> = ({ items }) => {
                 <img
                   src={item.image}
                   alt={item.title}
+                  loading="lazy"
+                  decoding="async"
                   referrerPolicy="no-referrer"
                   onError={(e) => {
                     const target = e.currentTarget;

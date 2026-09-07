@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Sparkles, 
@@ -68,16 +68,18 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
     }
   };
 
-  const filteredCategories = safeCategories.filter((cat) => {
-    if (!cat) return false;
-    // Show active categories by default (or all if isActive is undefined)
-    if (cat.isActive === false) return false;
-    const matchesTab = isMatchingTab(cat, activeTab);
-    const catName = (cat.name || '').toLowerCase();
-    const catDesc = (cat.description || '').toLowerCase();
-    const matchesSearch = catName.includes(query) || catDesc.includes(query);
-    return matchesTab && matchesSearch;
-  });
+  const filteredCategories = useMemo(() => {
+    return safeCategories.filter((cat) => {
+      if (!cat) return false;
+      // Show active categories by default (or all if isActive is undefined)
+      if (cat.isActive === false) return false;
+      const matchesTab = isMatchingTab(cat, activeTab);
+      const catName = (cat.name || '').toLowerCase();
+      const catDesc = (cat.description || '').toLowerCase();
+      const matchesSearch = catName.includes(query) || catDesc.includes(query);
+      return matchesTab && matchesSearch;
+    });
+  }, [safeCategories, activeTab, query]);
 
   // Diagnostic log for storefront category rendering
   React.useEffect(() => {
@@ -153,7 +155,6 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
             {filteredCategories.map((cat, idx) => (
               <motion.div
                 key={cat.id}
-                layout
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
@@ -165,6 +166,8 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
                   <img
                     src={cat.image || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80'}
                     alt={`${cat.name} - Luxury Sanitaryware & Building Materials | Zafar Sarwar Traders Pakistan`}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   {cat.badge && (
