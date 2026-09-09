@@ -34,7 +34,7 @@ import {
   HardDrive
 } from 'lucide-react';
 import { CustomerOrder, CheckoutSettings, OrderStatus, OrderStatusHistoryItem, PaymentStatus } from '../types';
-import { loadStoredOrders, saveStoredOrders, loadCheckoutSettings, saveCheckoutSettings, updateOrderPaymentStatusInStorage, createLightweightOrderPlaceholder } from '../utils/storage';
+import { loadStoredOrders, saveStoredOrders, loadCheckoutSettings, saveCheckoutSettings, updateOrderStatusInStorage, updateOrderPaymentStatusInStorage, createLightweightOrderPlaceholder } from '../utils/storage';
 import { subscribeToRealtimeOrderEvents, playNewOrderAlertSound } from '../utils/orderNotificationUtils';
 import { fetchOrdersFromSupabase, updateOrderStatusInSupabase, updateOrderPaymentStatusInSupabase, deleteOrderFromSupabase, isSupabaseConfigured } from '../services/supabaseService';
 import { supabase } from '../lib/supabase';
@@ -151,18 +151,26 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
       fetchWaSettings();
       fetchWaLogs();
 
-      // 1. Start with local cached orders
+      // 1. Get locally recorded deleted IDs to prevent resurrecting explicitly deleted orders
+      let deletedIds: string[] = [];
+      try {
+        deletedIds = JSON.parse(localStorage.getItem('zst_deleted_order_ids') || '[]');
+      } catch {}
+
+      // 2. Start with local cached orders
       const local = loadStoredOrders();
       const orderMap = new Map<string, CustomerOrder>();
       (local || []).forEach(o => {
-        if (o && o.id) orderMap.set(String(o.id), o);
+        if (o && o.id && !deletedIds.includes(String(o.id)) && !deletedIds.includes(String(o.orderNumber))) {
+          orderMap.set(String(o.id), o);
+        }
       });
 
-      // 2. Fetch authoritative database / server CMS orders
+      // 3. Fetch authoritative database / server CMS orders
       const dbOrders = await fetchOrdersFromSupabase();
       if (dbOrders !== null && Array.isArray(dbOrders)) {
         dbOrders.forEach(o => {
-          if (o && o.id) {
+          if (o && o.id && !deletedIds.includes(String(o.id)) && !deletedIds.includes(String(o.orderNumber))) {
             const existing = orderMap.get(String(o.id));
             const resolvedProof = o.paymentProofUrl || (o as any).payment_proof_url || existing?.paymentProofUrl || (existing as any)?.payment_proof_url;
             const resolvedProofName = o.paymentProofFileName || (o as any).payment_proof_file_name || existing?.paymentProofFileName || (existing as any)?.payment_proof_file_name;
@@ -296,45 +304,31 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
   const handleUpdateStatus = async (orderId: string, newStatus: string, note?: string) => {
     if (!orderId || !newStatus) return;
 
-    const isApproval = ['approved', 'confirmed', 'payment verified', 'verified'].includes(newStatus.toLowerCase());
-
-    // Execute real database update
-    let dbRes: { success: boolean; error?: string };
-    if (isApproval) {
-      dbRes = await updateOrderPaymentStatusInSupabase(orderId, 'Payment Verified', newStatus as any, note, undefined, 'Admin');
-    } else {
-      dbRes = await updateOrderStatusInSupabase(orderId, newStatus as any, note);
-    }
-
-    if (!dbRes.success) {
-      onShowToast(`❌ Database update failed: ${dbRes.error || 'Connection error'}`);
-      alert(`Could not update order in Supabase database: ${dbRes.error || 'Database error'}. Please try again.`);
-      return;
-    }
-
-    // Sync local storage as secondary backup
-    if (isApproval) {
-      await updateOrderPaymentStatusInStorage(orderId, 'Payment Verified', newStatus as any, note);
-    }
+    // Normalize canonical status (e.g. 'Confirm' -> 'Confirmed')
+    const canonicalStatus = newStatus.trim().toLowerCase() === 'confirm' ? 'Confirmed' : newStatus.trim();
+    const isApproval = ['approved', 'confirmed', 'payment verified', 'verified'].includes(canonicalStatus.toLowerCase());
 
     const nowStr = new Date().toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' });
-    let updatedItem: CustomerOrder | null = null;
+    const previousOrders = [...orders];
+    const previousEditing = editingOrder ? { ...editingOrder } : null;
 
+    // 1. Immediate optimistic UI update
+    let updatedItem: CustomerOrder | null = null;
     const updated: CustomerOrder[] = orders.map(o => {
       if (o.id === orderId || o.orderNumber === orderId) {
         const existingHistory = o.statusHistory || [];
         const newHistoryItem: OrderStatusHistoryItem = {
-          status: newStatus as OrderStatus,
+          status: canonicalStatus as OrderStatus,
           timestamp: nowStr,
-          note: note || `Status updated to ${newStatus} by Admin`,
+          note: note || `Status updated to ${canonicalStatus} by Admin`,
           updatedBy: 'Admin'
         };
         const item: CustomerOrder = {
           ...o,
-          status: newStatus as OrderStatus,
+          status: canonicalStatus as OrderStatus,
           paymentStatus: isApproval ? ('Payment Verified' as PaymentStatus) : o.paymentStatus,
-          paymentVerifiedAt: isApproval ? new Date().toISOString() : o.paymentVerifiedAt,
-          paymentVerifiedBy: isApproval ? 'Admin' : o.paymentVerifiedBy,
+          paymentVerifiedAt: isApproval ? (o.paymentVerifiedAt || new Date().toISOString()) : o.paymentVerifiedAt,
+          paymentVerifiedBy: isApproval ? (o.paymentVerifiedBy || 'Admin') : o.paymentVerifiedBy,
           statusHistory: [...existingHistory, newHistoryItem]
         };
         updatedItem = item;
@@ -344,22 +338,46 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
     });
 
     setOrders(updated);
-    saveStoredOrders(updated);
-    if (editingOrder && (editingOrder.id === orderId || editingOrder.orderNumber === orderId)) {
-      setEditingOrder(updated.find(o => o.id === orderId || o.orderNumber === orderId) || null);
+    if (editingOrder && (editingOrder.id === orderId || editingOrder.orderNumber === orderId) && updatedItem) {
+      setEditingOrder(updatedItem);
     }
 
-    // Broadcast live event across browser app
+    // 2. Execute real backend database update
+    let dbRes: { success: boolean; error?: string };
+    if (isApproval) {
+      dbRes = await updateOrderPaymentStatusInSupabase(orderId, 'Payment Verified', canonicalStatus as any, note, undefined, 'Admin');
+    } else {
+      dbRes = await updateOrderStatusInSupabase(orderId, canonicalStatus as any, note);
+    }
+
+    if (!dbRes.success) {
+      // Revert optimistic update if database fails
+      setOrders(previousOrders);
+      if (previousEditing) setEditingOrder(previousEditing);
+      onShowToast(`❌ Database update failed: ${dbRes.error || 'Connection error'}`);
+      alert(`Could not update order in Supabase database: ${dbRes.error || 'Database error'}. Please try again.`);
+      return;
+    }
+
+    // 3. Sync local storage for offline resilience
+    if (isApproval) {
+      await updateOrderPaymentStatusInStorage(orderId, 'Payment Verified', canonicalStatus as any, note);
+    } else {
+      await updateOrderStatusInStorage(orderId, canonicalStatus as any, note);
+    }
+    saveStoredOrders(updated);
+
+    // 4. Broadcast live event across browser app
     window.dispatchEvent(new CustomEvent('zst_order_status_updated', {
       detail: {
         orderId,
-        status: newStatus,
+        status: canonicalStatus,
         paymentStatus: isApproval ? 'Payment Verified' : undefined,
         order: updatedItem
       }
     }));
 
-    onShowToast(`Order #${orderId.slice(-6)} status updated to "${newStatus}" in database!`);
+    onShowToast(`Order #${orderId.slice(-6)} status updated to "${canonicalStatus}" in database!`);
   };
 
   const handleVerifyPayment = async (orderId: string, customNote?: string) => {
@@ -547,18 +565,17 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
   };
 
   const handleDeleteOrder = async (orderId: string) => {
-    const targetOrder = orders.find(o => o.id === orderId);
-    const isDelivered = targetOrder?.status === 'Delivered' || Boolean(targetOrder?.isStorageOptimized);
+    const targetOrder = orders.find(o => o.id === orderId || o.orderNumber === orderId);
+    const displayNum = (targetOrder?.orderNumber || orderId).replace('#', '');
+    const custName = targetOrder?.customerName || 'Customer';
 
-    if (!isDelivered) {
-      alert(`⚠️ Deletion Restricted:\n\nOrder #${(targetOrder?.orderNumber || orderId).slice(-6)} is currently "${targetOrder?.status || 'Active'}".\n\nOnly orders marked as "Delivered" can be permanently deleted to free up database storage capacity.\n\nPlease verify or update the order status to "Delivered" first before deleting.`);
-      onShowToast('⚠️ Only Delivered orders can be deleted from database.');
+    const confirmMsg = `Are you sure you want to permanently delete Order #${displayNum} (${custName})?\n\nThis action will permanently remove the order, all its item records, and any uploaded payment proof from the database.\n\nThis cannot be undone. Do you wish to proceed?`;
+
+    if (!window.confirm(confirmMsg)) {
       return;
     }
 
-    const confirmMsg = `Free Up Database Storage & Delete Delivered Order #${(targetOrder?.orderNumber || orderId).slice(-6)}?\n\nThis action will completely remove order details, item records, and uploaded payment receipt files from the backend database and storage.\n\nA lightweight "Delivered" receipt placeholder will be retained so the customer's order history remains intact.`;
-
-    if (confirm(confirmMsg)) {
+    try {
       const res = await deleteOrderFromSupabase(orderId);
       if (!res.success) {
         onShowToast(`❌ Deletion failed: ${res.error || 'Database error'}`);
@@ -566,19 +583,23 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
         return;
       }
 
-      let updated: CustomerOrder[];
-      if (targetOrder) {
-        // Create lightweight placeholder to preserve customer order history
-        const placeholder = createLightweightOrderPlaceholder(targetOrder);
-        updated = orders.map(o => o.id === orderId ? placeholder : o);
-      } else {
-        updated = orders.filter(o => o.id !== orderId);
-      }
+      // Record deleted ID in local cache to prevent resurrection from any stale memory
+      try {
+        const deletedIds = JSON.parse(localStorage.getItem('zst_deleted_order_ids') || '[]');
+        deletedIds.push(orderId);
+        if (targetOrder?.orderNumber) deletedIds.push(targetOrder.orderNumber);
+        localStorage.setItem('zst_deleted_order_ids', JSON.stringify(Array.from(new Set(deletedIds))));
+      } catch {}
 
+      const updated = orders.filter(o => o.id !== orderId && o.orderNumber !== orderId);
       setOrders(updated);
       saveStoredOrders(updated);
-      if (editingOrder?.id === orderId) setEditingOrder(null);
-      onShowToast(`Delivered Order #${(targetOrder?.orderNumber || orderId).slice(-6)} and payment proof files deleted from database.`);
+      if (editingOrder && (editingOrder.id === orderId || editingOrder.orderNumber === orderId)) {
+        setEditingOrder(null);
+      }
+      onShowToast(`Order #${displayNum} permanently deleted from database.`);
+    } catch (err: any) {
+      onShowToast(`❌ Deletion error: ${err?.message || err}`);
     }
   };
 
@@ -1112,7 +1133,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                         className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white font-semibold focus:outline-none focus:border-blue-500"
                       >
                         {ORDER_STATUSES.map(s => (
-                          <option key={s} value={s}>Set Status: {s}</option>
+                          <option key={s} value={s}>{s}</option>
                         ))}
                       </select>
 
@@ -1137,25 +1158,11 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
 
                       <button
                         onClick={() => handleDeleteOrder(order.id)}
-                        className={`p-2 rounded-xl transition-all flex items-center gap-1.5 font-bold text-xs ${
-                          order.status === 'Delivered'
-                            ? 'bg-amber-950/80 hover:bg-amber-600 border border-amber-500/40 text-amber-200 hover:text-white'
-                            : 'bg-slate-800 hover:bg-rose-600 text-slate-400 hover:text-white'
-                        }`}
-                        title={
-                          order.status === 'Delivered'
-                            ? 'Delete heavy database payload to free storage while preserving customer receipt'
-                            : 'Delete Order Record'
-                        }
+                        className="p-2 rounded-xl transition-all flex items-center gap-1.5 font-bold text-xs bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white border border-slate-700 hover:border-rose-500"
+                        title="Delete Order Permanently"
                       >
-                        {order.status === 'Delivered' ? (
-                          <>
-                            <HardDrive className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                            <span className="hidden md:inline">Free Up Storage</span>
-                          </>
-                        ) : (
-                          <Trash2 className="w-4 h-4" />
-                        )}
+                        <Trash2 className="w-4 h-4 text-rose-400" />
+                        <span className="hidden md:inline">Delete</span>
                       </button>
                     </div>
                   </div>
@@ -1440,6 +1447,49 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
                 />
               </div>
+
+              {/* POST-ORDER CUSTOMER WHATSAPP OPTION (ADMIN CONTROLLED) */}
+              <div className="md:col-span-2 pt-3 border-t border-slate-800 space-y-3">
+                <div className="flex items-center justify-between p-4 bg-slate-950/80 rounded-xl border border-slate-800">
+                  <div className="pr-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <MessageSquare className="w-4 h-4 text-emerald-400" />
+                      <label className="text-xs font-bold text-white">Post-Order WhatsApp Feature</label>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        settings.enablePostOrderWhatsapp ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'
+                      }`}>
+                        {settings.enablePostOrderWhatsapp ? 'ENABLED (ON)' : 'DISABLED (OFF - Default)'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Controls whether the post-order WhatsApp button ("Send Order & Tracking via WhatsApp") is shown on the order confirmation screen after a customer successfully submits an order. Default is OFF.
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={!!settings.enablePostOrderWhatsapp}
+                      onChange={(e) => setSettings({ ...settings, enablePostOrderWhatsapp: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+
+                {settings.enablePostOrderWhatsapp && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">Post-Order WhatsApp Number for Order Details & Tracking</label>
+                    <input
+                      type="text"
+                      value={settings.postOrderWhatsappNumber ?? settings.whatsappNumber ?? '+92 310 8002863'}
+                      onChange={(e) => setSettings({ ...settings, postOrderWhatsappNumber: e.target.value })}
+                      placeholder="+92 310 8002863"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">Number used when customers click "Send Order & Tracking via WhatsApp" after submitting an order. (If not set, falls back to Payment Method WhatsApp or Store Inquiry WhatsApp).</p>
+                  </div>
+                )}
+              </div>
             </div>
 
             <button
@@ -1709,25 +1759,60 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
 
             {/* Quick Status Setter with Note */}
             <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-              <span className="text-xs font-bold text-blue-400 uppercase tracking-wider block">Update Order Status</span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <select
-                  value={editingOrder.status}
-                  onChange={(e) => handleUpdateStatus(editingOrder.id, e.target.value, newStatusNote)}
-                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-bold"
-                >
-                  {ORDER_STATUSES.map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-blue-400 uppercase tracking-wider block">Update Order Status</span>
+                <span className="text-[11px] text-slate-400 font-mono">Current: <strong className="text-emerald-400 font-bold">{editingOrder.status}</strong></span>
+              </div>
 
-                <input
-                  type="text"
-                  placeholder="Optional status note for customer..."
-                  value={newStatusNote}
-                  onChange={(e) => setNewStatusNote(e.target.value)}
-                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500"
-                />
+              {/* Primary Status Quick-Action Buttons */}
+              <div className="flex flex-wrap gap-2 pt-1">
+                {[
+                  { label: 'Confirm', status: 'Confirmed', activeColor: 'bg-emerald-600 text-white ring-2 ring-emerald-400' },
+                  { label: 'Preparing', status: 'Preparing', activeColor: 'bg-blue-600 text-white ring-2 ring-blue-400' },
+                  { label: 'Out for Delivery', status: 'Out for Delivery', activeColor: 'bg-amber-600 text-white ring-2 ring-amber-400' },
+                  { label: 'Delivered', status: 'Delivered', activeColor: 'bg-green-600 text-white ring-2 ring-green-400' },
+                  { label: 'Cancelled', status: 'Cancelled', activeColor: 'bg-rose-700 text-white ring-2 ring-rose-400' },
+                ].map(btn => (
+                  <button
+                    key={btn.status}
+                    type="button"
+                    onClick={() => handleUpdateStatus(editingOrder.id, btn.status, newStatusNote)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      editingOrder.status === btn.status
+                        ? btn.activeColor
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600'
+                    }`}
+                  >
+                    {editingOrder.status === btn.status && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                    <span>{btn.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 mb-1">Select Other Status</label>
+                  <select
+                    value={editingOrder.status}
+                    onChange={(e) => handleUpdateStatus(editingOrder.id, e.target.value, newStatusNote)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-bold"
+                  >
+                    {ORDER_STATUSES.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 mb-1">Status Note (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="Optional status note for customer..."
+                    value={newStatusNote}
+                    onChange={(e) => setNewStatusNote(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1914,6 +1999,27 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                 className="w-full py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 font-black text-xs transition-all"
               >
                 Save Delivery & Tracking Information
+              </button>
+            </div>
+
+            {/* Modal Bottom Actions */}
+            <div className="flex items-center justify-between border-t border-slate-800 pt-4">
+              <button
+                type="button"
+                onClick={() => handleDeleteOrder(editingOrder.id)}
+                className="px-4 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-600 border border-rose-800/80 text-rose-300 hover:text-white font-bold text-xs transition-all flex items-center gap-2"
+                title="Permanently Delete Order"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Delete Order</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setEditingOrder(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-all"
+              >
+                Close
               </button>
             </div>
           </div>

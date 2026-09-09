@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   customerReviews, 
   faqItems 
@@ -59,7 +59,8 @@ import {
   initNavigationHistory, 
   pushNavigationState, 
   navigateBackSafe, 
-  addNavigationListener 
+  addNavigationListener,
+  resetToHome
 } from './utils/navigationHistory';
 
 import { Navbar } from './components/Navbar';
@@ -151,6 +152,7 @@ export default function App() {
   const [checkoutSettings, setCheckoutSettings] = useState<CheckoutSettings>(() => loadCheckoutSettings());
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
+  const orderCompletedRef = useRef<boolean>(false);
   const [wishlistIds, setWishlistIds] = useState<string[]>([]);
   const [compareIds, setCompareIds] = useState<string[]>([]);
 
@@ -352,6 +354,10 @@ export default function App() {
           break;
 
         case 'checkout':
+          if (orderCompletedRef.current) {
+            resetToHome();
+            break;
+          }
           setCartOpen(false);
           setSelectedProduct(null);
           setViewDeliveryAreasPage(false);
@@ -434,6 +440,7 @@ export default function App() {
       setSmartToolsSettings,
       setThemeSettings,
       setHeroSettings,
+      setCheckoutSettings,
       setOrders: setCustomerOrders,
       customerId: customerProfile?.customerId
     });
@@ -598,6 +605,7 @@ export default function App() {
     setDirectCheckoutItem(directItem);
     setCartOpen(false);
     setSelectedProduct(null);
+    orderCompletedRef.current = false;
     pushNavigationState('checkout', { checkoutStep: 'cart' }, { checkout: 'direct', product: null });
     setCheckoutModalOpen(true);
   };
@@ -767,9 +775,19 @@ export default function App() {
   };
 
   const handleOpenCheckout = () => {
+    orderCompletedRef.current = false;
     pushNavigationState('checkout', { checkoutStep: 'cart' }, { checkout: 'cart', cart: null });
     setCartOpen(false);
     setCheckoutModalOpen(true);
+  };
+
+  const handleReturnHomeAfterOrder = () => {
+    orderCompletedRef.current = true;
+    resetToHome();
+    setCheckoutModalOpen(false);
+    setDirectCheckoutItem(null);
+    setCartOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleCloseCheckout = () => {
@@ -1125,6 +1143,7 @@ export default function App() {
         config={config}
         checkoutSettings={checkoutSettings}
         onClose={handleCloseCheckout}
+        onReturnHome={handleReturnHomeAfterOrder}
         onOrderPlaced={async (newOrder) => {
           const res = await addOrderToStorage(newOrder);
           if (!res.success) {

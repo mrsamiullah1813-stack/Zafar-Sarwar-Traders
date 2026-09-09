@@ -11,6 +11,7 @@ import { AdminOrdersManager } from './AdminOrdersManager';
 import { AdminCustomersManager } from './AdminCustomersManager';
 import { AdminDeliveryManager } from './AdminDeliveryManager';
 import { AdminPaymentMethodsManager } from './AdminPaymentMethodsManager';
+import { AdminStorageHealth } from './AdminStorageHealth';
 import { 
   X, 
   Plus, 
@@ -27,6 +28,7 @@ import {
   ShoppingBag, 
   CreditCard,
   Truck,
+  HardDrive,
   Sparkles, 
   Globe, 
   ShieldCheck, 
@@ -130,7 +132,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onLogout,
   onClose
 }) => {
-  const [activeTab, setActiveTab] = useState<'analytics' | 'hero' | 'announcements' | 'orders' | 'payments' | 'customers' | 'coupons' | 'delivery' | 'products' | 'categories' | 'brands' | 'contacts' | 'statistics' | 'banners_seo' | 'pricing_appearance' | 'gallery' | 'smart_tools' | 'construction_builder' | 'planner' | 'estimator' | 'ai_assistant' | 'themes' | 'voice_settings'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'hero' | 'announcements' | 'orders' | 'payments' | 'customers' | 'coupons' | 'delivery' | 'storage_health' | 'products' | 'categories' | 'brands' | 'contacts' | 'statistics' | 'banners_seo' | 'pricing_appearance' | 'gallery' | 'smart_tools' | 'construction_builder' | 'planner' | 'estimator' | 'ai_assistant' | 'themes' | 'voice_settings'>('analytics');
   const [plannerConfig, setPlannerConfig] = useState<AiDesignerConfig>(loadPlannerConfig());
   const [estimatorConfig, setEstimatorConfig] = useState<BuildMaterialEstimatorConfig>(loadBuildMaterialEstimatorConfig());
   const [fittingConfigState, setFittingConfigState] = useState<FittingBuilderConfig>(fittingBuilderConfig || loadFittingBuilderConfig());
@@ -901,6 +903,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('storage_health')}
+              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all ${
+                activeTab === 'storage_health'
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-950'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <HardDrive className="w-4 h-4 text-purple-400" />
+                <span>Storage Usage & Health</span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-purple-950 text-[10px] text-purple-300 font-mono font-bold">
+                Live
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('hero')}
               className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all ${
                 activeTab === 'hero'
@@ -1386,6 +1405,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <VisitorAnalyticsDashboard
               products={products}
               categories={categories}
+            />
+          )}
+
+          {/* TAB: STORAGE USAGE & HEALTH MONITOR */}
+          {activeTab === 'storage_health' && (
+            <AdminStorageHealth
+              onShowToast={showToast}
             />
           )}
 

@@ -4,10 +4,9 @@ import path from "path";
 import crypto from "crypto";
 import fs from "fs";
 import fsPromises from "fs/promises";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
-import { handleTtsGet, handleTtsPost, handleTtsVoicesGet } from "./server/aiVoiceService";
+import { handleTtsGet, handleTtsPost, handleTtsVoicesGet } from "./server/aiVoiceService.ts";
 
 // Initialize Supabase DB Client for server proxy with exhaustive environment variable fallbacks
 const rawSupabaseUrl = (
@@ -18,11 +17,22 @@ const rawSupabaseUrl = (
 ).trim();
 
 let normalizedSupabaseUrl = rawSupabaseUrl;
-if (normalizedSupabaseUrl && !normalizedSupabaseUrl.startsWith("http://") && !normalizedSupabaseUrl.startsWith("https://")) {
-  normalizedSupabaseUrl = `https://${normalizedSupabaseUrl}`;
-  if (!normalizedSupabaseUrl.includes(".")) {
-    normalizedSupabaseUrl += ".supabase.co";
+if (normalizedSupabaseUrl) {
+  if (!normalizedSupabaseUrl.startsWith("http://") && !normalizedSupabaseUrl.startsWith("https://")) {
+    normalizedSupabaseUrl = `https://${normalizedSupabaseUrl}`;
+    if (!normalizedSupabaseUrl.includes(".")) {
+      normalizedSupabaseUrl += ".supabase.co";
+    }
   }
+  try {
+    const parsed = new URL(normalizedSupabaseUrl);
+    let host = parsed.hostname.toLowerCase();
+    if (!host.includes(".")) {
+      host = `${host}.supabase.co`;
+    }
+    const portPart = (parsed.port && parsed.port !== "80" && parsed.port !== "443") ? `:${parsed.port}` : "";
+    normalizedSupabaseUrl = `${parsed.protocol}//${host}${portPart}`;
+  } catch {}
 }
 
 const serviceRoleKey = (
@@ -1297,7 +1307,7 @@ async function startServer() {
               `customer_id.eq.${customerIdStr}`,
               `customer_phone.eq.${customerIdStr}`,
               `id.eq.${customerIdStr}`,
-              `order_number.eq.${customerIdStr}`
+              `tracking_number.eq.${customerIdStr}`
             ];
             if (phoneDigits && phoneDigits.length >= 7) {
               filters.push(`customer_phone.ilike.%${phoneDigits}%`);
@@ -1315,7 +1325,7 @@ async function startServer() {
                 `customer_id.eq.${customerIdStr}`,
                 `customer_phone.eq.${customerIdStr}`,
                 `id.eq.${customerIdStr}`,
-                `order_number.eq.${customerIdStr}`
+                `tracking_number.eq.${customerIdStr}`
               ];
               if (phoneDigits && phoneDigits.length >= 7) {
                 filters.push(`customer_phone.ilike.%${phoneDigits}%`);
@@ -1523,29 +1533,17 @@ async function startServer() {
         return res.status(400).json({ success: false, error: "Validation Error: Order payload with ID is required." });
       }
 
-      // 1. Validate Order ID format and guarantee uniqueness (auto-resolves collisions gracefully)
+      // 1. Validate Order ID format and guarantee uniqueness
       let orderId = String(order.id || "").trim();
-      const cmsOrders = Array.isArray(cmsDataStore["zst_orders"]) ? cmsDataStore["zst_orders"] : [];
-      const orderExistsInCms = orderId ? cmsOrders.some((o: any) => String(o.id || "").toLowerCase() === orderId.toLowerCase()) : false;
 
-      let dbExistingOrder = false;
-      if (dbClient && orderId) {
-        try {
-          const { data } = await dbClient.from("orders").select("id").eq("id", orderId).maybeSingle();
-          if (data) dbExistingOrder = true;
-        } catch (checkErr) {
-          console.warn("[Orders Upsert] Error checking existing order ID:", checkErr);
-        }
-      }
-
-      // If orderId is missing, invalid, or already exists in database/CMS, generate a guaranteed unique ID
-      if (!orderId || orderId.length > 64 || orderExistsInCms || dbExistingOrder || orderId === 'ZST-00001') {
+      // If orderId is missing, invalid, or dummy placeholder, generate a guaranteed unique ID
+      if (!orderId || orderId.length > 64 || orderId === 'ZST-00001') {
         const uniqueSuffix = `${Date.now().toString().slice(-6)}${Math.floor(10 + Math.random() * 90)}`;
         orderId = `ZST-${uniqueSuffix}`;
         order.id = orderId;
         order.order_number = `ZFT-${uniqueSuffix}`;
         order.orderNumber = `ZFT-${uniqueSuffix}`;
-        console.log(`[Orders Submit] Assigned unique non-colliding order ID: ${orderId}`);
+        console.log(`[Orders Submit] Assigned unique order ID: ${orderId}`);
       }
 
       // 2. Validate Customer Details
@@ -1870,11 +1868,12 @@ async function startServer() {
           // Fallback using clean sanitized direct table insert if RPC is not loaded yet
           const cleanOrderRow: Record<string, any> = {
             id: orderId,
-            order_number: order.order_number || order.orderNumber || `ZFT-${orderId.replace('#', '')}`,
+            tracking_number: order.tracking_number || order.order_number || order.orderNumber || `ZFT-${orderId.replace('#', '')}`,
             customer_id: (order.customer_id && isUUID(order.customer_id)) ? order.customer_id : ((order.customerId && isUUID(order.customerId)) ? order.customerId : null),
             customer_name: customerName,
             customer_phone: phoneNumber,
             customer_email: order.email || order.customer_email || order.customerEmail || null,
+            city: city,
             shipping_city: city,
             shipping_area: order.shipping_area || order.areaLocality || order.shippingArea || null,
             shipping_address: address,
@@ -2041,7 +2040,7 @@ async function startServer() {
 
           if (!existing) {
             try {
-              const { data: byOrderNum } = await dbClient.from("orders").select("id, status_history, status").eq("order_number", id).maybeSingle();
+              const { data: byOrderNum } = await dbClient.from("orders").select("id, status_history, status").eq("tracking_number", id).maybeSingle();
               if (byOrderNum) {
                 existing = byOrderNum;
                 targetDbId = byOrderNum.id;
@@ -2177,7 +2176,7 @@ async function startServer() {
 
           if (!existing) {
             try {
-              const { data: byOrderNum } = await dbClient.from("orders").select("id, status, status_history, payment_notes").eq("order_number", id).maybeSingle();
+              const { data: byOrderNum } = await dbClient.from("orders").select("id, status, status_history, payment_notes").eq("tracking_number", id).maybeSingle();
               if (byOrderNum) {
                 existing = byOrderNum;
                 targetDbId = byOrderNum.id;
@@ -2274,63 +2273,19 @@ async function startServer() {
   app.delete("/api/db/orders/:id", requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const currentOrders = Array.isArray(cmsDataStore["zst_orders"]) ? [...cmsDataStore["zst_orders"]] : [];
-      let targetOrder = currentOrders.find((o: any) => o && (o.id === id || o.orderNumber === id));
+      if (!id) {
+        return res.status(400).json({ success: false, error: "Order ID is required." });
+      }
 
-      // If not in cmsDataStore, query Supabase DB for target order details
+      const currentOrders = Array.isArray(cmsDataStore["zst_orders"]) ? [...cmsDataStore["zst_orders"]] : [];
+      let targetOrder = currentOrders.find((o: any) => o && (o.id === id || o.orderNumber === id || o.order_number === id));
+
+      // If not in cmsDataStore, query Supabase DB for target order details (e.g. for proof cleanup)
       if (!targetOrder && dbClient) {
         try {
           const { data: dbOrd } = await dbClient.from("orders").select("*").eq("id", id).maybeSingle();
           if (dbOrd) targetOrder = dbOrd;
         } catch {}
-      }
-
-      // STRICT RULE: Only Delivered or Storage-Optimized orders can be deleted
-      const currentStatus = targetOrder?.status || targetOrder?.order_status;
-      const isDelivered = currentStatus === 'Delivered' || Boolean(targetOrder?.isStorageOptimized);
-
-      if (!isDelivered) {
-        return res.status(400).json({
-          success: false,
-          error: "Only orders marked as Delivered can be permanently deleted. Please verify or update the order status to Delivered first before deleting to clear database storage."
-        });
-      }
-
-      // Build lightweight placeholder to protect customer order history
-      let placeholder: any = null;
-      if (targetOrder) {
-        placeholder = {
-          id: targetOrder.id || id,
-          orderNumber: targetOrder.orderNumber || targetOrder.order_number || id,
-          customerId: targetOrder.customerId || targetOrder.customer_id,
-          customerName: targetOrder.customerName || targetOrder.customer_name || 'Customer',
-          phoneNumber: targetOrder.phoneNumber || targetOrder.customer_phone || '',
-          city: targetOrder.city || targetOrder.shipping_city || '',
-          areaLocality: targetOrder.areaLocality || targetOrder.shipping_area || '',
-          deliveryAddress: targetOrder.deliveryAddress || targetOrder.shipping_address || '',
-          subtotal: Number(targetOrder.subtotal || targetOrder.grandTotal || 0),
-          deliveryCharges: Number(targetOrder.deliveryCharges || targetOrder.delivery_fee || 0),
-          taxAmount: Number(targetOrder.taxAmount || 0),
-          grandTotal: Number(targetOrder.grandTotal || targetOrder.total_amount || 0),
-          createdAt: targetOrder.createdAt || targetOrder.created_at || new Date().toISOString(),
-          status: 'Delivered',
-          paymentStatus: 'Payment Verified',
-          paymentMethodName: targetOrder.paymentMethodName || targetOrder.payment_method || 'Cash on Delivery',
-          isStorageOptimized: true,
-          storageOptimizedAt: new Date().toISOString(),
-          deliveredAt: targetOrder.deliveredAt || new Date().toISOString(),
-          items: (Array.isArray(targetOrder.items) ? targetOrder.items : (Array.isArray(targetOrder.order_items) ? targetOrder.order_items : [])).map((it: any) => ({
-            productId: it.productId || it.product_id || '',
-            productName: it.productName || it.product_title || 'Delivered Item',
-            quantity: Number(it.quantity || 1),
-            unitPrice: String(it.unitPrice || it.unit_price || 0),
-            numericPrice: Number(it.numericPrice || it.numeric_price || it.unit_price || 0),
-            lineTotal: Number(it.lineTotal || it.total_price || 0),
-            selectedVariant: it.selectedVariant,
-            selectedSize: it.selectedSize,
-            selectedColor: it.selectedColor
-          }))
-        };
       }
 
       // Cleanup payment proof files from storage bucket & local disk
@@ -2367,21 +2322,7 @@ async function startServer() {
         }
       }
 
-      // 1. Remove heavy order from CMS data store
-      try {
-        cmsDataStore["zst_orders"] = currentOrders.filter((o: any) => o.id !== id && o.orderNumber !== id);
-        
-        // Retain lightweight placeholder in optimized store
-        if (placeholder) {
-          const currentOptimized = Array.isArray(cmsDataStore["zst_optimized_orders"]) ? [...cmsDataStore["zst_optimized_orders"]] : [];
-          cmsDataStore["zst_optimized_orders"] = [placeholder, ...currentOptimized.filter((o: any) => o.id !== id)];
-        }
-        persistDataStoreToDisk().catch(() => {});
-      } catch (cmsErr) {
-        console.warn("[Delete Order] CMS store warning:", cmsErr);
-      }
-
-      // 2. Completely remove heavy data from backend Supabase database
+      // 1. Completely remove order from Supabase database (order_items foreign rows first, then order row)
       if (dbClient) {
         try {
           await dbClient.from("order_items").delete().eq("order_id", id);
@@ -2395,11 +2336,26 @@ async function startServer() {
         }
       }
 
-      console.log(`[Storage Optimization] Delivered Order ${id} purged from database. Payment proof files cleaned.`);
+      // 2. Remove order from all CMS stores and disk cache (do not retain placeholders)
+      try {
+        const filterOrder = (o: any) => o && o.id !== id && o.orderNumber !== id && o.order_number !== id;
+        cmsDataStore["zst_orders"] = currentOrders.filter(filterOrder);
+        if (Array.isArray(cmsDataStore["zst_orders_v1"])) {
+          cmsDataStore["zst_orders_v1"] = cmsDataStore["zst_orders_v1"].filter(filterOrder);
+        }
+        if (Array.isArray(cmsDataStore["zst_optimized_orders"])) {
+          cmsDataStore["zst_optimized_orders"] = cmsDataStore["zst_optimized_orders"].filter(filterOrder);
+        }
+        await persistDataStoreToDisk().catch(() => {});
+      } catch (cmsErr) {
+        console.warn("[Delete Order] CMS store purge warning:", cmsErr);
+      }
+
+      broadcastOrderEvent("order_deleted", { orderId: id, timestamp: Date.now() });
+      console.log(`[Order Deletion] Order ${id} permanently deleted from Supabase database and storage.`);
       return res.json({ 
         success: true, 
-        message: "Delivered order and associated payment files permanently removed from database.",
-        placeholder 
+        message: `Order #${id} permanently deleted from database and storage.`
       });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
@@ -4342,6 +4298,496 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
     }
   });
 
+  // =========================================================
+  // REAL SUPABASE STORAGE USAGE & HEALTH MONITOR (ADMIN ONLY)
+  // =========================================================
+  app.get("/api/admin/storage-health", requireAdminAuth, async (req, res) => {
+    if (!dbClient) {
+      return res.status(503).json({
+        success: false,
+        error: "Supabase database client is not configured on this server.",
+        status: "Critical"
+      });
+    }
+
+    try {
+      // 1. Fetch real bucket list from Supabase Storage
+      const { data: buckets, error: bucketError } = await dbClient.storage.listBuckets();
+      if (bucketError) {
+        return res.status(500).json({
+          success: false,
+          error: `Failed to retrieve Supabase buckets: ${bucketError.message}`,
+          status: "Critical"
+        });
+      }
+
+      if (!buckets || !Array.isArray(buckets)) {
+        return res.json({
+          success: true,
+          status: "Healthy",
+          totalUsedBytes: 0,
+          totalFileCount: 0,
+          buckets: [],
+          largestFiles: [],
+          recentUploads: [],
+          cleanupCandidates: [],
+          quotaInfo: {
+            available: false,
+            message: "Storage quota information unavailable through the current connection"
+          },
+          lastCheckedAt: new Date().toISOString()
+        });
+      }
+
+      let totalBytes = 0;
+      let totalFileCount = 0;
+      const allObjects: Array<{
+        bucket: string;
+        name: string;
+        path: string;
+        size: number;
+        mimetype: string;
+        created_at: string | null;
+        updated_at: string | null;
+        publicUrl: string | null;
+      }> = [];
+
+      const bucketStats: Array<{
+        id: string;
+        name: string;
+        isPublic: boolean;
+        fileSizeLimit: number | null;
+        fileCount: number;
+        usedBytes: number;
+        usedFormatted: string;
+        percentageOfTotal: number;
+      }> = [];
+
+      // 2. Traverse all buckets and collect real file metadata
+      for (const b of buckets) {
+        let bucketFiles: typeof allObjects = [];
+
+        async function traverseBucket(prefix = "") {
+          let offset = 0;
+          const limit = 100;
+          let keepGoing = true;
+
+          while (keepGoing) {
+            try {
+              const { data, error } = await dbClient!.storage
+                .from(b.name)
+                .list(prefix, { limit, offset, sortBy: { column: "name", order: "asc" } });
+
+              if (error || !data || data.length === 0) {
+                break;
+              }
+
+              for (const item of data) {
+                const itemPath = prefix ? `${prefix}/${item.name}` : item.name;
+                // If it's a folder (id is null or no metadata)
+                if (item.id === null && !item.metadata) {
+                  await traverseBucket(itemPath);
+                } else {
+                  const size = Number(item.metadata?.size || (item as any).size || 0);
+                  const { data: pubData } = dbClient!.storage.from(b.name).getPublicUrl(itemPath);
+                  const obj = {
+                    bucket: b.name,
+                    name: item.name,
+                    path: itemPath,
+                    size,
+                    mimetype: item.metadata?.mimetype || (item as any).mimetype || "unknown",
+                    created_at: item.created_at || item.updated_at || null,
+                    updated_at: item.updated_at || item.created_at || null,
+                    publicUrl: pubData?.publicUrl || null
+                  };
+                  bucketFiles.push(obj);
+                  allObjects.push(obj);
+                }
+              }
+
+              if (data.length < limit) {
+                keepGoing = false;
+              } else {
+                offset += limit;
+              }
+            } catch (traversalErr) {
+              console.warn(`[Storage Monitor] Bucket "${b.name}" path "${prefix}" traversal notice:`, traversalErr);
+              break;
+            }
+          }
+        }
+
+        await traverseBucket("");
+
+        const bucketUsedBytes = bucketFiles.reduce((acc, curr) => acc + curr.size, 0);
+        totalBytes += bucketUsedBytes;
+        totalFileCount += bucketFiles.length;
+
+        // Format bucket used size
+        let formattedSize = "0 B";
+        if (bucketUsedBytes > 0) {
+          const k = 1024;
+          const sizes = ["B", "KB", "MB", "GB", "TB"];
+          const i = Math.floor(Math.log(bucketUsedBytes) / Math.log(k));
+          formattedSize = `${parseFloat((bucketUsedBytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+        }
+
+        bucketStats.push({
+          id: b.id || b.name,
+          name: b.name,
+          isPublic: Boolean(b.public),
+          fileSizeLimit: b.file_size_limit || null,
+          fileCount: bucketFiles.length,
+          usedBytes: bucketUsedBytes,
+          usedFormatted: formattedSize,
+          percentageOfTotal: 0
+        });
+      }
+
+      // Calculate percentage distribution among buckets
+      bucketStats.forEach(b => {
+        b.percentageOfTotal = totalBytes > 0 ? Number(((b.usedBytes / totalBytes) * 100).toFixed(1)) : 0;
+      });
+
+      // Sort buckets by used size descending
+      bucketStats.sort((a, b) => b.usedBytes - a.usedBytes);
+
+      // 3. Top largest files
+      const sortedBySize = [...allObjects].sort((a, b) => b.size - a.size);
+      const largestFiles = sortedBySize.slice(0, 15).map(f => {
+        let formatted = "0 B";
+        if (f.size > 0) {
+          const k = 1024;
+          const sizes = ["B", "KB", "MB", "GB", "TB"];
+          const i = Math.floor(Math.log(f.size) / Math.log(k));
+          formatted = `${parseFloat((f.size / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+        }
+        return {
+          ...f,
+          formattedSize: formatted
+        };
+      });
+
+      // 4. Recent uploads sorted chronologically
+      const sortedByDate = [...allObjects].sort((a, b) => {
+        const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return timeB - timeA;
+      });
+      const recentUploads = sortedByDate.slice(0, 15).map(f => {
+        let formatted = "0 B";
+        if (f.size > 0) {
+          const k = 1024;
+          const sizes = ["B", "KB", "MB", "GB", "TB"];
+          const i = Math.floor(Math.log(f.size) / Math.log(k));
+          formatted = `${parseFloat((f.size / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+        }
+        return {
+          ...f,
+          formattedSize: formatted
+        };
+      });
+
+      // 5. Detect Safe Cleanup Candidates (Payment receipts strictly belonging to "Delivered" orders)
+      const cleanupCandidates: Array<{
+        orderId: string;
+        orderNumber: string;
+        customerName: string;
+        orderStatus: string;
+        paymentStatus: string;
+        fileName: string;
+        fileUrl: string;
+        bucket: string;
+        storagePath: string;
+        size: number;
+        formattedSize: string;
+        uploadedAt: string | null;
+      }> = [];
+
+      try {
+        // Check both Supabase orders and CMS stores for delivered orders
+        const { data: dbOrders } = await dbClient.from("orders").select("*").eq("status", "Delivered");
+        const rawCmsOrders = Array.isArray(cmsDataStore["zst_orders"]) ? cmsDataStore["zst_orders"] : [];
+        const rawCmsOrdersV1 = Array.isArray(cmsDataStore["zst_orders_v1"]) ? cmsDataStore["zst_orders_v1"] : [];
+        const allDelivered = [
+          ...(dbOrders || []),
+          ...rawCmsOrders.filter((o: any) => o.status === "Delivered"),
+          ...rawCmsOrdersV1.filter((o: any) => o.status === "Delivered")
+        ];
+
+        const seenOrders = new Set<string>();
+        for (const o of allDelivered) {
+          const oId = String(o.id || o.orderNumber || o.tracking_number || "");
+          if (!oId || seenOrders.has(oId)) continue;
+          seenOrders.add(oId);
+
+          const proofUrl = o.paymentProofUrl || o.payment_proof_url;
+          const proofName = o.paymentProofFileName || o.payment_proof_file_name;
+
+          if (proofUrl && typeof proofUrl === "string") {
+            // Find corresponding object in storage
+            let matchedObj = allObjects.find(obj => {
+              if (proofName && (obj.name === proofName || obj.path.includes(proofName))) return true;
+              if (obj.publicUrl && proofUrl.includes(obj.path)) return true;
+              const urlClean = proofUrl.split("?")[0];
+              return urlClean.endsWith(obj.name);
+            });
+
+            if (matchedObj) {
+              let formatted = "0 B";
+              if (matchedObj.size > 0) {
+                const k = 1024;
+                const sizes = ["B", "KB", "MB", "GB", "TB"];
+                const i = Math.floor(Math.log(matchedObj.size) / Math.log(k));
+                formatted = `${parseFloat((matchedObj.size / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+              }
+
+              cleanupCandidates.push({
+                orderId: oId,
+                orderNumber: o.orderNumber || o.order_number || o.tracking_number || oId,
+                customerName: o.customerName || o.customer_name || "Customer",
+                orderStatus: "Delivered",
+                paymentStatus: o.paymentStatus || o.payment_status || "Payment Verified",
+                fileName: matchedObj.name,
+                fileUrl: matchedObj.publicUrl || proofUrl,
+                bucket: matchedObj.bucket,
+                storagePath: matchedObj.path,
+                size: matchedObj.size,
+                formattedSize: formatted,
+                uploadedAt: matchedObj.created_at || o.payment_proof_uploaded_at || o.paymentProofUploadedAt || null
+              });
+            }
+          }
+        }
+      } catch (cleanupScanErr) {
+        console.warn("[Storage Monitor] Cleanup candidate scan notice:", cleanupScanErr);
+      }
+
+      // Calculate Storage Quota, Used, and Left Storage
+      const configuredQuotaMb = Number(cmsDataStore["zst_storage_quota_mb"]) || (process.env.SUPABASE_STORAGE_LIMIT_MB ? Number(process.env.SUPABASE_STORAGE_LIMIT_MB) : 1024); // Default 1024 MB = 1 GB (Supabase Free Plan)
+      const configuredPlanName = (cmsDataStore["zst_storage_plan_name"] as string) || (configuredQuotaMb >= 102400 ? "Supabase Pro Tier (100 GB)" : (configuredQuotaMb >= 10240 ? `Custom Plan (${(configuredQuotaMb/1024).toFixed(0)} GB)` : "Supabase Free Tier (1 GB)"));
+      const totalCapacityBytes = configuredQuotaMb * 1024 * 1024;
+      const totalUsedBytes = totalBytes;
+      const remainingBytes = Math.max(0, totalCapacityBytes - totalUsedBytes);
+
+      const formatBytes = (bytes: number): string => {
+        if (bytes <= 0) return "0 B";
+        const k = 1024;
+        const sizes = ["B", "KB", "MB", "GB", "TB"];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+      };
+
+      const usagePercentage = Number(Math.min(100, (totalUsedBytes / totalCapacityBytes) * 100).toFixed(2));
+      const remainingPercentage = Number(Math.max(0, 100 - usagePercentage).toFixed(2));
+
+      let storageStatus: "Healthy" | "Warning" | "Critical" = "Healthy";
+      if (usagePercentage >= 95) {
+        storageStatus = "Critical";
+      } else if (usagePercentage >= 80) {
+        storageStatus = "Warning";
+      }
+
+      return res.json({
+        success: true,
+        status: storageStatus,
+        connected: true,
+        totalUsedBytes,
+        totalUsedFormatted: formatBytes(totalUsedBytes),
+        totalCapacityBytes,
+        totalCapacityFormatted: formatBytes(totalCapacityBytes),
+        remainingBytes,
+        remainingFormatted: formatBytes(remainingBytes),
+        usagePercentage,
+        remainingPercentage,
+        totalFileCount,
+        bucketCount: buckets.length,
+        buckets: bucketStats,
+        largestFiles,
+        recentUploads,
+        cleanupCandidates,
+        quotaInfo: {
+          available: true,
+          planName: configuredPlanName,
+          quotaMb: configuredQuotaMb,
+          totalCapacityBytes,
+          totalCapacityFormatted: formatBytes(totalCapacityBytes),
+          totalUsedBytes,
+          totalUsedFormatted: formatBytes(totalUsedBytes),
+          remainingBytes,
+          remainingFormatted: formatBytes(remainingBytes),
+          usagePercentage,
+          remainingPercentage,
+          message: `Plan capacity: ${formatBytes(totalCapacityBytes)} | Used: ${formatBytes(totalUsedBytes)} (${usagePercentage}%) | Available Left: ${formatBytes(remainingBytes)} (${remainingPercentage}%)`
+        },
+        serverTime: new Date().toISOString(),
+        lastCheckedAt: new Date().toISOString()
+      });
+    } catch (err: any) {
+      console.error("[Storage Monitor] Error calculating storage health:", err);
+      return res.status(500).json({
+        success: false,
+        error: err?.message || String(err),
+        status: "Critical"
+      });
+    }
+  });
+
+  // Admin endpoint: Update storage quota plan limit
+  app.post("/api/admin/storage-health/update-quota", requireAdminAuth, async (req, res) => {
+    try {
+      const { quotaMb, planName } = req.body;
+      const numQuota = Number(quotaMb);
+      if (!numQuota || numQuota <= 0) {
+        return res.status(400).json({ success: false, error: "Valid quota in Megabytes (MB) is required." });
+      }
+
+      cmsDataStore["zst_storage_quota_mb"] = numQuota;
+      if (planName) {
+        cmsDataStore["zst_storage_plan_name"] = planName;
+      } else {
+        cmsDataStore["zst_storage_plan_name"] = numQuota >= 102400 ? "Supabase Pro Tier (100 GB)" : (numQuota >= 1024 ? `${(numQuota / 1024).toFixed(0)} GB Plan` : `${numQuota} MB Plan`);
+      }
+      await persistDataStoreToDisk();
+
+      return res.json({
+        success: true,
+        message: "Storage plan capacity updated successfully",
+        quotaMb: numQuota,
+        planName: cmsDataStore["zst_storage_plan_name"]
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // Safe manual cleanup action for individual reviewed payment receipt or selected storage file
+  app.post("/api/admin/storage-health/cleanup-file", requireAdminAuth, async (req, res) => {
+    if (!dbClient) {
+      return res.status(503).json({ success: false, error: "Database client not configured" });
+    }
+
+    try {
+      const { bucket, storagePath, orderId } = req.body;
+      if (!bucket || !storagePath) {
+        return res.status(400).json({ success: false, error: "Bucket and storage path are required" });
+      }
+
+      // Remove the specific file from Supabase storage
+      const { error: removeError } = await dbClient.storage.from(bucket).remove([storagePath]);
+      if (removeError) {
+        console.warn(`[Storage Cleanup] Removal from bucket "${bucket}" notice:`, removeError.message);
+      }
+
+      // If tied to an order, clear the proof reference from DB and CMS
+      if (orderId) {
+        try {
+          await dbClient.from("orders").update({
+            payment_proof_url: null,
+            notes: "Payment proof archived from Supabase storage by Admin"
+          }).or(`id.eq.${orderId},tracking_number.eq.${orderId}`);
+        } catch {}
+
+        try {
+          ['zst_orders', 'zst_orders_v1'].forEach(k => {
+            if (Array.isArray(cmsDataStore[k])) {
+              cmsDataStore[k] = cmsDataStore[k].map((o: any) => {
+                if (String(o.id) === String(orderId) || String(o.orderNumber) === String(orderId) || String(o.tracking_number) === String(orderId)) {
+                  return { ...o, paymentProofUrl: null, payment_proof_url: null, paymentProofFileName: null, payment_proof_file_name: null };
+                }
+                return o;
+              });
+            }
+          });
+          await persistDataStoreToDisk();
+        } catch {}
+      }
+
+      console.log(`[Storage Cleanup] Successfully processed proof/file "${storagePath}" from bucket "${bucket}"`);
+
+      return res.json({
+        success: true,
+        message: `Successfully pruned "${storagePath}" from Supabase bucket "${bucket}".`
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // Safe batch cleanup action for multiple reviewed storage files
+  app.post("/api/admin/storage-health/cleanup-batch", requireAdminAuth, async (req, res) => {
+    if (!dbClient) {
+      return res.status(503).json({ success: false, error: "Database client not configured" });
+    }
+
+    try {
+      const { files } = req.body;
+      if (!Array.isArray(files) || files.length === 0) {
+        return res.status(400).json({ success: false, error: "Array of files is required for batch cleanup." });
+      }
+
+      const results: Array<{ bucket: string; path: string; success: boolean; error?: string }> = [];
+      
+      // Group by bucket for efficient deletion
+      const byBucket = new Map<string, Array<{ path: string; orderId?: string }>>();
+      files.forEach((f: any) => {
+        if (f.bucket && f.storagePath) {
+          const list = byBucket.get(f.bucket) || [];
+          list.push({ path: f.storagePath, orderId: f.orderId });
+          byBucket.set(f.bucket, list);
+        }
+      });
+
+      for (const [bucket, items] of byBucket.entries()) {
+        const paths = items.map(i => i.path);
+        const { error: batchErr } = await dbClient.storage.from(bucket).remove(paths);
+        
+        items.forEach(item => {
+          results.push({
+            bucket,
+            path: item.path,
+            success: !batchErr,
+            error: batchErr?.message
+          });
+
+          if (item.orderId) {
+            try {
+              dbClient.from("orders").update({
+                payment_proof_url: null,
+                notes: "Payment proof archived from Supabase storage by Admin"
+              }).or(`id.eq.${item.orderId},tracking_number.eq.${item.orderId}`);
+            } catch {}
+
+            try {
+              ['zst_orders', 'zst_orders_v1'].forEach(k => {
+                if (Array.isArray(cmsDataStore[k])) {
+                  cmsDataStore[k] = cmsDataStore[k].map((o: any) => {
+                    if (String(o.id) === String(item.orderId) || String(o.orderNumber) === String(item.orderId) || String(o.tracking_number) === String(item.orderId)) {
+                      return { ...o, paymentProofUrl: null, payment_proof_url: null, paymentProofFileName: null, payment_proof_file_name: null };
+                    }
+                    return o;
+                  });
+                }
+              });
+            } catch {}
+          }
+        });
+      }
+
+      await persistDataStoreToDisk();
+
+      const successCount = results.filter(r => r.success).length;
+      return res.json({
+        success: true,
+        message: `Successfully cleaned up ${successCount} of ${files.length} selected files from Supabase storage.`,
+        deletedCount: successCount,
+        results
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
   // PAYMENT METHODS API (Fetch & Manage)
   app.get("/api/payment-methods", async (req, res) => {
     try {
@@ -5620,13 +6066,23 @@ Please analyze this space and provide complete, coordinated color palettes stric
     try {
       const { key, payload } = req.body;
       if (key) {
-        cmsDataStore[key] = payload;
-        if (key === "zst_orders_v1") {
-          cmsDataStore["zst_orders"] = payload;
-          broadcastOrderEvent("orders_updated", { count: Array.isArray(payload) ? payload.length : 0, timestamp: Date.now() });
-        } else if (key === "zst_orders") {
-          cmsDataStore["zst_orders_v1"] = payload;
-          broadcastOrderEvent("orders_updated", { count: Array.isArray(payload) ? payload.length : 0, timestamp: Date.now() });
+        if (key === "zst_orders" || key === "zst_orders_v1") {
+          const current = Array.isArray(cmsDataStore["zst_orders"]) ? [...cmsDataStore["zst_orders"]] : [];
+          const incoming = Array.isArray(payload) ? payload : [];
+          const orderMap = new Map<string, any>();
+          current.forEach((o: any) => { if (o && o.id) orderMap.set(String(o.id), o); });
+          incoming.forEach((o: any) => {
+            if (o && o.id) {
+              const existing = orderMap.get(String(o.id));
+              orderMap.set(String(o.id), { ...(existing || {}), ...o });
+            }
+          });
+          const merged = Array.from(orderMap.values());
+          cmsDataStore["zst_orders"] = merged;
+          cmsDataStore["zst_orders_v1"] = merged;
+          broadcastOrderEvent("orders_updated", { count: merged.length, timestamp: Date.now() });
+        } else {
+          cmsDataStore[key] = payload;
         }
         await persistDataStoreToDisk();
         invalidateAiCatalogCache();
@@ -5664,7 +6120,11 @@ Please analyze this space and provide complete, coordinated color palettes stric
 
 
   // Vite development middleware vs Static Production serving
-  if (process.env.NODE_ENV !== "production") {
+  const isBundled = typeof __filename !== "undefined" && (__filename.endsWith(".cjs") || __filename.includes("dist"));
+  const isProduction = process.env.NODE_ENV === "production" || isBundled;
+
+  if (!isProduction) {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
@@ -5674,7 +6134,15 @@ Please analyze this space and provide complete, coordinated color palettes stric
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    const candidateDistPaths = [
+      path.resolve(process.cwd(), "dist"),
+      typeof __dirname !== "undefined" ? path.resolve(__dirname) : "",
+      typeof __dirname !== "undefined" ? path.resolve(__dirname, "..", "dist") : "",
+      process.cwd(),
+    ].filter(Boolean);
+
+    const distPath = candidateDistPaths.find((p) => fs.existsSync(path.join(p, "index.html"))) || path.resolve(process.cwd(), "dist");
+
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       const indexPath = path.join(distPath, "index.html");

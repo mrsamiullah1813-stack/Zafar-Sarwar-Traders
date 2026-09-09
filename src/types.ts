@@ -914,6 +914,9 @@ export interface CheckoutSettings {
   codAdvanceMinAmount?: number;
   codAdvanceInstructions?: string;
   businessOwnerWhatsapp?: string;
+  // Post-Order WhatsApp Option (Admin Controlled)
+  enablePostOrderWhatsapp?: boolean;
+  postOrderWhatsappNumber?: string;
 }
 
 export interface CityDeliveryInfo {

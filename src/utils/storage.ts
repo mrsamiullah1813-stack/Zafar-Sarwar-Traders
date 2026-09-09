@@ -360,7 +360,9 @@ export const defaultCheckoutSettings: CheckoutSettings = {
   codAdvancePercentage: 30,
   codAdvanceMinAmount: 500,
   codAdvanceInstructions: 'To confirm Cash on Delivery, a 30% advance payment is required. The remaining 70% balance is payable in cash upon doorstep delivery.',
-  businessOwnerWhatsapp: '+92 300 6603063'
+  businessOwnerWhatsapp: '+92 300 6603063',
+  enablePostOrderWhatsapp: false,
+  postOrderWhatsappNumber: '+92 310 8002863'
 };
 
 export const defaultContactPersons: ContactPerson[] = [
@@ -1929,8 +1931,9 @@ export const syncWithServerCMS = async (callbacks: {
 
     // Checkout & Coupons & Payment Methods
     if (checkoutResult.status === 'fulfilled' && checkoutResult.value && typeof checkoutResult.value === 'object' && Object.keys(checkoutResult.value).length > 0) {
-      if (callbacks.setCheckoutSettings) callbacks.setCheckoutSettings(checkoutResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.CHECKOUT_SETTINGS, checkoutResult.value);
+      const mergedCheckout: CheckoutSettings = { ...defaultCheckoutSettings, ...checkoutResult.value };
+      if (callbacks.setCheckoutSettings) callbacks.setCheckoutSettings(mergedCheckout);
+      safeSetLocalStorage(STORAGE_KEYS.CHECKOUT_SETTINGS, mergedCheckout);
       if (Array.isArray((checkoutResult.value as any).coupons) && (checkoutResult.value as any).coupons.length > 0) {
         safeSetLocalStorage(STORAGE_KEYS.COUPONS, (checkoutResult.value as any).coupons);
       }

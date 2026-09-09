@@ -16,7 +16,7 @@ import { getOrGenerateCustomerId } from '../utils/customerStorage';
 import { getProductPricingDetails, getVariantPricingDetails, getActiveProductPrice } from '../utils/pricingUtils';
 import { fetchPaymentMethodsFromSupabase, uploadMediaToSupabase, uploadPaymentProof, fetchHowToOrderConfigFromSupabase, fetchDeliveryCitiesFromSupabase } from '../services/supabaseService';
 import { CouponPromoBox } from './CouponPromoBox';
-import { pushNavigationState, navigateBackSafe, addNavigationListener } from '../utils/navigationHistory';
+import { pushNavigationState, navigateBackSafe, addNavigationListener, resetToHome } from '../utils/navigationHistory';
 
 type CheckoutStep = 'cart' | 'customer' | 'address' | 'payment_method' | 'payment_instructions' | 'payment_proof' | 'confirmation';
 
@@ -28,6 +28,7 @@ interface OrderCheckoutModalProps {
   checkoutSettings: CheckoutSettings;
   onClose: () => void;
   onOrderPlaced: (order: CustomerOrder) => Promise<{ success: boolean; error?: string } | any> | any;
+  onReturnHome?: () => void;
 }
 
 export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
@@ -38,6 +39,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
   checkoutSettings,
   onClose,
   onOrderPlaced,
+  onReturnHome,
 }) => {
   const [currentStep, setCurrentStep] = useState<CheckoutStep>('cart');
   const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>(() => loadDeliverySettings());
@@ -49,6 +51,18 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
   const goBackStep = (prevStep: CheckoutStep) => {
     navigateBackSafe(() => setCurrentStep(prevStep));
+  };
+
+  const handleDoneToHome = () => {
+    setCurrentStep('cart');
+    setPlacedOrder(null);
+    if (onReturnHome) {
+      onReturnHome();
+    } else {
+      resetToHome();
+      onClose();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   // Sync with Android Native Back button and edge-swipe gestures
@@ -812,7 +826,9 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
     // Target WhatsApp: Specific payment method override or store whatsapp
     const targetWhatsapp = activePaymentMethod.whatsappNumber || 
+      checkoutSettings.postOrderWhatsappNumber ||
       checkoutSettings.whatsappNumberOverride || 
+      checkoutSettings.whatsappNumber ||
       deliverySettings.whatsappSupportNumber || 
       config.whatsapp || 
       config.phone || 
@@ -866,7 +882,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
             </div>
 
             <button
-              onClick={onClose}
+              onClick={currentStep === 'confirmation' ? handleDoneToHome : onClose}
               className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
               title="Close Checkout"
             >
@@ -2219,18 +2235,20 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
               {/* Action Buttons: Open WhatsApp & Close */}
               <div className="space-y-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => handleSendWhatsAppOrder(placedOrder)}
-                  className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
-                >
-                  <Send className="w-4 h-4" />
-                  <span>Send Order & Tracking via WhatsApp</span>
-                </button>
+                {checkoutSettings.enablePostOrderWhatsapp && (
+                  <button
+                    type="button"
+                    onClick={() => handleSendWhatsAppOrder(placedOrder)}
+                    className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>Send Order & Tracking via WhatsApp</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={handleDoneToHome}
                   className="w-full py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-semibold text-xs transition-colors cursor-pointer"
                 >
                   Done & Close

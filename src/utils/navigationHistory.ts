@@ -245,6 +245,33 @@ export function hasInternalNavigationHistory(): boolean {
 }
 
 /**
+ * Reset navigation history and URL cleanly to the Main Website Home Page
+ */
+export function resetToHome() {
+  if (typeof window === 'undefined') return;
+  currentNavigationDepth = 0;
+  const homeState: NavigationState = {
+    zst_app_state: true,
+    depth: 0,
+    view: 'home',
+    categoryId: 'all',
+    timestamp: Date.now()
+  };
+  const newUrl = buildPreservedUrl({
+    checkout: null,
+    cart: null,
+    product: null,
+    variant: null,
+    page: null,
+    brand: null,
+    tool: null,
+    search: null
+  });
+  window.history.replaceState(homeState, '', newUrl);
+  notifyListeners(homeState);
+}
+
+/**
  * Global popstate listener setup
  */
 if (typeof window !== 'undefined') {

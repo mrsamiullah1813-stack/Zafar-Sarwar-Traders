@@ -1,12 +1,12 @@
 {
   "zst_pricing_typography_v1": {
     "color": "#f97316",
-    "fontFamily": "Poppins",
+    "fontFamily": "Roboto",
     "fontWeight": "800",
     "fontSizeScale": "lg",
     "priceStyle": "bold",
     "letterSpacing": "normal",
-    "updatedAt": "2026-09-09T06:46:31.154Z"
+    "updatedAt": "2026-09-09T07:46:55.209Z"
   },
   "zst_brands_v1": [
     {
@@ -244,13 +244,18 @@
       "taxAmount": 0,
       "grandTotal": 6000,
       "createdAt": "2026-09-09T07:31:38.926379+00:00",
-      "updatedAt": "2026-09-09T07:31:38.926379+00:00",
-      "status": "Order Received",
+      "updatedAt": "2026-09-09T11:45:33.108Z",
+      "status": "Confirmed",
       "statusHistory": [
         {
           "note": "Order placed successfully by customer.",
           "status": "Order Received",
           "timestamp": "2026-09-09T07:31:38Z"
+        },
+        {
+          "status": "Confirmed",
+          "timestamp": "2026-09-09T11:45:33.108Z",
+          "note": "Test confirmation"
         }
       ],
       "isDelayed": false,
@@ -262,7 +267,20 @@
       "paymentProofUploadedAt": "2026-09-09T07:31:38.926379+00:00",
       "payment_proof_uploaded_at": "2026-09-09T07:31:38.926379+00:00",
       "paymentStatus": "Payment Proof Submitted",
-      "isAdvancePayment": false
+      "isAdvancePayment": false,
+      "status_history": [
+        {
+          "note": "Order placed successfully by customer.",
+          "status": "Order Received",
+          "timestamp": "2026-09-09T07:31:38Z"
+        },
+        {
+          "status": "Confirmed",
+          "timestamp": "2026-09-09T11:45:33.108Z",
+          "note": "Test confirmation"
+        }
+      ],
+      "updated_at": "2026-09-09T11:45:33.108Z"
     },
     {
       "id": "ZST-4984516",
@@ -921,13 +939,15 @@
       "estimatedDeliveryTime": "10:00 AM – 6:00 PM",
       "isDelayed": false,
       "paymentMethodName": "Easypaisa Mobile Account",
-      "paymentProofUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/project%20media/uploads/1788590296220-yag89h-1788590292243-x7y6glh.png",
+      "paymentProofUrl": null,
       "paymentStatus": "Payment Verified",
       "isAdvancePayment": false,
       "updatedAt": "2026-09-05T07:30:23.974Z",
       "paymentVerifiedAt": "2026-09-05T07:06:36.458Z",
       "paymentNotes": "Payment proof verified and approved by Admin",
-      "payment_proof_url": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/project%20media/uploads/1788590296220-yag89h-1788590292243-x7y6glh.png"
+      "payment_proof_url": null,
+      "paymentProofFileName": null,
+      "payment_proof_file_name": null
     }
   ],
   "zst_checkout_settings_v1": {
@@ -1097,13 +1117,18 @@
       "taxAmount": 0,
       "grandTotal": 6000,
       "createdAt": "2026-09-09T07:31:38.926379+00:00",
-      "updatedAt": "2026-09-09T07:31:38.926379+00:00",
-      "status": "Order Received",
+      "updatedAt": "2026-09-09T11:45:33.108Z",
+      "status": "Confirmed",
       "statusHistory": [
         {
           "note": "Order placed successfully by customer.",
           "status": "Order Received",
           "timestamp": "2026-09-09T07:31:38Z"
+        },
+        {
+          "status": "Confirmed",
+          "timestamp": "2026-09-09T11:45:33.108Z",
+          "note": "Test confirmation"
         }
       ],
       "isDelayed": false,
@@ -1115,7 +1140,20 @@
       "paymentProofUploadedAt": "2026-09-09T07:31:38.926379+00:00",
       "payment_proof_uploaded_at": "2026-09-09T07:31:38.926379+00:00",
       "paymentStatus": "Payment Proof Submitted",
-      "isAdvancePayment": false
+      "isAdvancePayment": false,
+      "status_history": [
+        {
+          "note": "Order placed successfully by customer.",
+          "status": "Order Received",
+          "timestamp": "2026-09-09T07:31:38Z"
+        },
+        {
+          "status": "Confirmed",
+          "timestamp": "2026-09-09T11:45:33.108Z",
+          "note": "Test confirmation"
+        }
+      ],
+      "updated_at": "2026-09-09T11:45:33.108Z"
     },
     {
       "id": "ZST-4984516",
@@ -1774,13 +1812,15 @@
       "estimatedDeliveryTime": "10:00 AM – 6:00 PM",
       "isDelayed": false,
       "paymentMethodName": "Easypaisa Mobile Account",
-      "paymentProofUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/project%20media/uploads/1788590296220-yag89h-1788590292243-x7y6glh.png",
+      "paymentProofUrl": null,
       "paymentStatus": "Payment Verified",
       "isAdvancePayment": false,
       "updatedAt": "2026-09-05T07:30:23.974Z",
       "paymentVerifiedAt": "2026-09-05T07:06:36.458Z",
       "paymentNotes": "Payment proof verified and approved by Admin",
-      "payment_proof_url": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/project%20media/uploads/1788590296220-yag89h-1788590292243-x7y6glh.png"
+      "payment_proof_url": null,
+      "paymentProofFileName": null,
+      "payment_proof_file_name": null
     }
   ],
   "zst_how_to_order_guide_v1": {
