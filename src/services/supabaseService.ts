@@ -1682,36 +1682,66 @@ export async function updateOrderStatusInSupabase(orderId: string, status: Custo
   // 2. Secondary: Direct Supabase SDK Fallback (for static/standalone client deployments)
   if (isSupabaseConfigured && supabase) {
     try {
-      const filterStr = `id.eq.${orderId},order_number.eq.${orderId}`;
-      const { data: existing } = await supabase.from('orders').select('status_history').or(filterStr).maybeSingle();
+      let existing: any = null;
+      let targetDbId = orderId;
+
+      try {
+        const { data: byId } = await supabase.from('orders').select('id, status_history').eq('id', orderId).maybeSingle();
+        if (byId) {
+          existing = byId;
+          targetDbId = byId.id;
+        }
+      } catch {}
+
+      if (!existing) {
+        try {
+          const { data: byOrderNum } = await supabase.from('orders').select('id, status_history').eq('order_number', orderId).maybeSingle();
+          if (byOrderNum) {
+            existing = byOrderNum;
+            targetDbId = byOrderNum.id;
+          }
+        } catch {}
+      }
+
       const history = existing && Array.isArray(existing.status_history) ? existing.status_history : [];
       const updatedHistory = [...history, { status, timestamp: new Date().toISOString(), note: note || `Status updated to ${status}` }];
 
+      // Tier 1: with status, order_status, status_history, updated_at
       const { error: directErr } = await supabase.from('orders').update({
         status,
         order_status: status,
         status_history: updatedHistory,
         updated_at: new Date().toISOString()
-      }).or(filterStr);
+      }).eq('id', targetDbId);
 
       if (!directErr) {
         console.log(`[Supabase SDK] Direct status update SUCCESS for order ${orderId} -> ${status}`);
         return { success: true };
       }
 
-      // Retry without order_status column if column error
+      // Tier 2: with status, status_history, updated_at
       const { error: secondaryDirectErr } = await supabase.from('orders').update({
         status,
         status_history: updatedHistory,
         updated_at: new Date().toISOString()
-      }).or(filterStr);
+      }).eq('id', targetDbId);
 
       if (!secondaryDirectErr) {
         console.log(`[Supabase SDK] Direct status fallback update SUCCESS for order ${orderId} -> ${status}`);
         return { success: true };
       }
 
-      return { success: false, error: formatSupabaseError(directErr?.message || secondaryDirectErr?.message) };
+      // Tier 3: with status only
+      const { error: tertiaryErr } = await supabase.from('orders').update({
+        status,
+        updated_at: new Date().toISOString()
+      }).eq('id', targetDbId);
+
+      if (!tertiaryErr) {
+        return { success: true };
+      }
+
+      return { success: false, error: formatSupabaseError(directErr?.message || secondaryDirectErr?.message || tertiaryErr?.message) };
     } catch (sdkErr: any) {
       console.error(`[Supabase SDK Exception] Status update failed:`, sdkErr);
       return { success: false, error: formatSupabaseError(sdkErr?.message || String(sdkErr)) };
@@ -1751,8 +1781,27 @@ export async function updateOrderPaymentStatusInSupabase(
   // 2. Secondary: Direct Supabase SDK Fallback
   if (isSupabaseConfigured && supabase) {
     try {
-      const filterStr = `id.eq.${orderId},order_number.eq.${orderId}`;
-      const { data: existing } = await supabase.from('orders').select('status_history, status').or(filterStr).maybeSingle();
+      let existing: any = null;
+      let targetDbId = orderId;
+
+      try {
+        const { data: byId } = await supabase.from('orders').select('id, status_history, status').eq('id', orderId).maybeSingle();
+        if (byId) {
+          existing = byId;
+          targetDbId = byId.id;
+        }
+      } catch {}
+
+      if (!existing) {
+        try {
+          const { data: byOrderNum } = await supabase.from('orders').select('id, status_history, status').eq('order_number', orderId).maybeSingle();
+          if (byOrderNum) {
+            existing = byOrderNum;
+            targetDbId = byOrderNum.id;
+          }
+        } catch {}
+      }
+
       const history = existing && Array.isArray(existing.status_history) ? existing.status_history : [];
       const finalStatus = orderStatus || (paymentStatus === 'Payment Verified' ? 'Order Confirmed' : (paymentStatus === 'Payment Rejected' ? 'Payment Rejected' : existing?.status || 'Order Received'));
       const updatedHistory = [...history, { 
@@ -1776,24 +1825,46 @@ export async function updateOrderPaymentStatusInSupabase(
         payload.payment_verified_by = verifiedBy || 'Admin';
       }
 
-      const { error: directErr } = await supabase.from('orders').update(payload).or(filterStr);
+      // Tier 1: Full payload
+      const { error: directErr } = await supabase.from('orders').update(payload).eq('id', targetDbId);
       if (!directErr) {
         console.log(`[Supabase SDK] Direct payment status update SUCCESS for order ${orderId}`);
         return { success: true };
       }
 
-      // Retry without payment-specific columns if table lacks them
-      const fallbackPayload = {
+      // Tier 2: Payment status + status_history
+      const tier2Payload = {
+        status: finalStatus,
+        payment_status: paymentStatus,
+        status_history: updatedHistory,
+        updated_at: new Date().toISOString()
+      };
+      const { error: tier2Err } = await supabase.from('orders').update(tier2Payload).eq('id', targetDbId);
+      if (!tier2Err) {
+        return { success: true };
+      }
+
+      // Tier 3: status + status_history
+      const tier3Payload = {
         status: finalStatus,
         status_history: updatedHistory,
         updated_at: new Date().toISOString()
       };
-      const { error: secondaryErr } = await supabase.from('orders').update(fallbackPayload).or(filterStr);
-      if (!secondaryErr) {
+      const { error: tier3Err } = await supabase.from('orders').update(tier3Payload).eq('id', targetDbId);
+      if (!tier3Err) {
         return { success: true };
       }
 
-      return { success: false, error: formatSupabaseError(directErr?.message || secondaryErr?.message) };
+      // Tier 4: status only
+      const { error: tier4Err } = await supabase.from('orders').update({
+        status: finalStatus,
+        updated_at: new Date().toISOString()
+      }).eq('id', targetDbId);
+      if (!tier4Err) {
+        return { success: true };
+      }
+
+      return { success: false, error: formatSupabaseError(directErr?.message || tier2Err?.message || tier3Err?.message || tier4Err?.message) };
     } catch (sdkErr: any) {
       return { success: false, error: formatSupabaseError(sdkErr?.message || String(sdkErr)) };
     }

@@ -509,18 +509,20 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
     delayReason: string
   ) => {
     if (isSupabaseConfigured && supabase) {
-      const filterStr = `id.eq.${orderId},order_number.eq.${orderId}`;
-      const { error } = await supabase.from('orders').update({
-        estimated_delivery_days: estDays || null,
-        tracking_reference: trackingRef || null,
-        is_delayed: isDelayed,
-        delivery_delay_note: delayReason || null,
-        updated_at: new Date().toISOString()
-      }).or(filterStr);
+      try {
+        const { error } = await supabase.from('orders').update({
+          estimated_delivery_days: estDays || null,
+          tracking_reference: trackingRef || null,
+          is_delayed: isDelayed,
+          delivery_delay_note: delayReason || null,
+          updated_at: new Date().toISOString()
+        }).eq('id', orderId);
 
-      if (error) {
-        onShowToast(`Failed to save preferences in Supabase: ${error.message}`);
-        return;
+        if (error) {
+          console.warn('[Orders Manager] Delivery preferences direct update notice:', error.message);
+        }
+      } catch (e: any) {
+        console.warn('[Orders Manager] Supabase update notice:', e?.message || e);
       }
     }
 

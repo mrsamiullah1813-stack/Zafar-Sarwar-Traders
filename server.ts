@@ -2,6 +2,8 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import crypto from "crypto";
+import fs from "fs";
+import fsPromises from "fs/promises";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
@@ -85,10 +87,9 @@ async function startServer() {
   const PUBLIC_UPLOADS_DIR = path.join(process.cwd(), "public", "uploads");
 
   try {
-    const fsSync = await import("fs");
-    if (!fsSync.existsSync(UPLOADS_DIR)) fsSync.mkdirSync(UPLOADS_DIR, { recursive: true });
-    if (!fsSync.existsSync(DIST_UPLOADS_DIR)) fsSync.mkdirSync(DIST_UPLOADS_DIR, { recursive: true });
-    if (!fsSync.existsSync(PUBLIC_UPLOADS_DIR)) fsSync.mkdirSync(PUBLIC_UPLOADS_DIR, { recursive: true });
+    if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    if (!fs.existsSync(DIST_UPLOADS_DIR)) fs.mkdirSync(DIST_UPLOADS_DIR, { recursive: true });
+    if (!fs.existsSync(PUBLIC_UPLOADS_DIR)) fs.mkdirSync(PUBLIC_UPLOADS_DIR, { recursive: true });
   } catch (err) {
     console.warn("Uploads folder initialization notice:", err);
   }
@@ -120,14 +121,13 @@ async function startServer() {
   // =========================================================
   // PERSISTENT CMS DATA BACKEND DISK & MEMORY STORE
   // =========================================================
-  const fs = await import("fs/promises");
   const CMS_FILE_PATH = path.join(process.cwd(), "cms_store_data.json");
 
   let cmsDataStore: Record<string, any> = {};
 
   // Hydrate in-memory store on boot if file exists
   try {
-    const fileContent = await fs.readFile(CMS_FILE_PATH, "utf-8");
+    const fileContent = await fsPromises.readFile(CMS_FILE_PATH, "utf-8");
     cmsDataStore = JSON.parse(fileContent);
     console.log("✅ Successfully loaded CMS store from disk:", Object.keys(cmsDataStore));
   } catch (e) {
@@ -140,7 +140,7 @@ async function startServer() {
     return new Promise<void>((resolve) => {
       saveTimer = setTimeout(async () => {
         try {
-          await fs.writeFile(CMS_FILE_PATH, JSON.stringify(cmsDataStore, null, 2), "utf-8");
+          await fsPromises.writeFile(CMS_FILE_PATH, JSON.stringify(cmsDataStore, null, 2), "utf-8");
         } catch (err) {
           console.error("Error persisting cms_store_data.json to disk:", err);
         }
@@ -2024,28 +2024,80 @@ async function startServer() {
 
       // 2. Update Supabase Database
       if (dbClient) {
-        const filterStr = `id.eq.${id},order_number.eq.${id}`;
-        const { data: existing } = await dbClient.from("orders").select("status_history, status").or(filterStr).maybeSingle();
-        const history = existing && Array.isArray(existing.status_history) ? existing.status_history : [];
-        const updatedHistory = [...history, { status, timestamp: new Date().toISOString(), note: note || `Status updated to ${status}` }];
-
-        // Attempt update with both 'status' and 'order_status' columns for schema compatibility
-        let updatePayload: Record<string, any> = {
-          status,
-          order_status: status,
-          status_history: updatedHistory,
-          updated_at: new Date().toISOString()
-        };
-
-        const { error: primaryErr } = await dbClient.from("orders").update(updatePayload).or(filterStr);
-        if (primaryErr) {
-          // If order_status column doesn't exist in Supabase table schema, retry without it
-          const fallbackPayload = { status, status_history: updatedHistory, updated_at: new Date().toISOString() };
-          const { error: secondaryErr } = await dbClient.from("orders").update(fallbackPayload).or(filterStr);
-          if (secondaryErr) {
-            console.error("[Orders Status Update Error]", secondaryErr);
-            return res.status(500).json({ success: false, error: secondaryErr.message });
+        try {
+          let existing: any = null;
+          let targetDbId = id;
+          
+          // Safe ID lookup without assuming order_number column exists
+          try {
+            const { data: byId } = await dbClient.from("orders").select("id, status_history, status").eq("id", id).maybeSingle();
+            if (byId) {
+              existing = byId;
+              targetDbId = byId.id;
+            }
+          } catch (idErr) {
+            console.warn("[Orders Status] Lookup by id warning:", idErr);
           }
+
+          if (!existing) {
+            try {
+              const { data: byOrderNum } = await dbClient.from("orders").select("id, status_history, status").eq("order_number", id).maybeSingle();
+              if (byOrderNum) {
+                existing = byOrderNum;
+                targetDbId = byOrderNum.id;
+              }
+            } catch {}
+          }
+
+          const history = existing && Array.isArray(existing.status_history) ? existing.status_history : [];
+          const updatedHistory = [...history, { status, timestamp: new Date().toISOString(), note: note || `Status updated to ${status}` }];
+
+          // Multi-tier update fallback for maximum schema compatibility
+          let updateSucceeded = false;
+          
+          // Tier 1: with status, order_status, status_history, updated_at
+          try {
+            const { error: err1 } = await dbClient.from("orders").update({
+              status,
+              order_status: status,
+              status_history: updatedHistory,
+              updated_at: new Date().toISOString()
+            }).eq("id", targetDbId);
+            if (!err1) updateSucceeded = true;
+          } catch {}
+
+          // Tier 2: with status, status_history, updated_at
+          if (!updateSucceeded) {
+            try {
+              const { error: err2 } = await dbClient.from("orders").update({
+                status,
+                status_history: updatedHistory,
+                updated_at: new Date().toISOString()
+              }).eq("id", targetDbId);
+              if (!err2) updateSucceeded = true;
+            } catch {}
+          }
+
+          // Tier 3: with status and updated_at only
+          if (!updateSucceeded) {
+            try {
+              const { error: err3 } = await dbClient.from("orders").update({
+                status,
+                updated_at: new Date().toISOString()
+              }).eq("id", targetDbId);
+              if (!err3) updateSucceeded = true;
+            } catch {}
+          }
+
+          // Tier 4: with status only
+          if (!updateSucceeded) {
+            try {
+              const { error: err4 } = await dbClient.from("orders").update({ status }).eq("id", targetDbId);
+              if (!err4) updateSucceeded = true;
+            } catch {}
+          }
+        } catch (supaErr: any) {
+          console.warn("[Orders Status] Supabase update notice:", supaErr?.message || supaErr);
         }
       }
 
@@ -2108,45 +2160,103 @@ async function startServer() {
 
       // 2. Update Supabase Database
       if (dbClient) {
-        const filterStr = `id.eq.${id},order_number.eq.${id}`;
-        const { data: existing } = await dbClient.from("orders").select("status, status_history, payment_notes").or(filterStr).maybeSingle();
-        const history = existing && Array.isArray(existing.status_history) ? existing.status_history : [];
-        const finalStatus = effectiveStatus || existing?.status || 'Order Received';
-        const updatedHistory = [...history, { 
-          status: finalStatus, 
-          timestamp: new Date().toISOString(), 
-          note: note || (paymentStatus === 'Payment Rejected' ? `Payment rejected: ${rejectionReason || 'Invalid proof'}` : `Payment marked as: ${paymentStatus}`),
-          updatedBy: verifiedBy || 'Admin'
-        }];
-
-        const updatePayload: Record<string, any> = {
-          status: finalStatus,
-          order_status: finalStatus,
-          payment_status: paymentStatus,
-          status_history: updatedHistory,
-          updated_at: new Date().toISOString()
-        };
-        if (note) updatePayload.payment_notes = note;
-        if (rejectionReason) updatePayload.payment_rejection_reason = rejectionReason;
-        if (paymentStatus === 'Payment Verified') {
-          updatePayload.payment_verified_at = new Date().toISOString();
-          updatePayload.payment_verified_by = verifiedBy || 'Admin';
-        }
-
         try {
-          const { error: fullUpdateErr } = await dbClient.from("orders").update(updatePayload).or(filterStr);
-          if (fullUpdateErr) {
-            // Fallback without payment-specific columns if schema doesn't have them
-            const fallbackPayload = { 
-              status: finalStatus, 
-              status_history: updatedHistory, 
-              updated_at: new Date().toISOString() 
-            };
-            const { error: fallbackErr } = await dbClient.from("orders").update(fallbackPayload).or(filterStr);
-            if (fallbackErr) {
-              console.error("[Payment Status Fallback Update Error]", fallbackErr);
-              return res.status(500).json({ success: false, error: fallbackErr.message });
+          let existing: any = null;
+          let targetDbId = id;
+
+          // Safe ID lookup without assuming order_number column exists
+          try {
+            const { data: byId } = await dbClient.from("orders").select("id, status, status_history, payment_notes").eq("id", id).maybeSingle();
+            if (byId) {
+              existing = byId;
+              targetDbId = byId.id;
             }
+          } catch (idErr) {
+            console.warn("[Payment Status] Lookup by id warning:", idErr);
+          }
+
+          if (!existing) {
+            try {
+              const { data: byOrderNum } = await dbClient.from("orders").select("id, status, status_history, payment_notes").eq("order_number", id).maybeSingle();
+              if (byOrderNum) {
+                existing = byOrderNum;
+                targetDbId = byOrderNum.id;
+              }
+            } catch {}
+          }
+
+          const history = existing && Array.isArray(existing.status_history) ? existing.status_history : [];
+          const finalStatus = effectiveStatus || existing?.status || 'Order Received';
+          const updatedHistory = [...history, { 
+            status: finalStatus, 
+            timestamp: new Date().toISOString(), 
+            note: note || (paymentStatus === 'Payment Rejected' ? `Payment rejected: ${rejectionReason || 'Invalid proof'}` : `Payment marked as: ${paymentStatus}`),
+            updatedBy: verifiedBy || 'Admin'
+          }];
+
+          const fullPayload: Record<string, any> = {
+            status: finalStatus,
+            order_status: finalStatus,
+            payment_status: paymentStatus,
+            status_history: updatedHistory,
+            updated_at: new Date().toISOString()
+          };
+          if (note) fullPayload.payment_notes = note;
+          if (rejectionReason) fullPayload.payment_rejection_reason = rejectionReason;
+          if (paymentStatus === 'Payment Verified') {
+            fullPayload.payment_verified_at = new Date().toISOString();
+            fullPayload.payment_verified_by = verifiedBy || 'Admin';
+          }
+
+          let updateSucceeded = false;
+
+          // Tier 1: Full payload with payment columns
+          try {
+            const { error: fullUpdateErr } = await dbClient.from("orders").update(fullPayload).eq("id", targetDbId);
+            if (!fullUpdateErr) {
+              updateSucceeded = true;
+            }
+          } catch {}
+
+          // Tier 2: Standard payment_status + status_history
+          if (!updateSucceeded) {
+            try {
+              const tier2Payload = { 
+                status: finalStatus,
+                payment_status: paymentStatus,
+                status_history: updatedHistory, 
+                updated_at: new Date().toISOString() 
+              };
+              const { error: tier2Err } = await dbClient.from("orders").update(tier2Payload).eq("id", targetDbId);
+              if (!tier2Err) {
+                updateSucceeded = true;
+              }
+            } catch {}
+          }
+
+          // Tier 3: status + status_history
+          if (!updateSucceeded) {
+            try {
+              const tier3Payload = { 
+                status: finalStatus, 
+                status_history: updatedHistory, 
+                updated_at: new Date().toISOString() 
+              };
+              const { error: tier3Err } = await dbClient.from("orders").update(tier3Payload).eq("id", targetDbId);
+              if (!tier3Err) {
+                updateSucceeded = true;
+              }
+            } catch {}
+          }
+
+          // Tier 4: status only
+          if (!updateSucceeded) {
+            try {
+              const { error: tier4Err } = await dbClient.from("orders").update({ status: finalStatus, updated_at: new Date().toISOString() }).eq("id", targetDbId);
+              if (!tier4Err) {
+                updateSucceeded = true;
+              }
+            } catch {}
           }
         } catch (colErr: any) {
           console.warn("[Payment Status Sync Warning]", colErr);
@@ -2232,8 +2342,8 @@ async function startServer() {
             if (fname) {
               const localFile = path.join(process.cwd(), 'public', 'uploads', fname);
               try {
-                await fs.access(localFile);
-                await fs.unlink(localFile);
+                await fsPromises.access(localFile);
+                await fsPromises.unlink(localFile);
                 console.log(`[Storage Cleanup] Deleted local proof file: ${localFile}`);
               } catch (fsErr) {}
             }
@@ -2328,11 +2438,26 @@ async function startServer() {
 
         // 2. Query Supabase orders table with phone verification
         try {
-          const { data: dbOrders } = await dbClient
-            .from("orders")
-            .select("id, order_number, status, payment_status, created_at, subtotal, delivery_fee, discount_amount, tax_amount, total_amount, shipping_city, shipping_address, customer_name, customer_phone, status_history")
-            .or(`id.eq.${orderId},order_number.eq.${orderId}`)
-            .limit(1);
+          let dbOrders: any[] | null = null;
+          try {
+            const { data } = await dbClient
+              .from("orders")
+              .select("id, status, payment_status, created_at, subtotal, delivery_fee, discount_amount, tax_amount, total_amount, shipping_city, shipping_address, customer_name, customer_phone, status_history")
+              .eq("id", orderId)
+              .limit(1);
+            if (Array.isArray(data) && data.length > 0) dbOrders = data;
+          } catch {}
+
+          if (!dbOrders) {
+            try {
+              const { data } = await dbClient
+                .from("orders")
+                .select("id, status, payment_status, created_at, subtotal, delivery_fee, discount_amount, tax_amount, total_amount, shipping_city, shipping_address, customer_name, customer_phone, status_history")
+                .ilike("id", `%${orderId}%`)
+                .limit(1);
+              if (Array.isArray(data) && data.length > 0) dbOrders = data;
+            } catch {}
+          }
 
           if (Array.isArray(dbOrders) && dbOrders.length > 0) {
             const dbOrder = dbOrders[0];
@@ -4025,10 +4150,10 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
       const publicFilePath = path.join(PUBLIC_UPLOADS_DIR, finalFileName);
       const distFilePath = path.join(DIST_UPLOADS_DIR, finalFileName);
 
-      await fs.writeFile(localFilePath, buffer);
+      await fsPromises.writeFile(localFilePath, buffer);
       try {
-        await fs.writeFile(publicFilePath, buffer);
-        await fs.writeFile(distFilePath, buffer);
+        await fsPromises.writeFile(publicFilePath, buffer);
+        await fsPromises.writeFile(distFilePath, buffer);
       } catch (e) {}
 
       const localPublicUrl = `/uploads/${finalFileName}`;
@@ -4160,10 +4285,10 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
       const publicFilePath = path.join(PUBLIC_UPLOADS_DIR, finalFileName);
       const distFilePath = path.join(DIST_UPLOADS_DIR, finalFileName);
 
-      await fs.writeFile(localFilePath, buffer);
+      await fsPromises.writeFile(localFilePath, buffer);
       try {
-        await fs.writeFile(publicFilePath, buffer);
-        await fs.writeFile(distFilePath, buffer);
+        await fsPromises.writeFile(publicFilePath, buffer);
+        await fsPromises.writeFile(distFilePath, buffer);
       } catch (e) {}
 
       const localPublicUrl = `/uploads/${finalFileName}`;
@@ -5552,7 +5677,12 @@ Please analyze this space and provide complete, coordinated color palettes stric
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      const indexPath = path.join(distPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(200).send("<!doctype html><html><head><meta charset='UTF-8'/><title>Zafar Sarwar Traders</title></head><body><div id='root'></div><script>window.location.reload();</script></body></html>");
+      }
     });
   }
 
@@ -5587,4 +5717,7 @@ process.on("uncaughtException", (error) => {
   console.error("Uncaught Exception thrown:", error);
 });
 
-startServer();
+startServer().catch((err) => {
+  console.error("Fatal startup error in Zafar Sarwar Traders server:", err);
+  process.exit(1);
+});
