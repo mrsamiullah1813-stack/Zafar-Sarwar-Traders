@@ -16,6 +16,7 @@ import { getOrGenerateCustomerId } from '../utils/customerStorage';
 import { getProductPricingDetails, getVariantPricingDetails, getActiveProductPrice } from '../utils/pricingUtils';
 import { fetchPaymentMethodsFromSupabase, uploadMediaToSupabase, uploadPaymentProof, fetchHowToOrderConfigFromSupabase, fetchDeliveryCitiesFromSupabase } from '../services/supabaseService';
 import { CouponPromoBox } from './CouponPromoBox';
+import { pushNavigationState, navigateBackSafe, addNavigationListener } from '../utils/navigationHistory';
 
 type CheckoutStep = 'cart' | 'customer' | 'address' | 'payment_method' | 'payment_instructions' | 'payment_proof' | 'confirmation';
 
@@ -40,6 +41,34 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 }) => {
   const [currentStep, setCurrentStep] = useState<CheckoutStep>('cart');
   const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>(() => loadDeliverySettings());
+
+  const goToStep = (step: CheckoutStep) => {
+    setCurrentStep(step);
+    pushNavigationState('checkout', { checkoutStep: step }, { checkout: step });
+  };
+
+  const goBackStep = (prevStep: CheckoutStep) => {
+    navigateBackSafe(() => setCurrentStep(prevStep));
+  };
+
+  // Sync with Android Native Back button and edge-swipe gestures
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const unsubscribe = addNavigationListener((state) => {
+      if (state.view === 'checkout') {
+        if (state.checkoutStep) {
+          setCurrentStep(state.checkoutStep as CheckoutStep);
+        } else {
+          setCurrentStep('cart');
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [isOpen]);
 
   // Listen to delivery settings updates and sync from Supabase
   useEffect(() => {
@@ -1026,7 +1055,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                 <div className="pt-3">
                   <button
                     type="button"
-                    onClick={() => setCurrentStep('customer')}
+                    onClick={() => goToStep('customer')}
                     className="w-full py-3.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 transition-all duration-200 active:scale-98 cursor-pointer"
                   >
                     <span>Proceed to Customer Details</span>
@@ -1105,7 +1134,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
               <div className="flex items-center justify-between pt-2">
                 <button
                   type="button"
-                  onClick={() => setCurrentStep('cart')}
+                  onClick={() => goBackStep('cart')}
                   className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -1116,7 +1145,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                   type="button"
                   onClick={() => {
                     if (validateCustomerStep()) {
-                      setCurrentStep('address');
+                      goToStep('address');
                     }
                   }}
                   className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-600/25 flex items-center gap-2 transition-all cursor-pointer"
@@ -1260,7 +1289,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
               <div className="flex items-center justify-between pt-2">
                 <button
                   type="button"
-                  onClick={() => setCurrentStep('customer')}
+                  onClick={() => goBackStep('customer')}
                   className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -1271,7 +1300,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                   type="button"
                   onClick={() => {
                     if (validateAddressStep()) {
-                      setCurrentStep('payment_method');
+                      goToStep('payment_method');
                     }
                   }}
                   className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-600/25 flex items-center gap-2 transition-all cursor-pointer"
@@ -1411,7 +1440,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
               <div className="flex items-center justify-between pt-3">
                 <button
                   type="button"
-                  onClick={() => setCurrentStep('address')}
+                  onClick={() => goBackStep('address')}
                   className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -1420,7 +1449,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => setCurrentStep('payment_instructions')}
+                  onClick={() => goToStep('payment_instructions')}
                   className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-600/25 flex items-center gap-2 transition-all cursor-pointer"
                 >
                   <span>View Instructions & Details</span>
@@ -1776,7 +1805,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
               <div className="flex items-center justify-between pt-3">
                 <button
                   type="button"
-                  onClick={() => setCurrentStep('payment_method')}
+                  onClick={() => goBackStep('payment_method')}
                   className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -1785,7 +1814,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => setCurrentStep('payment_proof')}
+                  onClick={() => goToStep('payment_proof')}
                   className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-600/25 flex items-center gap-2 transition-all cursor-pointer"
                 >
                   <span>
@@ -2021,7 +2050,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
               <div className="flex items-center justify-between pt-3">
                 <button
                   type="button"
-                  onClick={() => setCurrentStep('payment_instructions')}
+                  onClick={() => goBackStep('payment_instructions')}
                   className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" />

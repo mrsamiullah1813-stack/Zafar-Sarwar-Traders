@@ -55,6 +55,12 @@ import {
   trackCategoryClick, 
   trackAction 
 } from './utils/analyticsStorage';
+import { 
+  initNavigationHistory, 
+  pushNavigationState, 
+  navigateBackSafe, 
+  addNavigationListener 
+} from './utils/navigationHistory';
 
 import { Navbar } from './components/Navbar';
 import { HeroSection } from './components/HeroSection';
@@ -249,6 +255,168 @@ export default function App() {
     console.log(`[React State Diagnostics] Categories state contains ${categories.length} total categories [Sample: ${categories.slice(0, 5).map(c => c.name).join(', ')}]`);
   }, [categories]);
 
+  // Synchronize browser history (Android Native Back Button & Edge-swipe gestures) with SPA modals and views
+  useEffect(() => {
+    const initialState = initNavigationHistory(selectedCategoryFilter);
+
+    // Deep link hydration on initial load
+    if (initialState.view === 'delivery-areas') {
+      setViewDeliveryAreasPage(true);
+    } else if (initialState.view === 'product' && initialState.productId) {
+      const prod = products.find(p => p.id === initialState.productId);
+      if (prod) setSelectedProduct(prod);
+    } else if (initialState.view === 'category' && initialState.categoryId && initialState.categoryId !== 'all') {
+      setSelectedCategoryFilter(initialState.categoryId);
+    } else if (initialState.view === 'cart') {
+      setCartOpen(true);
+    } else if (initialState.view === 'checkout') {
+      setCheckoutModalOpen(true);
+    } else if (initialState.view === 'search') {
+      setSearchModalOpen(true);
+    } else if (initialState.view === 'brand' && initialState.brandId) {
+      const b = brands.find(brand => brand.id === initialState.brandId);
+      if (b) setSelectedBrand(b);
+    } else if (initialState.view === 'tools' && initialState.toolId) {
+      setActiveToolId(initialState.toolId as SmartToolId | 'hub');
+    }
+
+    const unsubscribe = addNavigationListener((state) => {
+      switch (state.view) {
+        case 'home':
+          setSelectedProduct(null);
+          setSelectedBrand(null);
+          setCartOpen(false);
+          setCheckoutModalOpen(false);
+          setSearchModalOpen(false);
+          setOrderTrackingOpen(false);
+          setViewDeliveryAreasPage(false);
+          setActiveToolId(null);
+          setIsConstructionBuilderOpen(false);
+          setAiModalOpen(false);
+          setThemeModalOpen(false);
+          setDeliveryCheckerOpen(false);
+          setAdminLoginOpen(false);
+          setAdminDashboardOpen(false);
+          setAdminProductModalOpen(false);
+          setConfigModalOpen(false);
+          setSelectedCategoryFilter(state.categoryId || 'all');
+          break;
+
+        case 'category':
+          setSelectedProduct(null);
+          setSelectedBrand(null);
+          setCartOpen(false);
+          setCheckoutModalOpen(false);
+          setSearchModalOpen(false);
+          setOrderTrackingOpen(false);
+          setViewDeliveryAreasPage(false);
+          setActiveToolId(null);
+          setIsConstructionBuilderOpen(false);
+          setAiModalOpen(false);
+          setThemeModalOpen(false);
+          setDeliveryCheckerOpen(false);
+          setAdminLoginOpen(false);
+          setAdminDashboardOpen(false);
+          setAdminProductModalOpen(false);
+          setConfigModalOpen(false);
+          setSelectedCategoryFilter(state.categoryId || 'all');
+          break;
+
+        case 'product':
+          setCartOpen(false);
+          setCheckoutModalOpen(false);
+          setViewDeliveryAreasPage(false);
+          setSearchModalOpen(false);
+          if (state.productId) {
+            const prod = products.find(p => p.id === state.productId);
+            if (prod) setSelectedProduct(prod);
+          }
+          if (state.categoryId) {
+            setSelectedCategoryFilter(state.categoryId);
+          }
+          break;
+
+        case 'search':
+          setSelectedProduct(null);
+          setCartOpen(false);
+          setCheckoutModalOpen(false);
+          setViewDeliveryAreasPage(false);
+          setSearchModalOpen(true);
+          break;
+
+        case 'cart':
+          setCheckoutModalOpen(false);
+          setSelectedProduct(null);
+          setViewDeliveryAreasPage(false);
+          setCartOpen(true);
+          break;
+
+        case 'checkout':
+          setCartOpen(false);
+          setSelectedProduct(null);
+          setViewDeliveryAreasPage(false);
+          setCheckoutModalOpen(true);
+          break;
+
+        case 'delivery-areas':
+          setSelectedProduct(null);
+          setCartOpen(false);
+          setCheckoutModalOpen(false);
+          setSearchModalOpen(false);
+          setViewDeliveryAreasPage(true);
+          break;
+
+        case 'brand':
+          if (state.brandId) {
+            const b = brands.find(brand => brand.id === state.brandId);
+            if (b) setSelectedBrand(b);
+          }
+          break;
+
+        case 'tools':
+          if (state.toolId) {
+            setActiveToolId(state.toolId as SmartToolId | 'hub');
+          }
+          break;
+
+        case 'builder':
+          setIsConstructionBuilderOpen(true);
+          break;
+
+        case 'tracking':
+          setOrderTrackingOpen(true);
+          break;
+
+        case 'delivery-checker':
+          setDeliveryCheckerOpen(true);
+          break;
+
+        case 'theme':
+          setThemeModalOpen(true);
+          break;
+
+        case 'ai-consultant':
+          setAiModalOpen(true);
+          break;
+
+        case 'admin-login':
+          setAdminLoginOpen(true);
+          break;
+
+        case 'admin-dashboard':
+          setAdminDashboardOpen(true);
+          break;
+
+        default:
+          break;
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [products, brands]);
+
   // Sync with server CMS data on mount
   useEffect(() => {
     trackPageView(window.location.pathname);
@@ -430,6 +598,7 @@ export default function App() {
     setDirectCheckoutItem(directItem);
     setCartOpen(false);
     setSelectedProduct(null);
+    pushNavigationState('checkout', { checkoutStep: 'cart' }, { checkout: 'direct', product: null });
     setCheckoutModalOpen(true);
   };
 
@@ -551,10 +720,18 @@ export default function App() {
     setReviews([newReview, ...reviews]);
   };
 
-  const handleSelectCategory = (categoryId: string) => {
+  const handleSelectCategory = (categoryId: string, skipPush: boolean = false) => {
     setSelectedCategoryFilter(categoryId);
     const catObj = categories.find(c => c.id === categoryId);
     trackCategoryClick(categoryId, catObj ? catObj.name : categoryId);
+
+    if (!skipPush) {
+      if (categoryId === 'all') {
+        pushNavigationState('home', { categoryId: 'all' }, { category: null });
+      } else {
+        pushNavigationState('category', { categoryId }, { category: categoryId });
+      }
+    }
 
     const element = document.getElementById('products');
     if (element) {
@@ -562,9 +739,147 @@ export default function App() {
     }
   };
 
-  const handleQuickViewProduct = (prod: Product) => {
+  const handleQuickViewProduct = (prod: Product, skipPush: boolean = false) => {
     setSelectedProduct(prod);
     trackProductView(prod.id, prod.name);
+
+    if (!skipPush) {
+      pushNavigationState(
+        'product',
+        {
+          productId: prod.id,
+          categoryId: selectedCategoryFilter,
+          fromSearch: searchModalOpen,
+          fromCart: cartOpen
+        },
+        { product: prod.id }
+      );
+    }
+  };
+
+  const handleOpenCart = () => {
+    pushNavigationState('cart', {}, { cart: 'open' });
+    setCartOpen(true);
+  };
+
+  const handleCloseCart = () => {
+    navigateBackSafe(() => setCartOpen(false));
+  };
+
+  const handleOpenCheckout = () => {
+    pushNavigationState('checkout', { checkoutStep: 'cart' }, { checkout: 'cart', cart: null });
+    setCartOpen(false);
+    setCheckoutModalOpen(true);
+  };
+
+  const handleCloseCheckout = () => {
+    navigateBackSafe(() => {
+      setCheckoutModalOpen(false);
+      setDirectCheckoutItem(null);
+    });
+  };
+
+  const handleOpenDeliveryAreas = () => {
+    pushNavigationState('delivery-areas', {}, { page: 'delivery-areas' });
+    setViewDeliveryAreasPage(true);
+  };
+
+  const handleCloseDeliveryAreas = () => {
+    navigateBackSafe(() => setViewDeliveryAreasPage(false));
+  };
+
+  const handleOpenSearch = () => {
+    pushNavigationState('search', {}, { search: 'open' });
+    setSearchModalOpen(true);
+  };
+
+  const handleCloseSearch = () => {
+    navigateBackSafe(() => setSearchModalOpen(false));
+  };
+
+  const handleOpenBrand = (brand: ProductBrand) => {
+    pushNavigationState('brand', { brandId: brand.id }, { brand: brand.id });
+    setSelectedBrand(brand);
+  };
+
+  const handleCloseBrand = () => {
+    navigateBackSafe(() => setSelectedBrand(null));
+  };
+
+  const handleOpenSmartTool = (toolId: SmartToolId | 'hub') => {
+    pushNavigationState('tools', { toolId }, { tool: toolId });
+    setActiveToolId(toolId);
+  };
+
+  const handleCloseSmartTool = () => {
+    navigateBackSafe(() => setActiveToolId(null));
+  };
+
+  const handleOpenConstructionBuilder = () => {
+    pushNavigationState('builder', {}, { builder: 'open' });
+    setIsConstructionBuilderOpen(true);
+  };
+
+  const handleCloseConstructionBuilder = () => {
+    navigateBackSafe(() => setIsConstructionBuilderOpen(false));
+  };
+
+  const handleOpenOrderTracking = () => {
+    pushNavigationState('tracking', {}, { tracking: 'open' });
+    setOrderTrackingOpen(true);
+  };
+
+  const handleCloseOrderTracking = () => {
+    navigateBackSafe(() => setOrderTrackingOpen(false));
+  };
+
+  const handleOpenDeliveryChecker = () => {
+    pushNavigationState('delivery-checker', {}, { checker: 'open' });
+    setDeliveryCheckerOpen(true);
+  };
+
+  const handleCloseDeliveryChecker = () => {
+    navigateBackSafe(() => setDeliveryCheckerOpen(false));
+  };
+
+  const handleOpenThemeModal = () => {
+    pushNavigationState('theme', {}, { theme: 'open' });
+    setThemeModalOpen(true);
+  };
+
+  const handleCloseThemeModal = () => {
+    navigateBackSafe(() => setThemeModalOpen(false));
+  };
+
+  const handleOpenAiModal = () => {
+    pushNavigationState('ai-consultant', {}, { ai: 'open' });
+    setAiModalOpen(true);
+  };
+
+  const handleCloseAiModal = () => {
+    navigateBackSafe(() => setAiModalOpen(false));
+  };
+
+  const handleOpenAdminLogin = () => {
+    pushNavigationState('admin-login', {}, { admin: 'login' });
+    setAdminLoginOpen(true);
+  };
+
+  const handleCloseAdminLogin = () => {
+    navigateBackSafe(() => setAdminLoginOpen(false));
+  };
+
+  const handleOpenAdminDashboard = () => {
+    pushNavigationState('admin-dashboard', {}, { admin: 'dashboard' });
+    setAdminDashboardOpen(true);
+  };
+
+  const handleCloseAdminDashboard = () => {
+    navigateBackSafe(() => setAdminDashboardOpen(false));
+  };
+
+  const handleCloseProductQuickView = () => {
+    navigateBackSafe(() => setSelectedProduct(null));
   };
 
   // Product Admin Operations
@@ -649,8 +964,8 @@ export default function App() {
         cartCount={totalCartCount}
         wishlistCount={wishlistIds.length}
         compareCount={compareIds.length}
-        onOpenCart={() => setCartOpen(true)}
-        onOpenThemeModal={() => setThemeModalOpen(true)}
+        onOpenCart={handleOpenCart}
+        onOpenThemeModal={handleOpenThemeModal}
         onOpenWishlist={() => {
           const el = document.getElementById('products');
           if (el) el.scrollIntoView({ behavior: 'smooth' });
@@ -660,24 +975,24 @@ export default function App() {
           if (el) el.scrollIntoView({ behavior: 'smooth' });
         }}
         onLogoutAdmin={handleAdminLogout}
-        onOpenAdminDashboard={() => setAdminDashboardOpen(true)}
-        onOpenAiConsultant={() => setAiModalOpen(true)}
-        onSearchClick={() => setSearchModalOpen(true)}
-        onOpenOrderTracking={() => setOrderTrackingOpen(true)}
+        onOpenAdminDashboard={handleOpenAdminDashboard}
+        onOpenAiConsultant={handleOpenAiModal}
+        onSearchClick={handleOpenSearch}
+        onOpenOrderTracking={handleOpenOrderTracking}
         onSelectCategory={handleSelectCategory}
-        onOpenSmartTool={(toolId) => setActiveToolId(toolId)}
-        onOpenConstructionBuilder={() => setIsConstructionBuilderOpen(true)}
-        onOpenDeliveryChecker={() => setDeliveryCheckerOpen(true)}
-        onOpenDeliveryAreas={() => setViewDeliveryAreasPage(true)}
+        onOpenSmartTool={(toolId) => handleOpenSmartTool(toolId)}
+        onOpenConstructionBuilder={handleOpenConstructionBuilder}
+        onOpenDeliveryChecker={handleOpenDeliveryChecker}
+        onOpenDeliveryAreas={handleOpenDeliveryAreas}
       />
 
       {/* Main Page Sections OR Delivery Areas Page */}
       {viewDeliveryAreasPage ? (
         <DeliveryAreasPage
-          onBackToHome={() => setViewDeliveryAreasPage(false)}
+          onBackToHome={handleCloseDeliveryAreas}
           onOpenProductQuickView={(prodId) => {
             const found = products.find(p => p.id === prodId);
-            if (found) setSelectedProduct(found);
+            if (found) handleQuickViewProduct(found);
           }}
         />
       ) : (
@@ -687,10 +1002,10 @@ export default function App() {
             categories={categories}
             brands={brands}
             heroSettings={heroSettings}
-            onSelectProduct={(prod) => setSelectedProduct(prod)}
+            onSelectProduct={(prod) => handleQuickViewProduct(prod)}
             onAddToCart={handleAddToCart}
             onBuyNow={handleBuyNow}
-            onOpenAiConsultant={() => setAiModalOpen(true)}
+            onOpenAiConsultant={handleOpenAiModal}
           />
 
           {/* Feature Highlights Bar */}
@@ -732,14 +1047,14 @@ export default function App() {
 
           {/* 🔧 SMART CONSTRUCTION & FITTING PACKAGE BUILDER (HOMEPAGE ENTRY CARD) */}
           <SmartConstructionBuilderEntryCard
-            onOpenBuilder={() => setIsConstructionBuilderOpen(true)}
+            onOpenBuilder={handleOpenConstructionBuilder}
             config={fittingBuilderConfig}
           />
 
           {/* COMPACT SMART TOOLS HUB (Cement Calculator, Bathroom Planner, Material Estimator, Budget Finder, Water Tank & Pump Guide) */}
           <SmartToolsSection
             settings={smartToolsSettings}
-            onOpenTool={(toolId) => setActiveToolId(toolId)}
+            onOpenTool={(toolId) => handleOpenSmartTool(toolId)}
           />
 
           <StatsSection stats={stats} />
@@ -769,15 +1084,13 @@ export default function App() {
         brands={brands}
         config={config}
         aiAssistantConfig={aiAssistantConfig}
-        onViewProduct={(prod) => setSelectedProduct(prod)}
+        onViewProduct={(prod) => handleQuickViewProduct(prod)}
         onAddToCart={handleAddToCart}
         onSelectCategory={(catId) => {
-          setSelectedCategoryFilter(catId);
-          const el = document.getElementById('products');
-          if (el) el.scrollIntoView({ behavior: 'smooth' });
+          handleSelectCategory(catId);
         }}
         onOpenPlanner={() => {
-          setActiveToolId('bathroom-planner');
+          handleOpenSmartTool('bathroom-planner');
         }}
       />
 
@@ -786,9 +1099,9 @@ export default function App() {
         config={config}
         onSelectCategory={handleSelectCategory}
         onReplayIntro={() => setShowIntro(true)}
-        onOpenThemeModal={() => setThemeModalOpen(true)}
-        onOpenDeliveryChecker={() => setDeliveryCheckerOpen(true)}
-        onOpenDeliveryAreas={() => setViewDeliveryAreasPage(true)}
+        onOpenThemeModal={handleOpenThemeModal}
+        onOpenDeliveryChecker={handleOpenDeliveryChecker}
+        onOpenDeliveryAreas={handleOpenDeliveryAreas}
       />
 
       {/* Cart Drawer */}
@@ -797,14 +1110,11 @@ export default function App() {
         cartItems={cartItems}
         config={config}
         checkoutSettings={checkoutSettings}
-        onClose={() => setCartOpen(false)}
+        onClose={handleCloseCart}
         onUpdateQuantity={handleUpdateCartQty}
         onRemoveItem={handleRemoveFromCart}
         onClearCart={handleClearCart}
-        onProceedToCheckout={() => {
-          setCartOpen(false);
-          setCheckoutModalOpen(true);
-        }}
+        onProceedToCheckout={handleOpenCheckout}
       />
 
       {/* Order Checkout Modal */}
@@ -814,10 +1124,7 @@ export default function App() {
         directItem={directCheckoutItem}
         config={config}
         checkoutSettings={checkoutSettings}
-        onClose={() => {
-          setCheckoutModalOpen(false);
-          setDirectCheckoutItem(null);
-        }}
+        onClose={handleCloseCheckout}
         onOrderPlaced={async (newOrder) => {
           const res = await addOrderToStorage(newOrder);
           if (!res.success) {
@@ -866,7 +1173,7 @@ export default function App() {
           onBuyNow={(prod, qty, color, size, quality, variant, shade, variantObj) => {
             handleBuyNow(prod, qty, color, size, quality, variant, shade, variantObj);
           }}
-          onClose={() => setSelectedProduct(null)}
+          onClose={handleCloseProductQuickView}
         />
       )}
 
@@ -874,15 +1181,15 @@ export default function App() {
         <BrandDetailsModal
           brand={selectedBrand}
           products={products}
-          onClose={() => setSelectedBrand(null)}
-          onSelectProduct={(prod) => setSelectedProduct(prod)}
+          onClose={handleCloseBrand}
+          onSelectProduct={(prod) => handleQuickViewProduct(prod)}
         />
       )}
 
       {aiModalOpen && (
         <AiConsultantModal
           config={config}
-          onClose={() => setAiModalOpen(false)}
+          onClose={handleCloseAiModal}
         />
       )}
 
@@ -901,7 +1208,7 @@ export default function App() {
         categories={categories}
         brands={brands}
         onSelectProduct={(prod) => {
-          setSelectedProduct(prod);
+          handleQuickViewProduct(prod);
           setSearchModalOpen(false);
         }}
         onSelectCategory={(cat) => {
@@ -909,13 +1216,13 @@ export default function App() {
           handleSelectCategory(catId);
           setSearchModalOpen(false);
         }}
-        onClose={() => setSearchModalOpen(false)}
+        onClose={handleCloseSearch}
       />
 
       {/* Order Tracking & Customer Portal Modal */}
       <CustomerAccountModal
         isOpen={orderTrackingOpen}
-        onClose={() => setOrderTrackingOpen(false)}
+        onClose={handleCloseOrderTracking}
         profile={customerProfile}
         orders={customerOrders}
         config={config}
@@ -931,10 +1238,10 @@ export default function App() {
         isAdmin={isAdmin}
         onLoginSuccess={handleAdminLoginSuccess}
         onLogout={handleAdminLogout}
-        onClose={() => setAdminLoginOpen(false)}
+        onClose={handleCloseAdminLogin}
         onOpenDashboard={() => {
           setAdminLoginOpen(false);
-          setAdminDashboardOpen(true);
+          handleOpenAdminDashboard();
         }}
       />
 
@@ -978,7 +1285,7 @@ export default function App() {
             return res;
           }}
           onLogout={handleAdminLogout}
-          onClose={() => setAdminDashboardOpen(false)}
+          onClose={handleCloseAdminDashboard}
         />
       )}
 
@@ -1000,7 +1307,7 @@ export default function App() {
       {/* Theme Selection Modal */}
       <ThemeSwitcherModal
         isOpen={themeModalOpen}
-        onClose={() => setThemeModalOpen(false)}
+        onClose={handleCloseThemeModal}
         themeSettings={themeSettings}
         activeThemeId={activeTheme}
         onSelectTheme={handleSelectTheme}
@@ -1009,7 +1316,7 @@ export default function App() {
       {/* 🔧 SMART CONSTRUCTION & FITTING BUILDER MODAL */}
       <SmartConstructionBuilderModal
         isOpen={isConstructionBuilderOpen}
-        onClose={() => setIsConstructionBuilderOpen(false)}
+        onClose={handleCloseConstructionBuilder}
         config={fittingBuilderConfig}
         businessConfig={config}
         products={products}
@@ -1026,7 +1333,7 @@ export default function App() {
             );
           });
         }}
-        onViewProduct={(p) => setSelectedProduct(p)}
+        onViewProduct={(p) => handleQuickViewProduct(p)}
       />
 
       {/* Smart Tools Modal */}
@@ -1038,18 +1345,18 @@ export default function App() {
         plannerConfig={plannerConfig}
         smartToolsSettings={smartToolsSettings}
         fittingBuilderConfig={fittingBuilderConfig}
-        onClose={() => setActiveToolId(null)}
-        onOpenQuickView={(prod) => setSelectedProduct(prod)}
+        onClose={handleCloseSmartTool}
+        onOpenQuickView={(prod) => handleQuickViewProduct(prod)}
         onAddToCart={handleAddToCart}
         onBuyNow={(prod, qty, color) => {
-          setActiveToolId(null);
+          handleCloseSmartTool();
           handleBuyNow(prod, qty, color);
         }}
       />
       {/* Delivery Checker Modal Across Pakistan */}
       <DeliveryCheckerModal
         isOpen={deliveryCheckerOpen}
-        onClose={() => setDeliveryCheckerOpen(false)}
+        onClose={handleCloseDeliveryChecker}
       />
     </div>
   );

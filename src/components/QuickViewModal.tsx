@@ -49,6 +49,7 @@ import {
   buildProductWhatsAppOrderUrl
 } from '../utils/pricingUtils';
 import { getActivePaintShades, hasActivePaintShades } from '../utils/paintShadeUtils';
+import { pushNavigationState, navigateBackSafe, addNavigationListener } from '../utils/navigationHistory';
 
 interface QuickViewModalProps {
   product: Product | null;
@@ -142,6 +143,33 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
       setQuantity(qtyConfig.defaultQty || qtyConfig.min || 1);
       setSelectedImageIndex(0);
     }
+  }, [product]);
+
+  const openMediaViewer = (initialIndex: number) => {
+    setMediaViewerInitialIndex(initialIndex);
+    pushNavigationState('product-media', { productId: product?.id }, { media: initialIndex.toString() });
+    setIsMediaViewerOpen(true);
+  };
+
+  const closeMediaViewer = () => {
+    navigateBackSafe(() => setIsMediaViewerOpen(false));
+  };
+
+  // Sync with Android Native Back button and edge-swipe gestures
+  useEffect(() => {
+    if (!product) return;
+
+    const unsubscribe = addNavigationListener((state) => {
+      if (state.view === 'product-media') {
+        setIsMediaViewerOpen(true);
+      } else {
+        setIsMediaViewerOpen(false);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [product]);
 
   if (!product) return null;
@@ -394,8 +422,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
               {/* Main Image Box */}
               <div 
                 onClick={() => {
-                  setMediaViewerInitialIndex(selectedImageIndex);
-                  setIsMediaViewerOpen(true);
+                  openMediaViewer(selectedImageIndex);
                 }}
                 className="relative rounded-2xl bg-slate-950 border border-slate-800/90 overflow-hidden group h-72 sm:h-96 flex items-center justify-center cursor-pointer shadow-xl"
               >
@@ -427,8 +454,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setMediaViewerInitialIndex(selectedImageIndex);
-                    setIsMediaViewerOpen(true);
+                    openMediaViewer(selectedImageIndex);
                   }}
                   className="absolute top-3 right-3 px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700/80 text-blue-300 hover:text-white hover:bg-blue-600 transition-all shadow-xl backdrop-blur-md flex items-center gap-1.5 text-xs font-bold z-10"
                   title="Open Full-Screen Showroom Lightbox (Zoom & Gestures)"
@@ -1033,8 +1059,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                       onClick={() => {
                         const compiled = compileProductMediaList(product, selectedVariantObj, selectedShade);
                         const vIdx = compiled.findIndex(m => m.type === 'video' && m.videoData?.id === currentVideo.id);
-                        setMediaViewerInitialIndex(vIdx >= 0 ? vIdx : 0);
-                        setIsMediaViewerOpen(true);
+                        openMediaViewer(vIdx >= 0 ? vIdx : 0);
                       }}
                       className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-950/80 border border-blue-800/60 text-blue-300 hover:bg-blue-600 hover:text-white transition-all text-[11px] font-bold"
                       title="Watch video in full-screen Showroom Viewer"
@@ -1319,7 +1344,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
         selectedShade={selectedShade}
         initialMediaIndex={mediaViewerInitialIndex}
         initialMediaUrl={currentImage}
-        onClose={() => setIsMediaViewerOpen(false)}
+        onClose={closeMediaViewer}
         onSelectVariant={(variant) => {
           setSelectedVariantObj(variant);
           setSelectedVariant(variant.name);
