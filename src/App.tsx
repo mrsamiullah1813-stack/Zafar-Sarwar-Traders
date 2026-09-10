@@ -95,6 +95,7 @@ import { AdminLoginModal } from './components/AdminLoginModal';
 import { AdminProductModal } from './components/AdminProductModal';
 import { AdminDashboard } from './components/AdminDashboard';
 import { CartDrawer } from './components/CartDrawer';
+import { FloatingCartBadge } from './components/FloatingCartBadge';
 import { OrderCheckoutModal } from './components/OrderCheckoutModal';
 import { CinematicIntro } from './components/CinematicIntro';
 import { LuxuryCursorEffect } from './components/LuxuryCursorEffect';
@@ -151,6 +152,7 @@ export default function App() {
   const [directCheckoutItem, setDirectCheckoutItem] = useState<CartItem | null>(null);
   const [checkoutSettings, setCheckoutSettings] = useState<CheckoutSettings>(() => loadCheckoutSettings());
   const [cartOpen, setCartOpen] = useState(false);
+  const [lastCartAdded, setLastCartAdded] = useState<{ timestamp: number; productName: string } | null>(null);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
   const orderCompletedRef = useRef<boolean>(false);
   const [wishlistIds, setWishlistIds] = useState<string[]>([]);
@@ -564,6 +566,7 @@ export default function App() {
         }
       ];
     });
+    setLastCartAdded({ timestamp: Date.now(), productName: product.name });
     setCartOpen(true);
   };
 
@@ -1120,6 +1123,14 @@ export default function App() {
         onOpenThemeModal={handleOpenThemeModal}
         onOpenDeliveryChecker={handleOpenDeliveryChecker}
         onOpenDeliveryAreas={handleOpenDeliveryAreas}
+      />
+
+      {/* Floating Cart Counter Badge & Indicator */}
+      <FloatingCartBadge
+        cartItems={cartItems}
+        onOpenCart={handleOpenCart}
+        lastAddedTimestamp={lastCartAdded?.timestamp}
+        lastAddedProductName={lastCartAdded?.productName}
       />
 
       {/* Cart Drawer */}

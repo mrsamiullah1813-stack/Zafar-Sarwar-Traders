@@ -275,7 +275,11 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
   };
 
   // Buy Now: adds item with all selected options to cart and triggers checkout modal
-  const handleBuyNow = () => {
+  const handleBuyNow = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setOrderValidationError(null);
     if (isPaintShadesActive && !selectedShade) {
       setOrderValidationError('Please select a paint color shade first.');
@@ -294,7 +298,6 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
         isPaintShadesActive && selectedShade ? selectedShade : undefined,
         selectedVariantObj || undefined
       );
-      onClose();
     } else if (onAddToCart) {
       onAddToCart(
         product,
@@ -1274,7 +1277,11 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
 
               <button
                 type="button"
-                onClick={handleBuyNow}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleBuyNow(e);
+                }}
                 className="flex-1 py-3 px-6 rounded-xl text-sm font-semibold text-white bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:from-blue-700 active:to-blue-800 transition-all duration-200 shadow-sm hover:shadow-md hover:shadow-blue-600/25 flex items-center justify-center gap-2 active:scale-[0.98] border border-blue-500/50 hover:border-blue-400/60 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed tracking-wide"
               >
                 <Zap className="w-4 h-4 text-blue-200 stroke-[2.2]" />

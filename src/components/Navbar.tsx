@@ -7,7 +7,6 @@ import {
   Menu, 
   X, 
   ChevronDown, 
-  Building2, 
   ShieldCheck,
   LogOut,
   ShoppingBag,
@@ -257,7 +256,72 @@ export const Navbar: React.FC<NavbarProps> = ({
             title="ZAFAR SARWAR TRADERS"
           >
             <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-blue-400 shadow-md group-hover:bg-blue-600 group-hover:text-white transition-all">
-              <Building2 className="w-6 h-6" />
+              <svg
+                viewBox="0 0 48 48"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                className="w-8 h-8 sm:w-9 sm:h-9 transition-transform group-hover:scale-105"
+                aria-hidden="true"
+              >
+                {/* Architectural Skyline Apex / Pediment */}
+                <path
+                  d="M24 3.5L42 14.5V17L24 5.8L6 17V14.5L24 3.5Z"
+                  fill="currentColor"
+                />
+                {/* Sanitary Flow Droplet / Fixture Emblem */}
+                <path
+                  d="M24 7.5C24 7.5 20.8 11.2 20.8 13.5C20.8 15.3 22.2 16.8 24 16.8C25.8 16.8 27.2 15.3 27.2 13.5C27.2 11.2 24 7.5 24 7.5Z"
+                  fill="currentColor"
+                  opacity="0.85"
+                />
+                {/* Architectural Side Pillars */}
+                <rect
+                  x="6"
+                  y="18.5"
+                  width="3.5"
+                  height="14"
+                  rx="1"
+                  fill="currentColor"
+                  opacity="0.3"
+                />
+                <rect
+                  x="38.5"
+                  y="18.5"
+                  width="3.5"
+                  height="14"
+                  rx="1"
+                  fill="currentColor"
+                  opacity="0.3"
+                />
+                {/* Prominent Large ZST Monogram */}
+                <text
+                  x="24.5"
+                  y="30.5"
+                  textAnchor="middle"
+                  fill="currentColor"
+                  fontSize="13.5"
+                  fontWeight="900"
+                  letterSpacing="1.2px"
+                  fontFamily="'Arial Black', 'Montserrat', 'Impact', 'Segoe UI Black', -apple-system, sans-serif"
+                >
+                  ZST
+                </text>
+                {/* Structural Foundation Beam */}
+                <path
+                  d="M5.5 36H42.5"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                />
+                {/* Sanitary Wave Flow Accent */}
+                <path
+                  d="M12 40.5C16 39.2 20 41.8 24 40.5C28 39.2 32 41.8 36 40.5"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  opacity="0.7"
+                />
+              </svg>
             </div>
             
             {/* Mobile Brand Name */}
