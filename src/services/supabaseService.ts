@@ -1347,29 +1347,22 @@ function mapDbOrderToCustomerOrder(r: any): CustomerOrder {
     (typeof h?.note === 'string' && h.note.toLowerCase().includes('verified'))
   );
 
-  const isEverVerified = 
-    r.payment_status === 'Payment Verified' || 
-    r.paymentStatus === 'Payment Verified' || 
-    r.payment_status === 'Payment Confirmed' || 
-    r.paymentStatus === 'Payment Confirmed' || 
-    r.status === 'Payment Verified' ||
-    r.status === 'Payment Confirmed' ||
-    r.payment_status === 'Paid' || 
-    r.paymentStatus === 'Paid' || 
-    Boolean(r.payment_verified_at) || 
-    Boolean(r.paymentVerifiedAt) || 
-    hasVerifiedInHistory;
-
+  const rawPaymentStatus = r.payment_status || r.paymentStatus;
   const isExplicitlyRejected = 
-    r.payment_status === 'Payment Rejected' || 
-    r.paymentStatus === 'Payment Rejected' || 
+    rawPaymentStatus === 'Payment Rejected' || 
     r.status === 'Payment Rejected';
 
-  const resolvedPaymentStatus = isEverVerified 
-    ? 'Payment Verified' 
-    : isExplicitlyRejected 
-    ? 'Payment Rejected' 
-    : (r.payment_status || r.paymentStatus || (r.is_advance_payment ? 'Advance Payment Under Review' : (r.payment_proof_url ? 'Payment Proof Submitted' : (r.payment_method?.toLowerCase().includes('cash') ? 'Cash on Delivery' : undefined))));
+  const isEverVerified = 
+    rawPaymentStatus === 'Payment Verified' || 
+    rawPaymentStatus === 'Payment Confirmed' || 
+    rawPaymentStatus === 'Paid' || 
+    r.status === 'Payment Verified' ||
+    r.status === 'Payment Confirmed' ||
+    (!isExplicitlyRejected && (Boolean(r.payment_verified_at) || Boolean(r.paymentVerifiedAt) || hasVerifiedInHistory));
+
+  const resolvedPaymentStatus = isExplicitlyRejected
+    ? 'Payment Rejected'
+    : (rawPaymentStatus || (isEverVerified ? 'Payment Verified' : (r.is_advance_payment ? 'Advance Payment Under Review' : (r.payment_proof_url ? 'Payment Proof Submitted' : (r.payment_method?.toLowerCase().includes('cash') ? 'Cash on Delivery' : 'Pending Payment')))));
 
   return {
     id: String(r.id),
@@ -1899,13 +1892,45 @@ export async function deleteOrderFromSupabase(orderId: string): Promise<{ succes
 }
 
 export async function fetchPaymentMethodsFromSupabase(): Promise<PaymentMethodConfig[] | null> {
-  // 1. Direct Supabase Query (source of truth from site_settings.checkout_settings)
+  await initializeSupabaseRuntime();
+
+  // 1. Direct Supabase Query (source of truth from site_settings.checkout_settings or key-value row)
+  if (isSupabaseConfigured) {
+    try {
+      const { data: kvData, error: kvErr } = await supabase
+        .from('site_settings')
+        .select('value')
+        .eq('key', 'zst_payment_methods_v1')
+        .maybeSingle();
+
+      if (!kvErr && kvData && Array.isArray(kvData.value) && kvData.value.length > 0) {
+        return kvData.value;
+      }
+    } catch {}
+
+    try {
+      const { data: chkData, error: chkErr } = await supabase
+        .from('site_settings')
+        .select('checkout_settings')
+        .eq('id', 'config')
+        .maybeSingle();
+
+      if (!chkErr && chkData?.checkout_settings) {
+        const pm = chkData.checkout_settings.payment_methods || chkData.checkout_settings.paymentMethods;
+        if (pm && Array.isArray(pm) && pm.length > 0) {
+          return pm;
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Fetch generic site setting
   const methods = await fetchSiteSettingFromSupabase<PaymentMethodConfig[]>('zst_payment_methods_v1');
   if (Array.isArray(methods) && methods.length > 0) {
     return methods;
   }
 
-  // 2. Server API fallback
+  // 3. Server API fallback
   try {
     const res = await fetch('/api/payment-methods', { cache: 'no-store' });
     if (res.ok) {
@@ -1922,6 +1947,19 @@ export async function fetchPaymentMethodsFromSupabase(): Promise<PaymentMethodCo
 }
 
 export async function savePaymentMethodsToSupabase(methods: PaymentMethodConfig[]): Promise<{ success: boolean; error?: string }> {
+  await initializeSupabaseRuntime();
+
+  // 1. Try server admin proxy
+  try {
+    const headers = await getAuthHeaders();
+    await fetch('/api/admin/payment-methods', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ methods })
+    });
+  } catch {}
+
+  // 2. Direct Supabase SDK & site_settings persistence
   return saveSiteSettingToSupabase('zst_payment_methods_v1', methods);
 }
 
@@ -2260,8 +2298,16 @@ export async function saveSiteSettingToSupabase(key: string, value: any): Promis
       return { success: false, error: formatSupabaseError(updateErr.message) };
     }
 
-    // 2b-2. Payment Methods -> checkout_settings.payment_methods (id = 'config')
+    // 2b-2. Payment Methods -> checkout_settings.payment_methods (id = 'config') and key='zst_payment_methods_v1'
     if (k.includes('payment')) {
+      try {
+        await supabase.from('site_settings').upsert({
+          key: 'zst_payment_methods_v1',
+          value,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' });
+      } catch {}
+
       const { data: cur } = await supabase.from('site_settings').select('checkout_settings').eq('id', 'config').maybeSingle();
       const curCheckout = cur?.checkout_settings || {};
       const updatedCheckout = {

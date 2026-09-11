@@ -67,99 +67,9 @@ const MAX_PRODUCT_VIEWS = 100;
 const MAX_CATEGORY_CLICKS = 100;
 const MAX_ACTIONS = 100;
 
-// Generate seed mock analytics data over last 14 days if empty
+// Clean production zero baseline
 const generateInitialAnalytics = (): AnalyticsData => {
-  const now = Date.now();
-  const dayMs = 24 * 60 * 60 * 1000;
-
-  const pageViews: PageViewEvent[] = [];
-  const productViews: ProductViewEvent[] = [];
-  const categoryClicks: CategoryClickEvent[] = [];
-  const actions: ActionEvent[] = [];
-
-  const sampleProducts = [
-    { id: '1', name: 'Master Gold Luxury Mixer Set' },
-    { id: '2', name: 'Dura Max CPVC Heavy Duty Pipe' },
-    { id: '3', name: 'Primax Wall-Hung Smart Closet' },
-    { id: '4', name: 'Nippon Weather-Guard Paint 20L' },
-    { id: '5', name: 'Faisal Concealed Shower Column' },
-    { id: '6', name: 'Popular Sewage UPVC Main Drain' },
-    { id: '7', name: 'Master Onyx Countertop Sink' }
-  ];
-
-  const sampleCategories = [
-    { id: 'sanitaryware', name: 'Sanitaryware & Basins' },
-    { id: 'faucets-mixers', name: 'Faucets & Brass Mixers' },
-    { id: 'cpvc-upvc-pipes', name: 'CPVC & UPVC Piping' },
-    { id: 'paints-coatings', name: 'Paints & Finishes' }
-  ];
-
-  const sampleSearches = ['Master Mixer', 'CPVC Pipe price', 'Wall closet', 'Shower column', 'Nippon weather coat'];
-
-  // Seed 14 days of lightweight activity (~35 total views)
-  for (let i = 13; i >= 0; i--) {
-    const dayTimestamp = now - (i * dayMs);
-    const viewsCount = 2 + (i % 3);
-
-    for (let v = 0; v < viewsCount; v++) {
-      const timeOffset = Math.floor(Math.random() * dayMs);
-      const timestampIso = new Date(dayTimestamp + timeOffset).toISOString();
-      const randDev = Math.random();
-      const device = randDev > 0.45 ? 'Mobile' : randDev > 0.1 ? 'Desktop' : 'Tablet';
-
-      const randBrowser = Math.random();
-      const browser = randBrowser > 0.5 ? 'Chrome' : randBrowser > 0.25 ? 'Safari' : randBrowser > 0.1 ? 'Edge' : 'Firefox';
-
-      const randSource = Math.random();
-      const source = randSource > 0.4 ? 'Direct' : randSource > 0.2 ? 'Google Search' : randSource > 0.1 ? 'WhatsApp / Referral' : 'Social Media';
-
-      pageViews.push({
-        id: `pv-${i}-${v}`,
-        timestamp: timestampIso,
-        device,
-        browser,
-        source,
-        path: '/'
-      });
-
-      // Product view (1 per day)
-      if (v === 0) {
-        const prod = sampleProducts[i % sampleProducts.length];
-        productViews.push({
-          id: `pvprod-${i}`,
-          productId: prod.id,
-          productName: prod.name,
-          timestamp: timestampIso
-        });
-      }
-
-      // Category click (every 2 days)
-      if (v === 1 && i % 2 === 0) {
-        const cat = sampleCategories[i % sampleCategories.length];
-        categoryClicks.push({
-          id: `cat-${i}`,
-          categoryId: cat.id,
-          categoryName: cat.name,
-          timestamp: timestampIso
-        });
-      }
-
-      // Action event (every 3 days)
-      if (v === 0 && i % 3 === 0) {
-        const randAct = Math.random();
-        if (randAct > 0.5) {
-          actions.push({ id: `act-${i}`, type: 'whatsapp', label: 'Product Inquiry', timestamp: timestampIso });
-        } else if (randAct > 0.25) {
-          actions.push({ id: `act-${i}`, type: 'call', label: 'Showroom Phone', timestamp: timestampIso });
-        } else {
-          const q = sampleSearches[i % sampleSearches.length];
-          actions.push({ id: `act-${i}`, type: 'search', label: q, timestamp: timestampIso });
-        }
-      }
-    }
-  }
-
-  return { pageViews, productViews, categoryClicks, actions };
+  return { pageViews: [], productViews: [], categoryClicks: [], actions: [] };
 };
 
 // In-memory fallback if localStorage is completely disabled or full
@@ -172,14 +82,20 @@ export const loadAnalyticsData = (): AnalyticsData => {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === 'object') {
-          const result: AnalyticsData = {
-            pageViews: Array.isArray(parsed.pageViews) ? parsed.pageViews.slice(-MAX_PAGE_VIEWS) : [],
-            productViews: Array.isArray(parsed.productViews) ? parsed.productViews.slice(-MAX_PRODUCT_VIEWS) : [],
-            categoryClicks: Array.isArray(parsed.categoryClicks) ? parsed.categoryClicks.slice(-MAX_CATEGORY_CLICKS) : [],
-            actions: Array.isArray(parsed.actions) ? parsed.actions.slice(-MAX_ACTIONS) : [],
-          };
-          inMemoryAnalytics = result;
-          return result;
+          // Detect and discard legacy dummy seed data if found
+          const hasLegacySeed = Array.isArray(parsed.pageViews) && parsed.pageViews.some((p: any) => p.id && String(p.id).startsWith('pv-'));
+          if (!hasLegacySeed) {
+            const result: AnalyticsData = {
+              pageViews: Array.isArray(parsed.pageViews) ? parsed.pageViews.slice(-MAX_PAGE_VIEWS) : [],
+              productViews: Array.isArray(parsed.productViews) ? parsed.productViews.slice(-MAX_PRODUCT_VIEWS) : [],
+              categoryClicks: Array.isArray(parsed.categoryClicks) ? parsed.categoryClicks.slice(-MAX_CATEGORY_CLICKS) : [],
+              actions: Array.isArray(parsed.actions) ? parsed.actions.slice(-MAX_ACTIONS) : [],
+            };
+            inMemoryAnalytics = result;
+            return result;
+          } else {
+            localStorage.removeItem(STORAGE_KEY);
+          }
         }
       }
     }
@@ -230,6 +146,110 @@ export const saveAnalyticsData = (data: AnalyticsData) => {
   }
 };
 
+// Background beacon sender with fail-soft safety
+let cachedVisitorUUID: string | null = null;
+export const getVisitorUUID = (): string => {
+  if (cachedVisitorUUID) return cachedVisitorUUID;
+  if (typeof window !== 'undefined') {
+    try {
+      let id = localStorage.getItem('zst_visitor_uuid');
+      if (!id) {
+        id = `v_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
+        localStorage.setItem('zst_visitor_uuid', id);
+      }
+      cachedVisitorUUID = id;
+      return id;
+    } catch {}
+  }
+  cachedVisitorUUID = `v_anon_${Math.random().toString(36).substring(2, 8)}`;
+  return cachedVisitorUUID;
+};
+
+const sendBackgroundBeacon = (payload: any) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const isAdmin = Boolean(
+      localStorage.getItem('zst_admin_token') ||
+      sessionStorage.getItem('zst_admin_token') ||
+      (window.location && window.location.pathname && window.location.pathname.startsWith('/admin'))
+    );
+
+    const fullPayload = {
+      ...payload,
+      visitorId: payload.visitorId || getVisitorUUID(),
+      path: payload.path || window.location.pathname,
+      timestamp: Date.now(),
+      isAdmin
+    };
+    
+    // Prefer modern sendBeacon for non-blocking unload safety, fallback to fetch with keepalive
+    const blob = new Blob([JSON.stringify(fullPayload)], { type: 'application/json' });
+    if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+      const sent = navigator.sendBeacon('/api/analytics/track', blob);
+      if (sent) return;
+    }
+    
+    fetch('/api/analytics/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fullPayload),
+      keepalive: true
+    }).catch(() => {});
+  } catch {}
+};
+
+// Global background tracking singleton
+let isTrackingInitialized = false;
+let heartbeatTimer: any = null;
+
+export const startLiveVisitorTracking = () => {
+  if (isTrackingInitialized || typeof window === 'undefined') return;
+  isTrackingInitialized = true;
+
+  // 1. Initial Pageview Beacon
+  sendBackgroundBeacon({
+    type: 'pageview',
+    device: getDeviceType(),
+    browser: getBrowserName(),
+    source: 'Direct'
+  });
+
+  // 2. Periodic Heartbeat Beacon every 25 seconds while tab is open
+  heartbeatTimer = setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      sendBackgroundBeacon({
+        type: 'heartbeat',
+        device: getDeviceType(),
+        browser: getBrowserName()
+      });
+    }
+  }, 25000);
+
+  // 3. Non-blocking Clickstream Listener
+  let lastClickTime = 0;
+  window.addEventListener('click', (e: MouseEvent) => {
+    try {
+      const now = Date.now();
+      if (now - lastClickTime < 60) return; // avoid rapid micro double-firing
+      lastClickTime = now;
+
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      // Check if click was on or inside a product card
+      const productEl = target.closest('[data-product-id], [data-testid="product-card"], .product-card, a[href*="/product/"]') as HTMLElement | null;
+      const productId = productEl?.getAttribute('data-product-id') || productEl?.dataset?.productId;
+      const productName = productEl?.getAttribute('data-product-name') || productEl?.querySelector('h3, h4, .product-title')?.textContent?.trim();
+
+      if (productId || productEl) {
+        trackProductClick(productId || 'view', productName);
+      } else {
+        trackWebsiteClick();
+      }
+    } catch {}
+  }, { passive: true });
+};
+
 // Trackers
 export const trackPageView = (path: string = '/') => {
   try {
@@ -247,6 +267,43 @@ export const trackPageView = (path: string = '/') => {
       data.pageViews = data.pageViews.slice(-MAX_PAGE_VIEWS);
     }
     saveAnalyticsData(data);
+
+    sendBackgroundBeacon({
+      type: 'pageview',
+      path,
+      device: getDeviceType(),
+      browser: getBrowserName()
+    });
+  } catch {}
+};
+
+export const trackWebsiteClick = () => {
+  try {
+    sendBackgroundBeacon({
+      type: 'page_click'
+    });
+  } catch {}
+};
+
+export const trackProductClick = (productId: string, productName?: string) => {
+  try {
+    sendBackgroundBeacon({
+      type: 'product_click',
+      productId,
+      productName
+    });
+  } catch {}
+};
+
+export const trackSearchQuery = (query: string) => {
+  try {
+    if (!query || query.trim().length < 2) return;
+    const cleanQ = query.trim();
+    trackAction('search', cleanQ);
+    sendBackgroundBeacon({
+      type: 'search',
+      query: cleanQ
+    });
   } catch {}
 };
 
@@ -263,6 +320,12 @@ export const trackProductView = (productId: string, productName: string) => {
       data.productViews = data.productViews.slice(-MAX_PRODUCT_VIEWS);
     }
     saveAnalyticsData(data);
+
+    sendBackgroundBeacon({
+      type: 'product_view',
+      productId,
+      productName
+    });
   } catch {}
 };
 
@@ -279,6 +342,12 @@ export const trackCategoryClick = (categoryId: string, categoryName: string) => 
       data.categoryClicks = data.categoryClicks.slice(-MAX_CATEGORY_CLICKS);
     }
     saveAnalyticsData(data);
+
+    sendBackgroundBeacon({
+      type: 'category_click',
+      categoryId,
+      categoryName
+    });
   } catch {}
 };
 
@@ -295,11 +364,131 @@ export const trackAction = (type: 'whatsapp' | 'call' | 'quote' | 'search' | 'do
       data.actions = data.actions.slice(-MAX_ACTIONS);
     }
     saveAnalyticsData(data);
+
+    sendBackgroundBeacon({
+      type: 'action',
+      actionType: type,
+      label
+    });
   } catch {}
 };
 
-export const resetAnalytics = () => {
+export const resetAnalytics = async () => {
   const fresh = generateInitialAnalytics();
   saveAnalyticsData(fresh);
+  try {
+    const token = localStorage.getItem('zst_admin_token') || sessionStorage.getItem('zst_admin_token') || '';
+    await fetch('/api/analytics/reset', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    });
+  } catch {}
   return fresh;
+};
+
+// Live Server Dashboard Data Interface
+export interface LiveSalesAnalytics {
+  totalOrders: number;
+  completedOrders: number;
+  confirmedOrders?: number;
+  pendingOrders: number;
+  cancelledOrders: number;
+  returnedOrders: number;
+  grossRevenue: number;
+  netRevenue: number;
+  pendingRevenue: number;
+  averageOrderValue: number;
+  dailyOrdersCount?: number;
+  dailyRevenue?: number;
+  weeklyOrdersCount?: number;
+  weeklyRevenue?: number;
+  monthlyOrdersCount?: number;
+  monthlyRevenue?: number;
+  codBreakdown: {
+    count: number;
+    revenue: number;
+    percentage: number;
+    revenuePercentage: number;
+  };
+  onlineBreakdown: {
+    count: number;
+    revenue: number;
+    percentage: number;
+    revenuePercentage: number;
+  };
+  statusBreakdown: {
+    completed: { count: number; percentage: number };
+    pending: { count: number; percentage: number };
+    cancelled: { count: number; percentage: number };
+    returned: { count: number; percentage: number };
+  };
+  detailedStatuses: Record<string, number>;
+  recentOrders: Array<{
+    id: string;
+    orderNumber: string;
+    customerName: string;
+    totalAmount: number;
+    status: string;
+    paymentMethod: string;
+    createdAt: string;
+  }>;
+}
+
+export interface LiveDashboardData {
+  success: boolean;
+  liveVisitors: number;
+  totalVisitors: number;
+  uniqueVisitors?: number;
+  dailyVisitors?: number;
+  weeklyVisitors?: number;
+  monthlyVisitors?: number;
+  todayVisits?: number;
+  conversionRate?: number;
+  totalPageViews: number;
+  totalWebsiteClicks: number;
+  totalProductClicks: number;
+  topProducts: Array<{ id: string; name: string; views: number; clicks: number }>;
+  topSearches: Array<{ query: string; count: number }>;
+  topCategories: Array<{ id: string; name: string; count: number }>;
+  actions: Record<string, number>;
+  deviceCounts: Record<string, number>;
+  browserCounts: Record<string, number>;
+  sourceCounts: Record<string, number>;
+  dailyTrend?: Array<{
+    label: string;
+    dateStr: string;
+    views: number;
+    visitors: number;
+    orders: number;
+    revenue: number;
+  }>;
+  recentEvents: Array<{
+    id: string;
+    type: string;
+    label: string;
+    details: string;
+    timestamp: string;
+  }>;
+  sales: LiveSalesAnalytics;
+  lastUpdated: string;
+}
+
+// Fetch live backend aggregated metrics
+export const fetchLiveAnalyticsDashboard = async (): Promise<LiveDashboardData | null> => {
+  try {
+    const res = await fetch('/api/analytics/dashboard', {
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+    const data = await res.json();
+    if (data && data.success) {
+      return data as LiveDashboardData;
+    }
+  } catch (err) {
+    console.warn('[Analytics Dashboard Fetch] Fallback to client-side:', err);
+  }
+  return null;
 };

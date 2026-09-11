@@ -36,6 +36,7 @@ export const AdminPaymentMethodsManager: React.FC<AdminPaymentMethodsManagerProp
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editingMethod, setEditingMethod] = useState<Partial<PaymentMethodConfig> | null>(null);
   const [isUploadingQr, setIsUploadingQr] = useState<boolean>(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [activePreviewMethodId, setActivePreviewMethodId] = useState<string | null>(null);
@@ -130,6 +131,7 @@ export const AdminPaymentMethodsManager: React.FC<AdminPaymentMethodsManagerProp
       type: editingMethod.type || 'custom',
       name: editingMethod.name.trim(),
       isEnabled: editingMethod.isEnabled ?? true,
+      logoUrl: editingMethod.type === 'cod' ? undefined : (editingMethod.logoUrl?.trim() || undefined),
       accountTitle: editingMethod.accountTitle?.trim() || undefined,
       accountNumber: editingMethod.accountNumber?.trim() || undefined,
       bankName: editingMethod.bankName?.trim() || undefined,
@@ -169,6 +171,30 @@ export const AdminPaymentMethodsManager: React.FC<AdminPaymentMethodsManagerProp
     if (confirm('Reset payment methods to standard defaults (Cash on Delivery, Meezan Bank, Easypaisa, JazzCash)? This will replace your current list.')) {
       setMethods(defaultPaymentMethods);
       await persistMethods(defaultPaymentMethods, 'Payment methods reset to default');
+    }
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert('File size exceeds 10MB limit. Please choose a smaller image.');
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    try {
+      const uploadRes = await uploadMediaToSupabase(file, 'payment-proofs', `logo-${Date.now()}-${file.name}`);
+      if (uploadRes.url) {
+        setEditingMethod(prev => prev ? { ...prev, logoUrl: uploadRes.url } : null);
+      } else {
+        alert(`Failed to upload payment method logo: ${uploadRes.error || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      alert(`Upload error: ${err?.message || String(err)}`);
+    } finally {
+      setIsUploadingLogo(false);
     }
   };
 
@@ -405,8 +431,17 @@ export const AdminPaymentMethodsManager: React.FC<AdminPaymentMethodsManagerProp
               <div>
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="flex items-center gap-3">
-                    <div className="p-2.5 rounded-lg bg-stone-100 border border-stone-200">
-                      {getMethodIcon(method.type)}
+                    <div className="w-11 h-11 rounded-lg bg-stone-100 border border-stone-200 flex items-center justify-center shrink-0 overflow-hidden p-1 bg-white">
+                      {method.logoUrl && method.type !== 'cod' ? (
+                        <img 
+                          src={method.logoUrl} 
+                          alt={method.name} 
+                          className="w-full h-full object-contain" 
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        getMethodIcon(method.type)
+                      )}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -691,6 +726,65 @@ export const AdminPaymentMethodsManager: React.FC<AdminPaymentMethodsManagerProp
                         className="w-full px-3 py-2 font-mono text-xs border border-stone-300 rounded-lg text-stone-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                       />
                     </div>
+                  </div>
+
+                  {/* Payment Method Logo Upload (Online Methods Only) */}
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                      Payment Method Logo / Icon (Optional)
+                    </label>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                      {editingMethod.logoUrl ? (
+                        <div className="relative group shrink-0">
+                          <img 
+                            src={editingMethod.logoUrl} 
+                            alt="Payment Method Logo" 
+                            className="w-16 h-16 rounded-xl border border-stone-300 object-contain p-1 bg-white shadow-xs"
+                            referrerPolicy="no-referrer"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setEditingMethod({ ...editingMethod, logoUrl: undefined })}
+                            className="absolute -top-2 -right-2 p-1 bg-rose-600 text-white rounded-full hover:bg-rose-700 shadow-sm transition-colors cursor-pointer"
+                            title="Remove logo"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="w-16 h-16 rounded-xl border border-dashed border-stone-300 flex flex-col items-center justify-center text-stone-400 bg-stone-50 shrink-0">
+                          <ImageIcon className="w-6 h-6" />
+                          <span className="text-[9px] mt-0.5 font-medium">Logo</span>
+                        </div>
+                      )}
+
+                      <div className="flex-1 space-y-2 w-full">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <label className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-stone-300 bg-white hover:bg-stone-50 cursor-pointer text-stone-700 transition-colors shadow-2xs ${isUploadingLogo ? 'opacity-50 pointer-events-none' : ''}`}>
+                            <Upload className="w-3.5 h-3.5" />
+                            {isUploadingLogo ? 'Uploading Logo...' : 'Upload Logo / Image'}
+                            <input 
+                              type="file" 
+                              accept="image/*" 
+                              className="hidden" 
+                              onChange={handleLogoUpload}
+                              disabled={isUploadingLogo}
+                            />
+                          </label>
+                          <span className="text-xs text-stone-400">or paste image URL:</span>
+                        </div>
+                        <input
+                          type="text"
+                          value={editingMethod.logoUrl || ''}
+                          onChange={e => setEditingMethod({ ...editingMethod, logoUrl: e.target.value })}
+                          placeholder="https://example.com/payment-logo.png"
+                          className="w-full px-3 py-1.5 text-xs border border-stone-300 rounded-lg text-stone-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-stone-400 mt-1">
+                      Upload your official logo for Easypaisa, JazzCash, Meezan Bank, or custom online account. Appears directly on the checkout screen.
+                    </p>
                   </div>
 
                   {/* QR Code Upload / Link */}

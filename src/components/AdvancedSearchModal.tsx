@@ -4,6 +4,7 @@ import { Product, ProductCategory, ProductBrand } from '../types';
 import { filterProducts, parseNaturalLanguageQuery, getNumericPrice, getInstantSearchSuggestions } from '../utils/searchUtils';
 import { ProductSaleBadge } from './ProductSaleBadge';
 import { getProductPricingDetails } from '../utils/pricingUtils';
+import { trackSearchQuery } from '../utils/analyticsStorage';
 
 interface AdvancedSearchModalProps {
   isOpen: boolean;
@@ -49,6 +50,12 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
     }, 180);
     return () => clearTimeout(handler);
   }, [searchQuery]);
+
+  useEffect(() => {
+    if (debouncedQuery && debouncedQuery.trim().length >= 2) {
+      trackSearchQuery(debouncedQuery.trim());
+    }
+  }, [debouncedQuery]);
 
   useEffect(() => {
     if (initialQuery) {

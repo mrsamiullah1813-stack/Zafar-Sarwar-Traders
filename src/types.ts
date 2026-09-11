@@ -706,6 +706,7 @@ export interface PaymentMethodConfig {
   type: PaymentMethodType;
   name: string;
   isEnabled: boolean;
+  logoUrl?: string;
   accountTitle?: string;
   accountNumber?: string;
   bankName?: string;

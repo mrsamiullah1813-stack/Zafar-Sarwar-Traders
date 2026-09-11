@@ -82,6 +82,7 @@ import { PatternLock } from './PatternLock';
 import { getPatternLockStatus, savePatternLock, togglePatternLock } from '../services/patternLockService';
 import { Product, ProductCategory, ProductVideo, BusinessConfig, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, ThemeSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig } from '../types';
 import { getAdminPin, setAdminPin, loadPlannerConfig, savePlannerConfig, loadBuildMaterialEstimatorConfig, saveBuildMaterialEstimatorConfig, loadAiAssistantConfig, saveAiAssistantConfig, loadThemeSettings, saveThemeSettings, loadHeroSettings, saveHeroSettings, loadSmartToolsSettings, saveSmartToolsSettings, loadFittingBuilderConfig, saveFittingBuilderConfig, loadAnnouncementSettings, saveAnnouncementSettings, deleteProductFromStorage, saveStoredProducts, saveStoredProductSingle, deleteCategoryFromStorage, saveStoredCategories, saveStoredCategorySingle, deleteBrandFromStorage, saveStoredBrands, saveStoredBrandSingle } from '../utils/storage';
+import { resetToHome } from '../utils/navigationHistory';
 
 interface AdminDashboardProps {
   products: Product[];
@@ -835,42 +836,77 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     <div className="fixed inset-0 z-[100] bg-slate-950 text-slate-100 flex flex-col overflow-hidden animate-fadeIn">
       
       {/* CMS Header Bar */}
-      <header className="bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-blue-600/20 border border-blue-500/40 text-blue-400">
-            <ShieldCheck className="w-6 h-6" />
+      <header className="bg-slate-900 border-b border-slate-800 px-3 sm:px-6 py-3 sm:py-4 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 shrink-0 relative z-20">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="p-1.5 sm:p-2 rounded-xl bg-blue-600/20 border border-blue-500/40 text-blue-400 shrink-0">
+            <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
-          <div>
-            <h1 className="text-xl font-bold font-serif text-white flex items-center gap-2">
-              <span>Admin Content Management System (CMS)</span>
-              <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-400 text-[10px] font-mono uppercase">
+          <div className="min-w-0">
+            <h1 className="text-sm sm:text-lg font-bold font-serif text-white flex flex-wrap items-center gap-1.5 sm:gap-2 leading-tight">
+              <span className="truncate">Admin Content Management (CMS)</span>
+              <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-400 text-[10px] font-mono uppercase shrink-0">
                 Owner Mode Active
               </span>
             </h1>
-            <p className="text-xs text-slate-400 font-light">
+            <p className="text-xs text-slate-400 font-light hidden sm:block truncate">
               Full control over products, categories, videos, banners, prices, and store settings.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
           <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all"
+            type="button"
+            id="btn-view-public-storefront"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              try {
+                if (onClose) onClose();
+              } catch (err) {
+                console.warn('onClose error:', err);
+              }
+              try {
+                resetToHome();
+              } catch (navErr) {
+                console.warn('resetToHome error:', navErr);
+              }
+              try {
+                window.dispatchEvent(new CustomEvent('zst_close_admin'));
+              } catch {}
+              try {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              } catch {}
+            }}
+            className="px-3.5 sm:px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-blue-600/20 border border-blue-500/80"
+            title="Return to Public Storefront"
           >
-            <Eye className="w-4 h-4 text-blue-400" />
+            <Eye className="w-4 h-4 shrink-0" />
             <span>View Public Storefront</span>
           </button>
 
           <button
-            onClick={() => {
-              onLogout();
-              onClose();
+            type="button"
+            id="btn-lock-exit-admin"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              try {
+                if (onLogout) onLogout();
+              } catch {}
+              try {
+                if (onClose) onClose();
+              } catch {}
+              try {
+                resetToHome();
+                window.dispatchEvent(new CustomEvent('zst_close_admin'));
+              } catch {}
             }}
-            className="px-4 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 text-xs font-bold flex items-center gap-1.5 transition-all"
+            className="px-3 sm:px-4 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-900 active:scale-95 border border-rose-500/40 text-rose-300 hover:text-rose-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+            title="Lock & Exit Admin"
           >
-            <LogOut className="w-4 h-4" />
-            <span>Lock & Exit Admin</span>
+            <LogOut className="w-4 h-4 shrink-0" />
+            <span className="hidden xs:inline">Lock & Exit</span>
           </button>
         </div>
       </header>

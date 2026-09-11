@@ -53,11 +53,13 @@ import {
   trackPageView, 
   trackProductView, 
   trackCategoryClick, 
-  trackAction 
+  trackAction,
+  startLiveVisitorTracking
 } from './utils/analyticsStorage';
 import { 
   initNavigationHistory, 
   pushNavigationState, 
+  replaceNavigationState,
   navigateBackSafe, 
   addNavigationListener,
   resetToHome
@@ -285,6 +287,14 @@ export default function App() {
     }
 
     const unsubscribe = addNavigationListener((state) => {
+      // Whenever navigation moves away from admin dashboard, ensure it is closed
+      if (state.view !== 'admin-dashboard') {
+        setAdminDashboardOpen(false);
+      }
+      if (state.view !== 'admin-login') {
+        setAdminLoginOpen(false);
+      }
+
       switch (state.view) {
         case 'home':
           setSelectedProduct(null);
@@ -427,6 +437,7 @@ export default function App() {
 
   // Sync with server CMS data on mount
   useEffect(() => {
+    startLiveVisitorTracking();
     trackPageView(window.location.pathname);
     syncWithServerCMS({
       setConfig,
@@ -456,8 +467,21 @@ export default function App() {
         setAdminLoginOpen(true);
       }
     };
+    const handleCloseAdminEvent = () => {
+      setAdminDashboardOpen(false);
+      setAdminLoginOpen(false);
+      setAdminProductModalOpen(false);
+      resetToHome();
+      try {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch {}
+    };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('zst_close_admin', handleCloseAdminEvent);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('zst_close_admin', handleCloseAdminEvent);
+    };
   }, []);
 
   // Listen to Supabase auth session changes
@@ -707,6 +731,8 @@ export default function App() {
   const handleAdminLoginSuccess = () => {
     setIsAdmin(true);
     setIsAdminLoggedIn(true);
+    setAdminLoginOpen(false);
+    replaceNavigationState('admin-dashboard', {}, { admin: 'dashboard' });
     setAdminDashboardOpen(true);
   };
 
@@ -725,6 +751,8 @@ export default function App() {
     setIsAdmin(false);
     setIsAdminLoggedIn(false);
     setAdminDashboardOpen(false);
+    setAdminLoginOpen(false);
+    resetToHome();
   };
 
   const handleAddReview = (newReview: Review) => {
@@ -774,7 +802,7 @@ export default function App() {
   };
 
   const handleCloseCart = () => {
-    navigateBackSafe(() => setCartOpen(false));
+    navigateBackSafe(() => setCartOpen(false), { cart: null });
   };
 
   const handleOpenCheckout = () => {
@@ -786,10 +814,11 @@ export default function App() {
 
   const handleReturnHomeAfterOrder = () => {
     orderCompletedRef.current = true;
-    resetToHome();
-    setCheckoutModalOpen(false);
-    setDirectCheckoutItem(null);
-    setCartOpen(false);
+    navigateBackSafe(() => {
+      setCheckoutModalOpen(false);
+      setDirectCheckoutItem(null);
+      setCartOpen(false);
+    }, { checkout: null, cart: null });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -797,7 +826,7 @@ export default function App() {
     navigateBackSafe(() => {
       setCheckoutModalOpen(false);
       setDirectCheckoutItem(null);
-    });
+    }, { checkout: null });
   };
 
   const handleOpenDeliveryAreas = () => {
@@ -806,7 +835,7 @@ export default function App() {
   };
 
   const handleCloseDeliveryAreas = () => {
-    navigateBackSafe(() => setViewDeliveryAreasPage(false));
+    navigateBackSafe(() => setViewDeliveryAreasPage(false), { page: null });
   };
 
   const handleOpenSearch = () => {
@@ -896,7 +925,13 @@ export default function App() {
   };
 
   const handleCloseAdminDashboard = () => {
-    navigateBackSafe(() => setAdminDashboardOpen(false));
+    setAdminDashboardOpen(false);
+    setAdminLoginOpen(false);
+    setAdminProductModalOpen(false);
+    resetToHome();
+    try {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch {}
   };
 
   const handleCloseProductQuickView = () => {

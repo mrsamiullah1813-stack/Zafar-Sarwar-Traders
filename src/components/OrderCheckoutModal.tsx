@@ -16,9 +16,212 @@ import { getOrGenerateCustomerId } from '../utils/customerStorage';
 import { getProductPricingDetails, getVariantPricingDetails, getActiveProductPrice } from '../utils/pricingUtils';
 import { fetchPaymentMethodsFromSupabase, uploadMediaToSupabase, uploadPaymentProof, fetchHowToOrderConfigFromSupabase, fetchDeliveryCitiesFromSupabase } from '../services/supabaseService';
 import { CouponPromoBox } from './CouponPromoBox';
-import { pushNavigationState, navigateBackSafe, addNavigationListener, resetToHome } from '../utils/navigationHistory';
+import { pushNavigationState, replaceNavigationState, navigateBackSafe, addNavigationListener, resetToHome } from '../utils/navigationHistory';
 
 type CheckoutStep = 'cart' | 'customer' | 'address' | 'payment_method' | 'payment_instructions' | 'payment_proof' | 'confirmation';
+
+/**
+ * Dynamic, professional payment brand visual emblem.
+ * Accurately styles EasyPaisa, JazzCash, Cash on Delivery, Bank Transfer (Meezan, HBL, etc.), Card,
+ * and dynamically handles any custom admin-created payment method without hardcoding.
+ */
+interface PaymentMethodLogoBadgeProps {
+  method: PaymentMethodConfig;
+  className?: string;
+  size?: 'sm' | 'md' | 'lg';
+}
+
+export const PaymentMethodLogoBadge: React.FC<PaymentMethodLogoBadgeProps> = ({ 
+  method, 
+  className = '',
+  size = 'md'
+}) => {
+  const isCodMethod = method.type === 'cod' || method.id === 'cod' || (method.name || '').toLowerCase().includes('cash on delivery');
+  const customLogoUrl = !isCodMethod ? ((method as any).logoUrl || (method as any).imageUrl) : undefined;
+
+  if (customLogoUrl) {
+    return (
+      <div className={`rounded-xl overflow-hidden bg-white border border-slate-200 flex items-center justify-center shrink-0 shadow-2xs ${
+        size === 'sm' ? 'w-8 h-8 p-1' : size === 'lg' ? 'w-14 h-14 p-1.5' : 'w-11 h-11 sm:w-12 sm:h-12 p-1.5'
+      } ${className}`}>
+        <img 
+          src={customLogoUrl} 
+          alt={method.name} 
+          className="w-full h-full object-contain"
+          referrerPolicy="no-referrer" 
+        />
+      </div>
+    );
+  }
+
+  const normalizedType = (method.type || '').toLowerCase();
+  const normalizedId = (method.id || '').toLowerCase();
+  const normalizedName = (method.name || '').toLowerCase();
+  const normalizedBank = (method.bankName || '').toLowerCase();
+
+  const isEasypaisa = normalizedType === 'easypaisa' || normalizedId.includes('easypaisa') || normalizedName.includes('easypaisa');
+  const isJazzCash = normalizedType === 'jazzcash' || normalizedId.includes('jazzcash') || normalizedName.includes('jazzcash');
+  const isCod = normalizedType === 'cod' || normalizedId === 'cod' || normalizedName.includes('cash on delivery') || normalizedName.includes('cod');
+  const isBank = normalizedType === 'bank_transfer' || normalizedId.includes('bank') || normalizedName.includes('bank');
+  const isCard = (normalizedType === 'custom' || normalizedType === 'bank_transfer') && (normalizedId.includes('card') || normalizedName.includes('card') || normalizedName.includes('visa') || normalizedName.includes('master'));
+  const isMeezan = normalizedName.includes('meezan') || normalizedBank.includes('meezan') || normalizedId.includes('meezan');
+  const isHbl = normalizedName.includes('hbl') || normalizedBank.includes('hbl') || normalizedId.includes('hbl');
+  const isSadaPay = normalizedName.includes('sadapay') || normalizedId.includes('sadapay');
+  const isNayaPay = normalizedName.includes('nayapay') || normalizedId.includes('nayapay');
+
+  const containerSizeClasses = size === 'sm' 
+    ? 'w-8 h-8 rounded-lg' 
+    : size === 'lg' 
+      ? 'w-14 h-14 rounded-2xl' 
+      : 'w-11 h-11 sm:w-12 sm:h-12 rounded-xl';
+
+  if (isEasypaisa) {
+    return (
+      <div 
+        className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-[#00A950] via-[#009245] to-[#007F3B] text-white flex flex-col items-center justify-center shadow-xs border border-emerald-400/40 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
+        title="Easypaisa Mobile Account"
+      >
+        <div className="flex items-center justify-center">
+          <Smartphone className={size === 'sm' ? 'w-3 h-3' : 'w-4 h-4'} />
+        </div>
+        <span className="text-[8.5px] sm:text-[9px] font-black tracking-tight leading-none text-white uppercase mt-0.5">
+          easy<span className="text-emerald-200">paisa</span>
+        </span>
+      </div>
+    );
+  }
+
+  if (isJazzCash) {
+    return (
+      <div 
+        className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-[#E30613] via-[#C0040E] to-[#990008] text-white flex flex-col items-center justify-center shadow-xs border border-amber-400/40 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
+        title="JazzCash Mobile Account"
+      >
+        <div className="flex items-center justify-center">
+          <Smartphone className={size === 'sm' ? 'w-3 h-3 text-amber-300' : 'w-4 h-4 text-amber-300'} />
+        </div>
+        <span className="text-[8.5px] sm:text-[9px] font-black tracking-tight leading-none text-amber-300 uppercase mt-0.5">
+          Jazz<span className="text-white">Cash</span>
+        </span>
+      </div>
+    );
+  }
+
+  if (isCod) {
+    return (
+      <div 
+        className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-900 text-white flex flex-col items-center justify-center shadow-xs border border-emerald-400/30 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
+        title="Cash on Delivery"
+      >
+        <Truck className={size === 'sm' ? 'w-3.5 h-3.5 text-emerald-100' : 'w-4 h-4 text-emerald-100'} />
+        <span className="text-[8.5px] sm:text-[9px] font-black tracking-wider leading-none text-emerald-100 uppercase mt-0.5">
+          COD
+        </span>
+      </div>
+    );
+  }
+
+  if (isMeezan) {
+    return (
+      <div 
+        className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-[#0B2545] via-[#133C55] to-[#0A192F] text-white flex flex-col items-center justify-center shadow-xs border border-amber-400/40 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
+        title="Meezan Bank"
+      >
+        <Building2 className={size === 'sm' ? 'w-3.5 h-3.5 text-amber-300' : 'w-4 h-4 text-amber-300'} />
+        <span className="text-[8px] sm:text-[8.5px] font-extrabold tracking-tight leading-none text-amber-300 uppercase mt-0.5">
+          MEEZAN
+        </span>
+      </div>
+    );
+  }
+
+  if (isHbl) {
+    return (
+      <div 
+        className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-[#005B52] to-[#003831] text-white flex flex-col items-center justify-center shadow-xs border border-teal-300/40 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
+        title="Habib Bank Limited (HBL)"
+      >
+        <Building2 className={size === 'sm' ? 'w-3.5 h-3.5 text-teal-200' : 'w-4 h-4 text-teal-200'} />
+        <span className="text-[8.5px] sm:text-[9px] font-black tracking-wider leading-none text-white uppercase mt-0.5">
+          HBL
+        </span>
+      </div>
+    );
+  }
+
+  if (isSadaPay) {
+    return (
+      <div 
+        className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-[#101010] to-[#252525] text-white flex flex-col items-center justify-center shadow-xs border border-teal-400/40 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
+        title="SadaPay"
+      >
+        <Wallet className={size === 'sm' ? 'w-3.5 h-3.5 text-teal-400' : 'w-4 h-4 text-teal-400'} />
+        <span className="text-[8px] sm:text-[8.5px] font-black tracking-tight leading-none text-teal-300 uppercase mt-0.5">
+          SADAPAY
+        </span>
+      </div>
+    );
+  }
+
+  if (isNayaPay) {
+    return (
+      <div 
+        className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-[#F36F21] to-[#D05106] text-white flex flex-col items-center justify-center shadow-xs border border-orange-300/40 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
+        title="NayaPay"
+      >
+        <Wallet className={size === 'sm' ? 'w-3.5 h-3.5 text-white' : 'w-4 h-4 text-white'} />
+        <span className="text-[8px] sm:text-[8.5px] font-black tracking-tight leading-none text-white uppercase mt-0.5">
+          NAYAPAY
+        </span>
+      </div>
+    );
+  }
+
+  if (isCard) {
+    return (
+      <div 
+        className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-indigo-700 via-blue-700 to-indigo-900 text-white flex flex-col items-center justify-center shadow-xs border border-indigo-300/40 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
+        title="Credit / Debit Card"
+      >
+        <CreditCard className={size === 'sm' ? 'w-3.5 h-3.5 text-indigo-200' : 'w-4 h-4 text-indigo-200'} />
+        <span className="text-[8.5px] sm:text-[9px] font-black tracking-wider leading-none text-white uppercase mt-0.5">
+          CARD
+        </span>
+      </div>
+    );
+  }
+
+  if (isBank) {
+    const bankWords = (method.bankName || method.name || 'Bank').replace(/bank|ltd|limited/gi, '').trim().split(/\s+/);
+    const acronym = (bankWords[0] || 'BANK').slice(0, 6).toUpperCase();
+
+    return (
+      <div 
+        className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-blue-700 via-blue-800 to-slate-900 text-white flex flex-col items-center justify-center shadow-xs border border-blue-400/30 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
+        title={method.bankName || method.name}
+      >
+        <Building2 className={size === 'sm' ? 'w-3.5 h-3.5 text-blue-200' : 'w-4 h-4 text-blue-200'} />
+        <span className="text-[8px] sm:text-[8.5px] font-black tracking-wider leading-none text-blue-100 uppercase mt-0.5 truncate max-w-[42px]">
+          {acronym}
+        </span>
+      </div>
+    );
+  }
+
+  // Fallback for custom or future admin-created payment method
+  const initials = method.name ? method.name.slice(0, 4).toUpperCase() : 'PAY';
+  return (
+    <div 
+      className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-slate-700 to-slate-900 text-white flex flex-col items-center justify-center shadow-xs border border-slate-500/30 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
+      title={method.name}
+    >
+      <CreditCard className={size === 'sm' ? 'w-3.5 h-3.5 text-slate-300' : 'w-4 h-4 text-slate-300'} />
+      <span className="text-[8px] sm:text-[8.5px] font-black tracking-wider leading-none text-slate-200 uppercase mt-0.5 truncate max-w-[42px]">
+        {initials}
+      </span>
+    </div>
+  );
+};
 
 interface OrderCheckoutModalProps {
   isOpen: boolean;
@@ -46,11 +249,12 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
   const goToStep = (step: CheckoutStep) => {
     setCurrentStep(step);
-    pushNavigationState('checkout', { checkoutStep: step }, { checkout: step });
+    replaceNavigationState('checkout', { checkoutStep: step }, { checkout: step });
   };
 
   const goBackStep = (prevStep: CheckoutStep) => {
-    navigateBackSafe(() => setCurrentStep(prevStep));
+    setCurrentStep(prevStep);
+    replaceNavigationState('checkout', { checkoutStep: prevStep }, { checkout: prevStep });
   };
 
   const handleDoneToHome = () => {
@@ -59,8 +263,9 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     if (onReturnHome) {
       onReturnHome();
     } else {
-      resetToHome();
-      onClose();
+      navigateBackSafe(() => {
+        onClose();
+      }, { checkout: null, cart: null });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
@@ -241,18 +446,20 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
   if (!isOpen) return null;
 
-  const items = directItem ? [directItem] : (Array.isArray(cartItems) ? cartItems : []);
+  const rawItems = directItem ? [directItem] : (Array.isArray(cartItems) ? cartItems : []);
+  const items = rawItems.filter(item => Boolean(item && item.product));
 
-  const isCustomCitySelected = selectedCityId === customCityOptionValue || selectedCityId === 'Other';
+  const safeSelectedCityId = String(selectedCityId || '');
+  const isCustomCitySelected = safeSelectedCityId === customCityOptionValue || safeSelectedCityId === 'Other';
 
   // Find city info if predefined
   const matchedCity = activeCities.find(
-    c => c.cityName.toLowerCase() === selectedCityId.toLowerCase() || c.id === selectedCityId
+    c => (c.cityName && c.cityName.toLowerCase() === safeSelectedCityId.toLowerCase()) || c.id === safeSelectedCityId
   );
 
   const finalCityName = isCustomCitySelected 
     ? (customCityName.trim() || 'Custom Location')
-    : (matchedCity ? matchedCity.cityName : selectedCityId);
+    : (matchedCity ? matchedCity.cityName : (selectedCityId || 'Lahore'));
 
   const getItemPricing = (item: CartItem) => {
     if (!item?.product) return { effectivePriceNumeric: 0, isSaleActive: false, discountPercentage: 0, regularPriceNumeric: 0, effectivePriceString: 'Price on Request', formattedSalePrice: '', formattedRegularPrice: '', variantSku: undefined };
@@ -286,7 +493,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
   const cityDeliveryFee = isCustomCitySelected 
     ? (checkoutSettings.deliveryFee || 250)
-    : (matchedCity ? matchedCity.deliveryFee : (checkoutSettings.deliveryFee || 250));
+    : (matchedCity ? (typeof matchedCity.deliveryFee === 'number' ? matchedCity.deliveryFee : 250) : (checkoutSettings.deliveryFee || 250));
 
   const deliveryCharges = effectiveSubtotal > 0 ? (isFreeDelivery ? 0 : cityDeliveryFee) : 0;
   
@@ -294,7 +501,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     ? Math.round((effectiveSubtotal * checkoutSettings.taxRatePercent) / 100)
     : 0;
 
-  const grandTotal = effectiveSubtotal + deliveryCharges + taxAmount;
+  const grandTotal = Math.max(0, Math.round(Number(effectiveSubtotal || 0) + Number(deliveryCharges || 0) + Number(taxAmount || 0)));
 
   const fallbackPaymentMethod: PaymentMethodConfig = {
     id: 'cod',
@@ -318,11 +525,33 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
   const requiresPaymentProof = !isCashOnDelivery || isCodAdvanceRequired;
 
   const onlinePaymentMethods = paymentMethods.filter(m => m.type !== 'cod' && m.isEnabled);
-  const activeAdvanceTransferMethod = onlinePaymentMethods.find(m => m.id === selectedAdvanceTransferMethodId) || onlinePaymentMethods[0];
+  const activeAdvanceTransferMethod = onlinePaymentMethods.find(m => m.id === selectedAdvanceTransferMethodId) || onlinePaymentMethods[0] || fallbackPaymentMethod;
 
-  // Copy helper
-  const handleCopy = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
+  // Copy helper with iframe and browser permission fallback
+  const handleCopy = async (text: string, label: string) => {
+    if (!text) return;
+    let copied = false;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      }
+    } catch {
+      // Fallback for iframe / strict permission environments
+    }
+    if (!copied && typeof document !== 'undefined') {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        copied = true;
+      } catch {}
+    }
     setCopiedField(label);
     setTimeout(() => setCopiedField(null), 2500);
   };
@@ -858,13 +1087,30 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
         
         {/* Header with Title & Stepper */}
         <div className="px-4 sm:px-6 py-3.5 sm:py-4 bg-slate-900 text-white shrink-0 border-b border-slate-800">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-2.5 rounded-xl bg-blue-600 text-white shadow-md shadow-blue-900/40">
+          <div className="flex items-center justify-between mb-3 gap-2">
+            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+              {currentStep !== 'cart' && currentStep !== 'confirmation' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const stepOrder: CheckoutStep[] = ['cart', 'customer', 'address', 'payment_method', 'payment_instructions', 'payment_proof'];
+                    const idx = stepOrder.indexOf(currentStep);
+                    if (idx > 0) {
+                      goBackStep(stepOrder[idx - 1]);
+                    }
+                  }}
+                  className="p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer border border-slate-700/80 shrink-0"
+                  title="Back to previous step"
+                  aria-label="Back to previous step"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+              )}
+              <div className="p-2 sm:p-2.5 rounded-xl bg-blue-600 text-white shadow-md shadow-blue-900/40 shrink-0">
                 <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
-              <div>
-                <h3 className="font-serif font-bold text-base sm:text-lg text-white leading-tight">
+              <div className="min-w-0">
+                <h3 className="font-serif font-bold text-base sm:text-lg text-white leading-tight truncate">
                   {currentStep === 'cart' && 'Review Your Shopping Cart'}
                   {currentStep === 'customer' && 'Customer Contact Details'}
                   {currentStep === 'address' && 'Delivery Address & Shipping'}
@@ -873,7 +1119,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                   {currentStep === 'payment_proof' && (isCodAdvanceRequired ? 'Upload Advance Payment Proof' : (isCashOnDelivery ? 'Order Final Review' : 'Upload Payment Proof Receipt'))}
                   {currentStep === 'confirmation' && 'Order Received Successfully!'}
                 </h3>
-                <p className="text-[11px] sm:text-xs text-slate-300">
+                <p className="text-[11px] sm:text-xs text-slate-300 truncate">
                   {currentStep === 'confirmation'
                     ? 'Your order has been recorded in our system'
                     : 'Step ' + (currentStepIndex + 1) + ' of ' + stepsList.length + ' • Professional Fast Checkout'}
@@ -882,9 +1128,11 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
             </div>
 
             <button
+              type="button"
               onClick={currentStep === 'confirmation' ? handleDoneToHome : onClose}
-              className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
               title="Close Checkout"
+              aria-label="Close Checkout"
             >
               <X className="w-5 h-5" />
             </button>
@@ -961,39 +1209,53 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                 </div>
 
                 {/* Items List */}
-                <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1 divide-y divide-slate-100">
-                  {items.map((item, idx) => {
-                    const p = item.product;
-                    const pricing = getItemPricing(item);
-                    const lineTot = pricing.effectivePriceNumeric * item.quantity;
+                {items.length === 0 ? (
+                  <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 space-y-3">
+                    <ShoppingBag className="w-10 h-10 text-slate-300 mx-auto" />
+                    <p className="text-xs text-slate-600 font-medium">Your order list is empty</p>
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 cursor-pointer"
+                    >
+                      Browse Store Catalog
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1 divide-y divide-slate-100">
+                    {items.map((item, idx) => {
+                      const p = item.product;
+                      const pricing = getItemPricing(item);
+                      const lineTot = pricing.effectivePriceNumeric * item.quantity;
 
-                    return (
-                      <div key={idx} className="pt-2.5 first:pt-0 flex items-center gap-3">
-                        <img
-                          src={p.images?.[0] || p.image || undefined}
-                          alt={p.name}
-                          className="w-14 h-14 rounded-xl object-cover border border-slate-200 bg-white shrink-0"
-                        />
-                        <div className="flex-1 min-w-0 text-xs">
-                          <h5 className="font-bold text-slate-900 truncate leading-snug">{p.name}</h5>
-                          <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                            {p.brand && `${p.brand} • `}Qty: {item.quantity}
-                            {item.selectedVariant && ` • ${p.optionName || 'Option'}: ${item.selectedVariant}`}
-                            {item.selectedShade && ` • Shade: ${item.selectedShade}`}
-                            {item.selectedColor && !item.selectedShade && ` • ${item.selectedColor}`}
-                            {item.selectedSize && !item.selectedVariant && ` • ${item.selectedSize}`}
-                          </p>
-                          <div className="text-slate-600 text-[11px] mt-0.5">
-                            Unit: <span className="font-medium text-slate-900">{pricing.effectivePriceString}</span>
+                      return (
+                        <div key={idx} className="pt-2.5 first:pt-0 flex items-center gap-3">
+                          <img
+                            src={p.images?.[0] || p.image || undefined}
+                            alt={p.name}
+                            className="w-14 h-14 rounded-xl object-cover border border-slate-200 bg-white shrink-0"
+                          />
+                          <div className="flex-1 min-w-0 text-xs">
+                            <h5 className="font-bold text-slate-900 truncate leading-snug">{p.name}</h5>
+                            <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                              {p.brand && `${p.brand} • `}Qty: {item.quantity}
+                              {item.selectedVariant && ` • ${p.optionName || 'Option'}: ${item.selectedVariant}`}
+                              {item.selectedShade && ` • Shade: ${item.selectedShade}`}
+                              {item.selectedColor && !item.selectedShade && ` • ${item.selectedColor}`}
+                              {item.selectedSize && !item.selectedVariant && ` • ${item.selectedSize}`}
+                            </p>
+                            <div className="text-slate-600 text-[11px] mt-0.5">
+                              Unit: <span className="font-medium text-slate-900">{pricing.effectivePriceString}</span>
+                            </div>
+                          </div>
+                          <div className="text-right text-xs shrink-0 font-bold text-slate-900 font-mono">
+                            {lineTot > 0 ? `PKR ${lineTot.toLocaleString('en-PK')}` : pricing.effectivePriceString}
                           </div>
                         </div>
-                        <div className="text-right text-xs shrink-0 font-bold text-slate-900 font-mono">
-                          {lineTot > 0 ? `PKR ${lineTot.toLocaleString('en-PK')}` : pricing.effectivePriceString}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Coupon Box */}
                 <div className="pt-2">
@@ -1071,8 +1333,15 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                 <div className="pt-3">
                   <button
                     type="button"
-                    onClick={() => goToStep('customer')}
-                    className="w-full py-3.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 transition-all duration-200 active:scale-98 cursor-pointer"
+                    disabled={items.length === 0}
+                    onClick={() => {
+                      if (items.length > 0) goToStep('customer');
+                    }}
+                    className={`w-full py-3.5 px-4 rounded-xl font-bold text-xs shadow-lg flex items-center justify-center gap-2 transition-all duration-200 ${
+                      items.length === 0 
+                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' 
+                        : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/25 active:scale-98 cursor-pointer'
+                    }`}
                   >
                     <span>Proceed to Customer Details</span>
                     <ArrowRight className="w-4 h-4" />
@@ -1332,16 +1601,23 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
           {/* STEP 4: PAYMENT METHOD SELECTION */}
           {/* ============================================================ */}
           {currentStep === 'payment_method' && (
-            <div className="max-w-xl mx-auto space-y-4 animate-fadeIn">
-              <div className="text-center pb-1">
-                <h4 className="font-serif font-bold text-slate-900 text-base">Select Your Preferred Payment Method</h4>
-                <p className="text-xs text-slate-500 mt-0.5">Choose how you would like to complete payment for your order</p>
+            <div className="max-w-2xl sm:max-w-3xl mx-auto space-y-4 sm:space-y-5 animate-fadeIn">
+              {/* Header & Security Trust Ribbon */}
+              <div className="text-center pb-1 space-y-1.5">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200/80 text-slate-700 text-[11px] font-medium shadow-2xs">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>256-Bit SSL Encrypted & Verified Checkout</span>
+                </div>
+                <h4 className="font-serif font-bold text-slate-900 text-lg sm:text-xl tracking-tight">Select Payment Method</h4>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  Choose your preferred payment gateway to safely complete your purchase
+                </p>
               </div>
 
               {isLoadingPaymentMethods ? (
-                <div className="p-8 text-center space-y-2">
+                <div className="p-8 text-center space-y-2 bg-slate-50/60 rounded-2xl border border-slate-200">
                   <RefreshCw className="w-6 h-6 animate-spin text-blue-600 mx-auto" />
-                  <p className="text-xs text-slate-500">Loading available payment options...</p>
+                  <p className="text-xs text-slate-500 font-medium">Loading available payment options...</p>
                 </div>
               ) : paymentMethods.length === 0 ? (
                 <div className="p-6 bg-amber-50 border border-amber-200 rounded-2xl text-center space-y-2">
@@ -1350,114 +1626,224 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                   <p className="text-xs text-slate-600">Standard Cash on Delivery will be applied to your order.</p>
                 </div>
               ) : (
-                <div className="space-y-2.5">
-                  {paymentMethods.map((method) => {
-                    const isSelected = selectedPaymentMethodId === method.id;
-                    const isCod = method.type === 'cod' || method.id === 'cod';
-                    const methodRequiresAdvance = isCod && Boolean(checkoutSettings.codAdvanceRequired || method.codAdvanceRequired);
-                    const methodAdvancePct = method.codAdvancePercentage || checkoutSettings.codAdvancePercentage || 30;
-                    const methodAdvanceAmt = methodRequiresAdvance 
-                      ? Math.max(checkoutSettings.codAdvanceMinAmount || 0, Math.round((grandTotal * methodAdvancePct) / 100)) 
-                      : 0;
-                    const methodRemainingAmt = methodRequiresAdvance 
-                      ? Math.max(0, grandTotal - methodAdvanceAmt) 
-                      : grandTotal;
+                <div className="space-y-4">
+                  {/* Card-Based Grid Layout / Visual Radio Button Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-3.5">
+                    {paymentMethods.map((method) => {
+                      const isSelected = selectedPaymentMethodId === method.id;
+                      const isCod = method.type === 'cod' || method.id === 'cod';
+                      const methodRequiresAdvance = isCod && Boolean(checkoutSettings.codAdvanceRequired || method.codAdvanceRequired);
+                      const methodAdvancePct = method.codAdvancePercentage || checkoutSettings.codAdvancePercentage || 30;
+                      const methodAdvanceAmt = methodRequiresAdvance 
+                        ? Math.max(checkoutSettings.codAdvanceMinAmount || 0, Math.round((grandTotal * methodAdvancePct) / 100)) 
+                        : 0;
+                      const methodRemainingAmt = methodRequiresAdvance 
+                        ? Math.max(0, grandTotal - methodAdvanceAmt) 
+                        : grandTotal;
 
-                    return (
-                      <div
-                        key={method.id}
-                        onClick={() => setSelectedPaymentMethodId(method.id)}
-                        className={`p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer flex items-center gap-3.5 ${
-                          isSelected
-                            ? 'bg-blue-50/70 border-blue-500 shadow-sm shadow-blue-500/15 ring-1 ring-blue-500'
-                            : 'bg-white hover:bg-slate-50 border-slate-200'
-                        }`}
-                      >
-                        {/* Radio indicator */}
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                          isSelected ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white'
-                        }`}>
-                          {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
-                        </div>
-
-                        {/* Icon */}
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                          isCod 
-                            ? 'bg-emerald-100 text-emerald-700' 
-                            : method.type === 'easypaisa'
-                              ? 'bg-green-100 text-green-700'
-                              : method.type === 'jazzcash'
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-blue-100 text-blue-700'
-                        }`}>
-                          {isCod ? (
-                            <Truck className="w-5 h-5" />
-                          ) : method.type === 'easypaisa' || method.type === 'jazzcash' ? (
-                            <Smartphone className="w-5 h-5" />
-                          ) : method.type === 'bank_transfer' ? (
-                            <Building2 className="w-5 h-5" />
-                          ) : (
-                            <CreditCard className="w-5 h-5" />
+                      return (
+                        <div
+                          key={method.id}
+                          role="radio"
+                          aria-checked={isSelected}
+                          tabIndex={0}
+                          onClick={() => setSelectedPaymentMethodId(method.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setSelectedPaymentMethodId(method.id);
+                            }
+                          }}
+                          className={`group relative flex flex-col justify-between rounded-2xl border-2 p-3.5 sm:p-4 transition-all duration-200 cursor-pointer select-none text-left min-h-[125px] ${
+                            isSelected
+                              ? 'border-blue-600 bg-blue-50/25 ring-2 ring-blue-600/20 shadow-md shadow-blue-500/10'
+                              : 'border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/60 hover:shadow-xs'
+                          }`}
+                        >
+                          {/* Top Accent Stripe for Selected Card */}
+                          {isSelected && (
+                            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 rounded-t-2xl" />
                           )}
-                        </div>
 
-                        {/* Details */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                            <h5 className="font-bold text-slate-900 text-sm">{method.name}</h5>
-                            {isCod && !methodRequiresAdvance && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                                100% Pay at Doorstep
-                              </span>
-                            )}
-                            {isCod && methodRequiresAdvance && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
-                                🛡️ {methodAdvancePct}% Advance Required
-                              </span>
-                            )}
-                            {method.qrCodeUrl && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 flex items-center gap-0.5">
-                                <QrCode className="w-2.5 h-2.5" /> QR Available
-                              </span>
-                            )}
+                          {/* Top Section: Logo/Icon + Selection Indicator */}
+                          <div>
+                            <div className="flex items-center justify-between gap-2">
+                              {/* Payment Brand / Type Icon */}
+                              <PaymentMethodLogoBadge method={method} />
+
+                              {/* Visual Radio / Checkmark Indicator */}
+                              <div className="shrink-0">
+                                {isSelected ? (
+                                  <div className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-xs ring-2 ring-blue-600/20">
+                                    <Check className="w-3 h-3 stroke-[3]" />
+                                  </div>
+                                ) : (
+                                  <div className="w-5 h-5 rounded-full border-2 border-slate-300 group-hover:border-slate-400 bg-white transition-colors" />
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Payment Method Name & Subtitle */}
+                            <div className="mt-2.5">
+                              <h5 className={`font-bold text-xs sm:text-sm leading-snug truncate ${
+                                isSelected ? 'text-blue-950 font-bold' : 'text-slate-900'
+                              }`}>
+                                {method.name}
+                              </h5>
+
+                              <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+                                {isCod
+                                  ? (methodRequiresAdvance ? 'Advance online + balance COD' : 'Pay cash upon delivery')
+                                  : (method.bankName ? method.bankName : method.accountTitle ? `A/C: ${method.accountTitle}` : 'Direct Account Transfer')}
+                              </p>
+                            </div>
                           </div>
 
-                          <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                            {isCod
-                              ? methodRequiresAdvance
-                                ? `Pay PKR ${methodAdvanceAmt.toLocaleString('en-PK')} (${methodAdvancePct}%) advance online, remaining PKR ${methodRemainingAmt.toLocaleString('en-PK')} on delivery.`
-                                : 'Pay 100% cash upon doorstep delivery.'
-                              : method.bankName 
-                                ? `${method.bankName} • ${method.accountTitle || 'Direct Transfer'}`
-                                : method.accountTitle 
-                                  ? `Account: ${method.accountTitle}` 
-                                  : 'Transfer to company account and submit proof'}
-                          </p>
-                        </div>
+                          {/* Bottom Row: Badges / Price */}
+                          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-1.5 text-xs">
+                            <div className="flex flex-wrap items-center gap-1 min-w-0">
+                              {isCod && !methodRequiresAdvance && (
+                                <span className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 truncate">
+                                  Doorstep COD
+                                </span>
+                              )}
+                              {isCod && methodRequiresAdvance && (
+                                <span className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-300 truncate">
+                                  {methodAdvancePct}% Advance
+                                </span>
+                              )}
+                              {method.badgeText && !isCod && (
+                                <span className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 truncate">
+                                  {method.badgeText}
+                                </span>
+                              )}
+                              {method.qrCodeUrl && (
+                                <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                                  <QrCode className="w-2.5 h-2.5" /> QR
+                                </span>
+                              )}
+                            </div>
 
-                        {/* Price Preview */}
-                        <div className="text-right text-xs font-bold text-slate-900 font-mono shrink-0">
-                          {isCod && methodRequiresAdvance ? (
-                            <div>
-                              <span className="text-[10px] text-amber-700 block font-sans">Advance</span>
-                              <span>PKR {methodAdvanceAmt.toLocaleString('en-PK')}</span>
+                            <div className="text-right shrink-0">
+                              {isCod && methodRequiresAdvance ? (
+                                <span className="text-[11px] font-bold text-amber-800 font-mono">
+                                  Adv: PKR {methodAdvanceAmt.toLocaleString('en-PK')}
+                                </span>
+                              ) : (
+                                <span className="text-[11px] font-bold text-slate-900 font-mono">
+                                  PKR {grandTotal.toLocaleString('en-PK')}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Active Selected Payment Method Details & Instructions Strip */}
+                  {activePaymentMethod && (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-xs space-y-3 transition-all">
+                      <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <PaymentMethodLogoBadge method={activePaymentMethod} size="sm" />
+                          <div className="min-w-0">
+                            <h6 className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                              Selected: <span className="text-blue-600">{activePaymentMethod.name}</span>
+                            </h6>
+                          </div>
+                        </div>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full shrink-0">
+                          <Check className="w-2.5 h-2.5 text-blue-600" /> Selected
+                        </span>
+                      </div>
+
+                      {/* Details & Instructions Content */}
+                      {isCashOnDelivery ? (
+                        <div className={`p-2.5 rounded-xl border text-xs leading-relaxed ${
+                          isCodAdvanceRequired 
+                            ? 'bg-amber-50/70 border-amber-200 text-amber-950' 
+                            : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                        }`}>
+                          {isCodAdvanceRequired ? (
+                            <div className="flex items-start gap-1.5">
+                              <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                              <span>
+                                Pay <strong className="text-slate-900 font-mono">PKR {codAdvanceAmountRequired.toLocaleString('en-PK')}</strong> ({codAdvancePercentage}%) advance online to confirm booking. The remaining <strong className="text-slate-900 font-mono">PKR {codRemainingAmount.toLocaleString('en-PK')}</strong> will be collected in cash upon doorstep delivery.
+                              </span>
                             </div>
                           ) : (
-                            <span>PKR {grandTotal.toLocaleString('en-PK')}</span>
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>Standard Cash on Delivery. Pay 100% in cash directly to the courier upon doorstep delivery.</span>
+                            </div>
                           )}
                         </div>
-                      </div>
-                    );
-                  })}
+                      ) : (
+                        <div className="space-y-2">
+                          {(activePaymentMethod.bankName || activePaymentMethod.accountTitle || activePaymentMethod.accountNumber) && (
+                            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                              <div className="flex flex-wrap items-center gap-2 text-xs">
+                                {activePaymentMethod.bankName && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200/90 text-slate-800 font-semibold text-[11px] shadow-2xs">
+                                    <Building2 className="w-3 h-3 text-blue-600" />
+                                    {activePaymentMethod.bankName}
+                                  </span>
+                                )}
+                                {activePaymentMethod.accountTitle && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200/90 text-slate-700 text-[11px] shadow-2xs">
+                                    <User className="w-3 h-3 text-slate-400" />
+                                    <span className="text-slate-500">Title:</span>
+                                    <strong className="text-slate-800 font-medium">{activePaymentMethod.accountTitle}</strong>
+                                  </span>
+                                )}
+                                {activePaymentMethod.accountNumber && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200/90 text-slate-800 font-mono text-[11px] font-semibold shadow-2xs">
+                                    <span className="text-slate-500 font-sans font-normal">A/C:</span>
+                                    {activePaymentMethod.accountNumber}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {activePaymentMethod.instructions && (
+                            <div className="p-2.5 rounded-xl bg-blue-50/50 border border-blue-100 text-xs text-slate-700 flex items-start gap-1.5">
+                              <Info className="w-3.5 h-3.5 text-blue-600 shrink-0 mt-0.5" />
+                              <p className="leading-relaxed">{activePaymentMethod.instructions}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
+              {/* Confidence & Security Micro-Banner */}
+              <div className="pt-1">
+                <div className="p-3 rounded-2xl bg-slate-50/90 border border-slate-200/80 flex flex-wrap items-center justify-center gap-y-2 gap-x-6 text-[11px] text-slate-600 font-medium">
+                  <div className="flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Encrypted Transaction</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Official Verified Channels</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Order Support Assistance</span>
+                  </div>
+                </div>
+              </div>
+
               {/* Navigation buttons */}
-              <div className="flex items-center justify-between pt-3">
+              <div className="flex items-center justify-between pt-2 gap-3">
                 <button
                   type="button"
                   onClick={() => goBackStep('address')}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs sm:text-sm flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   <span>Back to Delivery</span>
@@ -1466,9 +1852,9 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                 <button
                   type="button"
                   onClick={() => goToStep('payment_instructions')}
-                  className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-600/25 flex items-center gap-2 transition-all cursor-pointer"
+                  className="px-5 sm:px-7 py-2.5 sm:py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm shadow-md shadow-blue-600/25 flex items-center gap-2 transition-all cursor-pointer hover:shadow-lg hover:shadow-blue-600/35"
                 >
-                  <span>View Instructions & Details</span>
+                  <span>Continue to Payment Details</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>

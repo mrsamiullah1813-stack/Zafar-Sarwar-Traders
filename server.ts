@@ -2643,6 +2643,7 @@ async function startServer() {
       }
 
       // 1. Try key/value schema if table has 'key' column
+      let kvSuccess = false;
       try {
         const { error: kvError } = await dbClient.from("site_settings").upsert({
           key,
@@ -2651,8 +2652,8 @@ async function startServer() {
         }, { onConflict: "key" });
 
         if (!kvError) {
+          kvSuccess = true;
           console.log(`[Supabase Proxy] Successfully upserted site_settings key="${key}"`);
-          return res.json({ success: true });
         }
       } catch (kvEx) {
         // Fall through to column-based config row
@@ -2675,7 +2676,7 @@ async function startServer() {
           updated_at: new Date().toISOString()
         }).eq("id", "config");
 
-        if (updateErr) {
+        if (updateErr && !kvSuccess) {
           console.error("[Supabase Proxy] Failed to update pricing typography in theme_settings:", updateErr.message);
           return res.status(500).json({ success: false, error: updateErr.message });
         }
@@ -2697,7 +2698,7 @@ async function startServer() {
           updated_at: new Date().toISOString()
         }).eq("id", "config");
 
-        if (updateErr) {
+        if (updateErr && !kvSuccess) {
           console.error("[Supabase Proxy] Failed to update payment methods in checkout_settings:", updateErr.message);
           return res.status(500).json({ success: false, error: updateErr.message });
         }
@@ -4830,19 +4831,635 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
       await persistDataStoreToDisk();
 
       if (dbClient) {
-        const { data: cur } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
-        const curCheckout = (cur && cur.checkout_settings) || {};
-        const updatedCheckout = {
-          ...curCheckout,
-          payment_methods: methods,
-          paymentMethods: methods
-        };
-        await dbClient.from("site_settings").update({
-          checkout_settings: updatedCheckout,
-          updated_at: new Date().toISOString()
-        }).eq("id", "config");
+        try {
+          await dbClient.from("site_settings").upsert({
+            key: "zst_payment_methods_v1",
+            value: methods,
+            updated_at: new Date().toISOString()
+          }, { onConflict: "key" });
+        } catch {}
+
+        try {
+          const { data: cur } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
+          const curCheckout = (cur && cur.checkout_settings) || {};
+          const updatedCheckout = {
+            ...curCheckout,
+            payment_methods: methods,
+            paymentMethods: methods
+          };
+          await dbClient.from("site_settings").update({
+            checkout_settings: updatedCheckout,
+            updated_at: new Date().toISOString()
+          }).eq("id", "config");
+        } catch (colErr) {
+          console.warn("[Payment Methods] Error updating checkout_settings:", colErr);
+        }
       }
       return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // =========================================================
+  // REAL-TIME VISITOR ANALYTICS & LIVE SALES DASHBOARD ENGINE
+  // =========================================================
+  interface ActiveVisitorSession {
+    visitorId: string;
+    lastSeen: number;
+    firstSeen: number;
+    path: string;
+    device: 'Desktop' | 'Mobile' | 'Tablet';
+    browser: string;
+    source: string;
+    isAdmin?: boolean;
+  }
+
+  const activeVisitorsMap = new Map<string, ActiveVisitorSession>();
+
+  // Periodically sweep expired sessions (older than 10 minutes)
+  setInterval(() => {
+    const cutoff = Date.now() - 10 * 60 * 1000;
+    for (const [id, s] of activeVisitorsMap.entries()) {
+      if (s.lastSeen < cutoff) {
+        activeVisitorsMap.delete(id);
+      }
+    }
+  }, 60000);
+
+  function getLiveVisitorsCount(): number {
+    const activeCutoff = Date.now() - 3 * 60 * 1000; // active in last 3 mins
+    let count = 0;
+    for (const s of activeVisitorsMap.values()) {
+      if (s.lastSeen >= activeCutoff && !s.isAdmin) count++;
+    }
+    return count;
+  }
+
+  function getAnalyticsStore() {
+    if (!cmsDataStore["zst_analytics_v2"] || typeof cmsDataStore["zst_analytics_v2"] !== "object") {
+      cmsDataStore["zst_analytics_v2"] = {
+        totalPageViews: 0,
+        totalWebsiteClicks: 0,
+        totalProductClicks: 0,
+        uniqueVisitors: 0,
+        uniqueVisitorMap: {}, // visitorId -> { firstSeen: number, lastSeen: number, date: string }
+        dailyVisitorMap: {},  // 'YYYY-MM-DD' -> string[] of visitorIds
+        pageViews: [],        // array of real page view events { id, visitorId, path, timestamp, date, device, browser, source }
+        productViews: {},
+        searchKeywords: {},
+        categoryClicks: {},
+        actions: {
+          whatsapp: 0,
+          call: 0,
+          quote: 0,
+          download: 0
+        },
+        deviceCounts: {
+          Mobile: 0,
+          Desktop: 0,
+          Tablet: 0
+        },
+        browserCounts: {
+          Chrome: 0,
+          Safari: 0,
+          Edge: 0,
+          Firefox: 0,
+          Other: 0
+        },
+        sourceCounts: {
+          Direct: 0,
+          "Google Search": 0,
+          "WhatsApp / Referral": 0,
+          "Social Media": 0
+        },
+        recentEvents: []
+      };
+    } else {
+      const store = cmsDataStore["zst_analytics_v2"];
+      // Cleanup legacy hardcoded baseline numbers if present
+      if (store.totalPageViews === 384 && store.totalWebsiteClicks === 1290 && store.uniqueVisitors === 156) {
+        store.totalPageViews = Array.isArray(store.pageViews) ? store.pageViews.length : 0;
+        store.totalWebsiteClicks = 0;
+        store.totalProductClicks = 0;
+        store.uniqueVisitors = store.uniqueVisitorMap ? Object.keys(store.uniqueVisitorMap).length : 0;
+        store.productViews = {};
+        store.searchKeywords = {};
+        store.categoryClicks = {};
+        store.actions = { whatsapp: 0, call: 0, quote: 0, download: 0 };
+        store.deviceCounts = { Mobile: 0, Desktop: 0, Tablet: 0 };
+        store.browserCounts = { Chrome: 0, Safari: 0, Edge: 0, Firefox: 0, Other: 0 };
+        store.sourceCounts = { Direct: 0, "Google Search": 0, "WhatsApp / Referral": 0, "Social Media": 0 };
+        store.recentEvents = [];
+      }
+      if (!store.uniqueVisitorMap || typeof store.uniqueVisitorMap !== "object") store.uniqueVisitorMap = {};
+      if (!store.dailyVisitorMap || typeof store.dailyVisitorMap !== "object") store.dailyVisitorMap = {};
+      if (!Array.isArray(store.pageViews)) store.pageViews = [];
+      if (!store.productViews || typeof store.productViews !== "object") store.productViews = {};
+      if (!store.searchKeywords || typeof store.searchKeywords !== "object") store.searchKeywords = {};
+      if (!store.categoryClicks || typeof store.categoryClicks !== "object") store.categoryClicks = {};
+      if (!store.actions || typeof store.actions !== "object") store.actions = {};
+      if (!store.deviceCounts || typeof store.deviceCounts !== "object") store.deviceCounts = {};
+      if (!store.browserCounts || typeof store.browserCounts !== "object") store.browserCounts = {};
+      if (!store.sourceCounts || typeof store.sourceCounts !== "object") store.sourceCounts = {};
+      if (!Array.isArray(store.recentEvents)) store.recentEvents = [];
+    }
+    return cmsDataStore["zst_analytics_v2"];
+  }
+
+  async function calculateSalesMetrics() {
+    let allDbOrders: any[] = [];
+    if (dbClient) {
+      try {
+        const { data, error } = await dbClient.from("orders").select("*, order_items(*)").order("created_at", { ascending: false });
+        if (!error && Array.isArray(data)) {
+          allDbOrders = data;
+        } else {
+          const { data: fallback } = await dbClient.from("orders").select("*").order("created_at", { ascending: false });
+          if (Array.isArray(fallback)) allDbOrders = fallback;
+        }
+      } catch (err) {
+        console.warn("[Analytics Sales Calc] Supabase order query note:", err);
+      }
+    }
+
+    const rawCmsOrders = Array.isArray(cmsDataStore["zst_orders"]) ? cmsDataStore["zst_orders"] : [];
+    const rawCmsOrdersV1 = Array.isArray(cmsDataStore["zst_orders_v1"]) ? cmsDataStore["zst_orders_v1"] : [];
+    const rawCmsOptOrders = Array.isArray(cmsDataStore["zst_optimized_orders"]) ? cmsDataStore["zst_optimized_orders"] : [];
+    const cmsOrders = [...rawCmsOrders, ...rawCmsOrdersV1, ...rawCmsOptOrders];
+
+    let deletedIds: string[] = [];
+    try {
+      deletedIds = Array.isArray(cmsDataStore["zst_deleted_order_ids"]) ? cmsDataStore["zst_deleted_order_ids"] : [];
+    } catch {}
+
+    const isDeleted = (idOrNum: any) => {
+      if (!idOrNum) return false;
+      const s = String(idOrNum).toLowerCase().trim();
+      return deletedIds.some(d => String(d).toLowerCase().trim() === s);
+    };
+
+    const orderMap = new Map<string, any>();
+    cmsOrders.forEach((o) => {
+      if (o && o.id && !isDeleted(o.id) && !isDeleted(o.orderNumber || '')) {
+        orderMap.set(String(o.id), o);
+      }
+    });
+
+    allDbOrders.forEach((o) => {
+      if (o && o.id && !isDeleted(o.id) && !isDeleted(o.order_number || o.orderNumber || '')) {
+        const idKey = String(o.id);
+        const existing = orderMap.get(idKey);
+        orderMap.set(idKey, { ...existing, ...o });
+      }
+    });
+
+    const orders = Array.from(orderMap.values());
+    const totalOrders = orders.length;
+
+    let completedOrders = 0;
+    let confirmedOrders = 0;
+    let pendingOrders = 0;
+    let cancelledOrders = 0;
+    let returnedOrders = 0;
+
+    let grossRevenue = 0;
+    let netRevenue = 0;
+    let pendingRevenue = 0;
+
+    let codCount = 0;
+    let codRevenue = 0;
+    let onlineCount = 0;
+    let onlineRevenue = 0;
+
+    const now = Date.now();
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayStartTime = todayStart.getTime();
+    const sevenDaysCutoff = now - 7 * 24 * 60 * 60 * 1000;
+    const thirtyDaysCutoff = now - 30 * 24 * 60 * 60 * 1000;
+
+    let dailyOrdersCount = 0;
+    let dailyRevenue = 0;
+    let weeklyOrdersCount = 0;
+    let weeklyRevenue = 0;
+    let monthlyOrdersCount = 0;
+    let monthlyRevenue = 0;
+
+    const detailedStatuses: Record<string, number> = {};
+
+    orders.forEach((o) => {
+      const rawStatus = (o.status || o.order_status || 'Pending').trim();
+      const st = rawStatus.toLowerCase();
+      const payStatus = (o.payment_status || o.paymentStatus || '').toLowerCase();
+      const payMethod = (o.payment_method || o.paymentMethod || o.paymentMethodName || '').toLowerCase();
+      const totalAmount = Number(o.total_amount || o.totalAmount || o.total || o.grandTotal || 0) || 0;
+      const orderTimestamp = new Date(o.created_at || o.createdAt || o.orderDate || now).getTime();
+
+      detailedStatuses[rawStatus] = (detailedStatuses[rawStatus] || 0) + 1;
+
+      // Group into specific lifecycle stages
+      const isCancelled = ['cancelled', 'payment rejected', 'rejected', 'declined', 'void'].includes(st) || payStatus === 'payment rejected';
+      const isReturned = ['returned', 'refunded', 'exchange', 'return requested'].includes(st);
+      const isCompleted = ['delivered', 'completed'].includes(st);
+      const isConfirmed = ['confirmed', 'approved', 'payment verified', 'preparing', 'shipped', 'out for delivery'].includes(st) || payStatus === 'paid' || payStatus === 'payment verified';
+
+      if (isCancelled) {
+        cancelledOrders++;
+      } else if (isReturned) {
+        returnedOrders++;
+      } else if (isCompleted) {
+        completedOrders++;
+        netRevenue += totalAmount;
+        grossRevenue += totalAmount;
+      } else if (isConfirmed) {
+        confirmedOrders++;
+        grossRevenue += totalAmount;
+      } else {
+        pendingOrders++;
+        pendingRevenue += totalAmount;
+        grossRevenue += totalAmount;
+      }
+
+      // Time-based calculations (Daily, Weekly, Monthly) for non-cancelled/non-returned orders
+      if (!isCancelled && !isReturned) {
+        if (orderTimestamp >= todayStartTime) {
+          dailyOrdersCount++;
+          dailyRevenue += totalAmount;
+        }
+        if (orderTimestamp >= sevenDaysCutoff) {
+          weeklyOrdersCount++;
+          weeklyRevenue += totalAmount;
+        }
+        if (orderTimestamp >= thirtyDaysCutoff) {
+          monthlyOrdersCount++;
+          monthlyRevenue += totalAmount;
+        }
+      }
+
+      // COD vs Online split
+      const isCod = payMethod.includes('cash') || payMethod.includes('cod') || payMethod === 'cash on delivery';
+      if (isCod) {
+        codCount++;
+        if (!isCancelled && !isReturned) codRevenue += totalAmount;
+      } else {
+        onlineCount++;
+        if (!isCancelled && !isReturned) onlineRevenue += totalAmount;
+      }
+    });
+
+    const validRevenueOrders = totalOrders - cancelledOrders - returnedOrders;
+    const averageOrderValue = validRevenueOrders > 0 ? Math.round(grossRevenue / validRevenueOrders) : 0;
+
+    return {
+      totalOrders,
+      completedOrders,
+      confirmedOrders,
+      pendingOrders,
+      cancelledOrders,
+      returnedOrders,
+      grossRevenue,
+      netRevenue,
+      pendingRevenue,
+      averageOrderValue,
+      dailyOrdersCount,
+      dailyRevenue,
+      weeklyOrdersCount,
+      weeklyRevenue,
+      monthlyOrdersCount,
+      monthlyRevenue,
+      codBreakdown: {
+        count: codCount,
+        revenue: codRevenue,
+        percentage: totalOrders > 0 ? Math.round((codCount / totalOrders) * 100) : 0,
+        revenuePercentage: grossRevenue > 0 ? Math.round((codRevenue / grossRevenue) * 100) : 0
+      },
+      onlineBreakdown: {
+        count: onlineCount,
+        revenue: onlineRevenue,
+        percentage: totalOrders > 0 ? Math.round((onlineCount / totalOrders) * 100) : 0,
+        revenuePercentage: grossRevenue > 0 ? Math.round((onlineRevenue / grossRevenue) * 100) : 0
+      },
+      statusBreakdown: {
+        completed: { count: completedOrders, percentage: totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0 },
+        confirmed: { count: confirmedOrders, percentage: totalOrders > 0 ? Math.round((confirmedOrders / totalOrders) * 100) : 0 },
+        pending: { count: pendingOrders, percentage: totalOrders > 0 ? Math.round((pendingOrders / totalOrders) * 100) : 0 },
+        cancelled: { count: cancelledOrders, percentage: totalOrders > 0 ? Math.round((cancelledOrders / totalOrders) * 100) : 0 },
+        returned: { count: returnedOrders, percentage: totalOrders > 0 ? Math.round((returnedOrders / totalOrders) * 100) : 0 }
+      },
+      detailedStatuses,
+      ordersList: orders, // pass internal orders list for historical trend aggregation
+      recentOrders: orders.slice(0, 10).map(o => ({
+        id: String(o.id),
+        orderNumber: o.orderNumber || o.order_number || `ZST-${String(o.id).slice(-7)}`,
+        customerName: o.customerName || o.customer_name || 'Customer',
+        totalAmount: Number(o.total_amount || o.totalAmount || o.total || o.grandTotal || 0) || 0,
+        status: o.status || o.order_status || 'Pending',
+        paymentMethod: o.payment_method || o.paymentMethod || o.paymentMethodName || 'Cash on Delivery',
+        createdAt: o.created_at || o.createdAt || new Date().toISOString()
+      }))
+    };
+  }
+
+  // 1. Fast Background Tracking Ingestion (Non-blocking beacon)
+  app.post("/api/analytics/track", async (req, res) => {
+    try {
+      let payload = req.body;
+      if (typeof payload === "string") {
+        try {
+          payload = JSON.parse(payload);
+        } catch {
+          payload = {};
+        }
+      }
+      const {
+        type = "heartbeat",
+        visitorId,
+        path = "/",
+        device = "Desktop",
+        browser = "Chrome",
+        source = "Direct",
+        productId,
+        productName,
+        categoryId,
+        categoryName,
+        query,
+        actionType,
+        label,
+        isAdmin: payloadIsAdmin
+      } = payload || {};
+
+      const cleanVisitorId = String(visitorId || "anon-" + Math.random().toString(36).substring(2, 9));
+      const now = Date.now();
+      const todayDate = new Date(now).toISOString().split('T')[0];
+
+      // Check if visitor is an authenticated admin user or on admin routes
+      const isAdminReq = Boolean(
+        payloadIsAdmin ||
+        req.headers['x-admin-token'] ||
+        (req.headers.authorization && req.headers.authorization.includes('admin')) ||
+        (typeof path === 'string' && path.startsWith('/admin'))
+      );
+
+      // Record active visitor session in memory
+      const existingSession = activeVisitorsMap.get(cleanVisitorId);
+      activeVisitorsMap.set(cleanVisitorId, {
+        visitorId: cleanVisitorId,
+        lastSeen: now,
+        firstSeen: existingSession?.firstSeen || now,
+        path: path || existingSession?.path || "/",
+        device: (device as any) || existingSession?.device || "Desktop",
+        browser: browser || existingSession?.browser || "Chrome",
+        source: source || existingSession?.source || "Direct",
+        isAdmin: isAdminReq
+      });
+
+      const liveVisitors = getLiveVisitorsCount();
+
+      // If this is an admin browsing, do not count towards customer analytics metrics
+      if (isAdminReq) {
+        return res.json({ success: true, liveVisitors, isAdmin: true });
+      }
+
+      const store = getAnalyticsStore();
+
+      // Track unique visitor in persistent visitor map
+      const vInfo = store.uniqueVisitorMap[cleanVisitorId] || { firstSeen: now, lastSeen: now, date: todayDate };
+      vInfo.lastSeen = now;
+      store.uniqueVisitorMap[cleanVisitorId] = vInfo;
+      store.uniqueVisitors = Object.keys(store.uniqueVisitorMap).length;
+
+      // Track daily visitors
+      if (!Array.isArray(store.dailyVisitorMap[todayDate])) {
+        store.dailyVisitorMap[todayDate] = [];
+      }
+      if (!store.dailyVisitorMap[todayDate].includes(cleanVisitorId)) {
+        store.dailyVisitorMap[todayDate].push(cleanVisitorId);
+      }
+
+      // Handle specific event types
+      if (type === "pageview") {
+        store.totalPageViews = (store.totalPageViews || 0) + 1;
+        if (!Array.isArray(store.pageViews)) store.pageViews = [];
+        store.pageViews.push({
+          id: `pv-${now}-${Math.random().toString(36).substr(2, 4)}`,
+          visitorId: cleanVisitorId,
+          path: path || '/',
+          timestamp: now,
+          date: todayDate,
+          device: device || 'Desktop',
+          browser: browser || 'Chrome',
+          source: source || 'Direct'
+        });
+        if (store.pageViews.length > 2000) {
+          store.pageViews = store.pageViews.slice(-2000);
+        }
+        if (device) store.deviceCounts[device] = (store.deviceCounts[device] || 0) + 1;
+        if (browser) store.browserCounts[browser] = (store.browserCounts[browser] || 0) + 1;
+        if (source) store.sourceCounts[source] = (store.sourceCounts[source] || 0) + 1;
+      } else if (type === "page_click") {
+        store.totalWebsiteClicks = (store.totalWebsiteClicks || 0) + 1;
+      } else if (type === "product_click") {
+        store.totalWebsiteClicks = (store.totalWebsiteClicks || 0) + 1;
+        store.totalProductClicks = (store.totalProductClicks || 0) + 1;
+        if (productId) {
+          const key = String(productId);
+          const current = store.productViews[key] || { id: key, name: productName || `Product #${key}`, views: 0, clicks: 0 };
+          current.clicks = (current.clicks || 0) + 1;
+          if (productName) current.name = productName;
+          store.productViews[key] = current;
+        }
+      } else if (type === "product_view") {
+        if (productId) {
+          const key = String(productId);
+          const current = store.productViews[key] || { id: key, name: productName || `Product #${key}`, views: 0, clicks: 0 };
+          current.views = (current.views || 0) + 1;
+          if (productName) current.name = productName;
+          store.productViews[key] = current;
+        }
+      } else if (type === "category_click") {
+        store.totalWebsiteClicks = (store.totalWebsiteClicks || 0) + 1;
+        if (categoryId) {
+          const key = String(categoryId);
+          const current = store.categoryClicks[key] || { id: key, name: categoryName || key, count: 0 };
+          current.count = (current.count || 0) + 1;
+          store.categoryClicks[key] = current;
+        }
+      } else if (type === "search") {
+        const cleanQ = String(query || label || "").trim();
+        if (cleanQ.length >= 2) {
+          const lowerQ = cleanQ.toLowerCase();
+          const current = store.searchKeywords[lowerQ] || { query: cleanQ, count: 0 };
+          current.count = (current.count || 0) + 1;
+          store.searchKeywords[lowerQ] = current;
+        }
+      } else if (type === "action") {
+        const aType = actionType || "whatsapp";
+        store.actions[aType] = (store.actions[aType] || 0) + 1;
+      }
+
+      // Keep recent event log (max 30 items)
+      if (!Array.isArray(store.recentEvents)) store.recentEvents = [];
+      if (type !== "heartbeat") {
+        store.recentEvents.unshift({
+          id: `ev-${now}-${Math.random().toString(36).substr(2, 4)}`,
+          type,
+          label: label || productName || query || path || type,
+          details: `${device} • ${browser}`,
+          timestamp: new Date(now).toISOString()
+        });
+        if (store.recentEvents.length > 30) {
+          store.recentEvents = store.recentEvents.slice(0, 30);
+        }
+      }
+
+      cmsDataStore["zst_analytics_v2"] = store;
+
+      // Asynchronously persist updated analytics store to disk so data is never lost across reboots
+      persistDataStoreToDisk().catch(() => {});
+
+      // Non-blocking asynchronous broadcast to admin SSE
+      if (type !== "heartbeat") {
+        broadcastOrderEvent("analytics_event", {
+          type,
+          liveVisitors,
+          timestamp: now,
+          label: label || productName || query || path
+        });
+      }
+
+      return res.json({ success: true, liveVisitors });
+    } catch (err: any) {
+      return res.json({ success: true, fallback: true });
+    }
+  });
+
+  // 2. Comprehensive Analytics & Live Sales Dashboard Data Endpoint
+  app.get("/api/analytics/dashboard", async (req, res) => {
+    try {
+      const store = getAnalyticsStore();
+      const liveVisitors = getLiveVisitorsCount();
+      const salesMetrics = await calculateSalesMetrics();
+      const rawOrdersList = (salesMetrics as any).ordersList || [];
+      delete (salesMetrics as any).ordersList; // clean response
+
+      const now = Date.now();
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayStartTime = todayStart.getTime();
+      const sevenDaysCutoff = now - 7 * 24 * 60 * 60 * 1000;
+      const thirtyDaysCutoff = now - 30 * 24 * 60 * 60 * 1000;
+
+      const totalVisitors = Object.keys(store.uniqueVisitorMap || {}).length;
+      const uniqueVisitors = totalVisitors;
+
+      let dailyVisitors = 0;
+      let weeklyVisitors = 0;
+      let monthlyVisitors = 0;
+
+      for (const v of Object.values(store.uniqueVisitorMap || {}) as any[]) {
+        if (v && v.lastSeen >= todayStartTime) dailyVisitors++;
+        if (v && v.lastSeen >= sevenDaysCutoff) weeklyVisitors++;
+        if (v && v.lastSeen >= thirtyDaysCutoff) monthlyVisitors++;
+      }
+
+      const totalPageViews = store.totalPageViews || (Array.isArray(store.pageViews) ? store.pageViews.length : 0);
+      const todayVisits = (Array.isArray(store.pageViews) ? store.pageViews : []).filter((pv: any) => pv.timestamp >= todayStartTime).length;
+
+      // Real e-commerce conversion rate
+      const conversionRate = totalVisitors > 0
+        ? Math.min(100, Math.round((salesMetrics.totalOrders / totalVisitors) * 1000) / 10)
+        : 0;
+
+      // 14-Day Performance History calculated purely from real dates and real timestamps
+      const dailyTrend: any[] = [];
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date(now - i * 24 * 60 * 60 * 1000);
+        const dateStr = d.toISOString().split('T')[0];
+        const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+        const dayViews = (Array.isArray(store.pageViews) ? store.pageViews : []).filter((pv: any) => pv.date === dateStr).length;
+        const dayVisitors = (store.dailyVisitorMap && Array.isArray(store.dailyVisitorMap[dateStr])) ? store.dailyVisitorMap[dateStr].length : 0;
+
+        let dayOrders = 0;
+        let dayRevenue = 0;
+        rawOrdersList.forEach((o: any) => {
+          const oTime = new Date(o.created_at || o.createdAt || o.orderDate || 0);
+          if (oTime.toISOString().split('T')[0] === dateStr) {
+            const st = (o.status || o.order_status || '').toLowerCase();
+            const paySt = (o.payment_status || o.paymentStatus || '').toLowerCase();
+            const isCanc = ['cancelled', 'payment rejected', 'rejected', 'declined', 'void'].includes(st) || paySt === 'payment rejected';
+            if (!isCanc) {
+              dayOrders++;
+              dayRevenue += Number(o.total_amount || o.totalAmount || o.total || o.grandTotal || 0) || 0;
+            }
+          }
+        });
+
+        dailyTrend.push({
+          label,
+          dateStr,
+          views: dayViews,
+          visitors: dayVisitors,
+          orders: dayOrders,
+          revenue: dayRevenue
+        });
+      }
+
+      // Top Products from actual tracked data
+      const topProducts = Object.values(store.productViews || {})
+        .sort((a: any, b: any) => ((b.views || 0) + (b.clicks || 0)) - ((a.views || 0) + (a.clicks || 0)))
+        .slice(0, 10);
+
+      // Top Keywords from actual customer searches
+      const topSearches = Object.values(store.searchKeywords || {})
+        .sort((a: any, b: any) => (b.count || 0) - (a.count || 0))
+        .slice(0, 10);
+
+      // Top Categories from actual clicks
+      const topCategories = Object.values(store.categoryClicks || {})
+        .sort((a: any, b: any) => (b.count || 0) - (a.count || 0))
+        .slice(0, 8);
+
+      return res.json({
+        success: true,
+        liveVisitors,
+        totalVisitors,
+        uniqueVisitors,
+        totalPageViews,
+        dailyVisitors,
+        weeklyVisitors,
+        monthlyVisitors,
+        todayVisits,
+        conversionRate,
+        totalWebsiteClicks: store.totalWebsiteClicks || 0,
+        totalProductClicks: store.totalProductClicks || 0,
+        topProducts,
+        topSearches,
+        topCategories,
+        actions: store.actions || {},
+        deviceCounts: store.deviceCounts || {},
+        browserCounts: store.browserCounts || {},
+        sourceCounts: store.sourceCounts || {},
+        dailyTrend,
+        recentEvents: store.recentEvents || [],
+        sales: salesMetrics,
+        lastUpdated: new Date().toISOString()
+      });
+    } catch (err: any) {
+      console.error("[Analytics Dashboard API] Error:", err);
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // 3. Reset Analytics Store (Admin Only)
+  app.post("/api/analytics/reset", requireAdminAuth, async (req, res) => {
+    try {
+      delete cmsDataStore["zst_analytics_v2"];
+      getAnalyticsStore();
+      await persistDataStoreToDisk().catch(() => {});
+      broadcastOrderEvent("analytics_reset", { timestamp: Date.now() });
+      return res.json({ success: true, message: "Analytics logs refreshed to baseline." });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }

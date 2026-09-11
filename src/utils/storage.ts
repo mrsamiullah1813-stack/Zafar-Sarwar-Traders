@@ -1308,13 +1308,41 @@ export const defaultPaymentMethods: PaymentMethodConfig[] = [
   }
 ];
 
+export const normalizePaymentMethod = (m: any, idx: number = 0): PaymentMethodConfig => {
+  if (!m || typeof m !== 'object') {
+    return defaultPaymentMethods[0];
+  }
+  const isCod = m.type === 'cod' || m.id === 'cod' || (m.name || '').toLowerCase().includes('cash on delivery');
+  const logo = !isCod ? (m.logoUrl || m.logo_url || m.imageUrl || m.image_url || undefined) : undefined;
+  const qr = m.qrCodeUrl || m.qr_code_url || m.qrCode || m.qr_code || undefined;
+
+  return {
+    id: m.id || `method_${Date.now()}_${idx}`,
+    type: m.type || (isCod ? 'cod' : 'custom'),
+    name: m.name || (isCod ? 'Cash on Delivery (COD)' : 'Payment Method'),
+    isEnabled: m.isEnabled !== false && m.is_enabled !== false,
+    logoUrl: logo,
+    accountTitle: m.accountTitle || m.account_title || undefined,
+    accountNumber: m.accountNumber || m.account_number || undefined,
+    bankName: m.bankName || m.bank_name || undefined,
+    iban: m.iban || undefined,
+    branchCode: m.branchCode || m.branch_code || undefined,
+    qrCodeUrl: qr,
+    instructions: m.instructions || undefined,
+    whatsappNumber: m.whatsappNumber || m.whatsapp_number || undefined,
+    displayOrder: typeof m.displayOrder === 'number' ? m.displayOrder : (typeof m.display_order === 'number' ? m.display_order : idx + 1),
+    requiresProof: isCod ? false : (m.requiresProof !== false && m.requires_proof !== false),
+    badgeText: m.badgeText || m.badge_text || undefined
+  };
+};
+
 export const loadPaymentMethods = (): PaymentMethodConfig[] => {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.PAYMENT_METHODS);
     if (saved !== null) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return parsed.map((item, idx) => normalizePaymentMethod(item, idx));
       }
     }
   } catch (e) {
@@ -1325,13 +1353,14 @@ export const loadPaymentMethods = (): PaymentMethodConfig[] => {
 
 export const savePaymentMethods = async (methods: PaymentMethodConfig[]): Promise<{ success: boolean; error?: string }> => {
   try {
-    safeSetLocalStorage(STORAGE_KEYS.PAYMENT_METHODS, methods);
-    saveToServerCMS(STORAGE_KEYS.PAYMENT_METHODS, methods);
+    const normalized = methods.map((item, idx) => normalizePaymentMethod(item, idx));
+    safeSetLocalStorage(STORAGE_KEYS.PAYMENT_METHODS, normalized);
+    saveToServerCMS(STORAGE_KEYS.PAYMENT_METHODS, normalized);
     try {
-      window.dispatchEvent(new CustomEvent('zst_payment_methods_updated', { detail: methods }));
+      window.dispatchEvent(new CustomEvent('zst_payment_methods_updated', { detail: normalized }));
     } catch {}
 
-    const res = await savePaymentMethodsToSupabase(methods);
+    const res = await savePaymentMethodsToSupabase(normalized);
     if (res && res.success === false) {
       console.warn('Supabase savePaymentMethods warning:', res.error);
       return { success: false, error: res.error || 'Failed to save payment methods to database' };
@@ -1938,10 +1967,11 @@ export const syncWithServerCMS = async (callbacks: {
         safeSetLocalStorage(STORAGE_KEYS.COUPONS, (checkoutResult.value as any).coupons);
       }
       const pms = (checkoutResult.value as any).payment_methods || (checkoutResult.value as any).paymentMethods;
-      if (Array.isArray(pms) && pms.length > 0) {
-        safeSetLocalStorage(STORAGE_KEYS.PAYMENT_METHODS, pms);
+      if (Array.isArray(pms) && pms.length > 0 && paymentMethodsResult.status !== 'fulfilled') {
+        const normalized = pms.map((item: any, idx: number) => normalizePaymentMethod(item, idx));
+        safeSetLocalStorage(STORAGE_KEYS.PAYMENT_METHODS, normalized);
         try {
-          window.dispatchEvent(new CustomEvent('zst_payment_methods_updated', { detail: pms }));
+          window.dispatchEvent(new CustomEvent('zst_payment_methods_updated', { detail: normalized }));
         } catch {}
       }
     } else {
@@ -2039,11 +2069,12 @@ export const syncWithServerCMS = async (callbacks: {
 
     // Payment Methods
     if (paymentMethodsResult.status === 'fulfilled' && Array.isArray(paymentMethodsResult.value) && paymentMethodsResult.value.length > 0) {
-      safeSetLocalStorage(STORAGE_KEYS.PAYMENT_METHODS, paymentMethodsResult.value);
+      const normalized = paymentMethodsResult.value.map((item: any, idx: number) => normalizePaymentMethod(item, idx));
+      safeSetLocalStorage(STORAGE_KEYS.PAYMENT_METHODS, normalized);
       try {
-        window.dispatchEvent(new CustomEvent('zst_payment_methods_updated', { detail: paymentMethodsResult.value }));
+        window.dispatchEvent(new CustomEvent('zst_payment_methods_updated', { detail: normalized }));
       } catch {}
-      console.log(`[Sync] Payment methods synced from Supabase: ${paymentMethodsResult.value.length}`);
+      console.log(`[Sync] Payment methods synced from Supabase: ${normalized.length}`);
     }
 
     console.log('✅ [Database & Backend Sync] Fast parallel synchronization complete!');

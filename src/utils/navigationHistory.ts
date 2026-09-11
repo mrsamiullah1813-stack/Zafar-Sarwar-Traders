@@ -222,9 +222,13 @@ export function replaceNavigationState(
 /**
  * Safely handle navigation back:
  * - If user has internal history depth > 0, invokes window.history.back() to pop smoothly.
- * - If no internal history exists (e.g. initial direct link), executes fallback action safely without leaving the site.
+ * - If no internal history exists (e.g. initial direct link), executes fallback action safely without leaving the site,
+ *   cleaning up URL parameters and preserving existing query state (category, filters) without full page reload.
  */
-export function navigateBackSafe(fallbackAction: () => void) {
+export function navigateBackSafe(
+  fallbackAction: () => void,
+  urlCleanups: Record<string, string | null> = {}
+) {
   if (typeof window === 'undefined') {
     fallbackAction();
     return;
@@ -233,7 +237,31 @@ export function navigateBackSafe(fallbackAction: () => void) {
   if (currentNavigationDepth > 0) {
     window.history.back();
   } else {
+    // Safely execute fallback in React state
     fallbackAction();
+
+    // Clean up current URL parameters without page reload or losing other params (e.g. category)
+    const cleanedUrl = buildPreservedUrl({
+      checkout: null,
+      cart: null,
+      page: null,
+      product: null,
+      variant: null,
+      ...urlCleanups
+    });
+
+    const params = new URLSearchParams(window.location.search);
+    const catId = params.get('category') || 'all';
+
+    const safeState: NavigationState = {
+      zst_app_state: true,
+      depth: 0,
+      view: 'home',
+      categoryId: catId,
+      timestamp: Date.now()
+    };
+
+    window.history.replaceState(safeState, '', cleanedUrl);
   }
 }
 
@@ -265,7 +293,8 @@ export function resetToHome() {
     page: null,
     brand: null,
     tool: null,
-    search: null
+    search: null,
+    admin: null
   });
   window.history.replaceState(homeState, '', newUrl);
   notifyListeners(homeState);
@@ -282,13 +311,15 @@ if (typeof window !== 'undefined') {
       currentNavigationDepth = state.depth;
       notifyListeners(state);
     } else {
-      // Returned to root or outside state
+      // Returned to root or outside state - preserve category from URL if present
       currentNavigationDepth = 0;
+      const params = new URLSearchParams(window.location.search);
+      const activeCategory = params.get('category') || 'all';
       const fallbackState: NavigationState = {
         zst_app_state: true,
         depth: 0,
-        view: 'home',
-        categoryId: 'all',
+        view: activeCategory !== 'all' ? 'category' : 'home',
+        categoryId: activeCategory,
         timestamp: Date.now()
       };
       notifyListeners(fallbackState);

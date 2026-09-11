@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, X, MessageSquare, ArrowRight, Check } from 'lucide-react';
 import { Product, ProductCategory, BusinessConfig } from '../types';
 import { filterProducts } from '../utils/searchUtils';
+import { trackSearchQuery } from '../utils/analyticsStorage';
 
 interface SearchModalProps {
   products: Product[];
@@ -21,6 +22,15 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   onClose
 }) => {
   const [query, setQuery] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (query && query.trim().length >= 2) {
+        trackSearchQuery(query.trim());
+      }
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   const safeProducts = Array.isArray(products) ? products : [];
   const safeCategories = Array.isArray(categories) ? categories : [];

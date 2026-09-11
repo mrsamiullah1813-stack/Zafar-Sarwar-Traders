@@ -157,11 +157,35 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
         deletedIds = JSON.parse(localStorage.getItem('zst_deleted_order_ids') || '[]');
       } catch {}
 
+      const isDeleted = (idOrNum: string) => {
+        if (!idOrNum) return false;
+        const s = String(idOrNum).toLowerCase().trim();
+        return deletedIds.some(d => String(d).toLowerCase().trim() === s);
+      };
+
       // 2. Start with local cached orders
       const local = loadStoredOrders();
       const orderMap = new Map<string, CustomerOrder>();
+
+      // Helper to find matching existing key in orderMap by ID or orderNumber
+      const findMatchingKeyInMap = (id?: string, orderNum?: string) => {
+        const idKey = id ? String(id).toLowerCase().trim() : '';
+        const numKey = orderNum ? String(orderNum).toLowerCase().trim() : '';
+        for (const [key, existing] of orderMap.entries()) {
+          const exId = String(existing.id || '').toLowerCase().trim();
+          const exNum = String(existing.orderNumber || '').toLowerCase().trim();
+          if (
+            (idKey && (exId === idKey || exNum === idKey)) ||
+            (numKey && (exId === numKey || exNum === numKey))
+          ) {
+            return key;
+          }
+        }
+        return null;
+      };
+
       (local || []).forEach(o => {
-        if (o && o.id && !deletedIds.includes(String(o.id)) && !deletedIds.includes(String(o.orderNumber))) {
+        if (o && o.id && !isDeleted(o.id) && !isDeleted(o.orderNumber || '')) {
           orderMap.set(String(o.id), o);
         }
       });
@@ -170,8 +194,12 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
       const dbOrders = await fetchOrdersFromSupabase();
       if (dbOrders !== null && Array.isArray(dbOrders)) {
         dbOrders.forEach(o => {
-          if (o && o.id && !deletedIds.includes(String(o.id)) && !deletedIds.includes(String(o.orderNumber))) {
-            const existing = orderMap.get(String(o.id));
+          if (o && o.id && !isDeleted(o.id) && !isDeleted(o.orderNumber || '')) {
+            const matchedKey = findMatchingKeyInMap(o.id, o.orderNumber);
+            const existing = matchedKey ? orderMap.get(matchedKey) : undefined;
+            if (matchedKey && matchedKey !== String(o.id)) {
+              orderMap.delete(matchedKey);
+            }
             const resolvedProof = o.paymentProofUrl || (o as any).payment_proof_url || existing?.paymentProofUrl || (existing as any)?.payment_proof_url;
             const resolvedProofName = o.paymentProofFileName || (o as any).payment_proof_file_name || existing?.paymentProofFileName || (existing as any)?.payment_proof_file_name;
             // Merge cleanly, preserving complete item descriptions, variant details, and customer info
@@ -196,6 +224,17 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
 
       setOrders(merged);
       saveStoredOrders(merged);
+      
+      // Keep any active modals (details/edit/payment proof) continuously in sync
+      setEditingOrder(prev => {
+        if (!prev) return null;
+        return merged.find(m => m.id === prev.id || m.orderNumber === prev.orderNumber || (prev.orderNumber && m.id === prev.orderNumber) || (m.orderNumber && prev.id === m.orderNumber)) || prev;
+      });
+      setViewingProofOrder(prev => {
+        if (!prev) return null;
+        return merged.find(m => m.id === prev.id || m.orderNumber === prev.orderNumber || (prev.orderNumber && m.id === prev.orderNumber) || (m.orderNumber && prev.id === m.orderNumber)) || prev;
+      });
+
       setLastRefreshTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     } catch (err) {
       console.warn('[Admin Orders] Failed to refresh orders:', err);
@@ -247,6 +286,10 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
       });
 
       sseSource.addEventListener('order_status_updated', () => {
+        if (isMounted) loadOrders(true);
+      });
+
+      sseSource.addEventListener('order_deleted', () => {
         if (isMounted) loadOrders(true);
       });
     } catch (sseErr) {
