@@ -766,13 +766,13 @@ export const BathroomPlanner: React.FC<BathroomPlannerProps> = ({
 
                 {/* Primary Action Buttons */}
                 <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                     
                     {/* Buy Now Action Button */}
                     <button
                       type="button"
                       onClick={handleBuyNow}
-                      className="py-3.5 px-6 rounded-xl bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:from-blue-700 active:to-blue-800 text-white font-semibold text-xs sm:text-sm shadow-sm hover:shadow-md hover:shadow-blue-600/25 border border-blue-500/40 transition-all duration-200 flex items-center justify-center gap-2 text-center cursor-pointer active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed tracking-wide"
+                      className="py-3.5 px-4 rounded-xl bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:from-blue-700 active:to-blue-800 text-white font-semibold text-xs sm:text-sm shadow-sm hover:shadow-md hover:shadow-blue-600/25 border border-blue-500/40 transition-all duration-200 flex items-center justify-center gap-2 text-center cursor-pointer active:scale-[0.98] tracking-wide"
                     >
                       <Zap className="w-4 h-4 shrink-0 text-blue-200 stroke-[2.2]" />
                       <span>Buy Now (ابھی خریدیں)</span>
@@ -783,12 +783,23 @@ export const BathroomPlanner: React.FC<BathroomPlannerProps> = ({
                       <button
                         type="button"
                         onClick={handleAddAllToCart}
-                        className="py-4 px-6 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm shadow-xl shadow-blue-600/30 transition-all flex items-center justify-center gap-2.5 text-center"
+                        className="py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-semibold text-xs sm:text-sm shadow-sm transition-all flex items-center justify-center gap-2 text-center cursor-pointer active:scale-[0.98]"
                       >
-                        <ShoppingBag className="w-4 h-4 shrink-0" />
+                        <ShoppingBag className="w-4 h-4 shrink-0 text-blue-300" />
                         <span>Add All ({currentResult.totalItemsCount}) Items to Cart</span>
                       </button>
                     )}
+
+                    {/* Order / Inquire on WhatsApp */}
+                    <a
+                      href={buildPlannerWhatsAppMessage(currentResult, whatsappNumber)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs sm:text-sm shadow-sm hover:shadow-emerald-600/25 transition-all flex items-center justify-center gap-2 text-center cursor-pointer active:scale-[0.98]"
+                    >
+                      <PhoneCall className="w-4 h-4 shrink-0" />
+                      <span>WhatsApp Order / Inquiry</span>
+                    </a>
                   </div>
 
                   <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs text-slate-500 dark:text-slate-400">
@@ -804,7 +815,7 @@ export const BathroomPlanner: React.FC<BathroomPlannerProps> = ({
                     <div className="flex items-center gap-3">
                       <span className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
                         <ShieldCheck className="w-3.5 h-3.5" />
-                        <span>10-Year Warranty</span>
+                        <span>100% Genuine Certified</span>
                       </span>
                       <span className="flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400">
                         <Truck className="w-3.5 h-3.5" />

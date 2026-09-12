@@ -1,14 +1,6 @@
-# Robots.txt for Zafar Sarwar Traders (Pakistan)
+# Robots.txt for Zafar Sarwar Traders
 User-agent: *
 Allow: /
-Allow: /#products
-Allow: /#categories
-Allow: /#brands
-Allow: /#about
-Allow: /#contact
-Allow: /#faq
-Allow: /#reviews
-Allow: /#gallery
 
 # Disallow internal admin or sensitive URL parameters
 Disallow: /api/
@@ -16,4 +8,5 @@ Disallow: /*?admin=*
 Disallow: /*&admin=*
 
 # Sitemap reference
-Sitemap: /sitemap.xml
+Sitemap: https://zafarsarwartraders.com/sitemap.xml
+

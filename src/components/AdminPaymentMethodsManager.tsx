@@ -131,7 +131,7 @@ export const AdminPaymentMethodsManager: React.FC<AdminPaymentMethodsManagerProp
       type: editingMethod.type || 'custom',
       name: editingMethod.name.trim(),
       isEnabled: editingMethod.isEnabled ?? true,
-      logoUrl: editingMethod.type === 'cod' ? undefined : (editingMethod.logoUrl?.trim() || undefined),
+      logoUrl: editingMethod.logoUrl?.trim() || undefined,
       accountTitle: editingMethod.accountTitle?.trim() || undefined,
       accountNumber: editingMethod.accountNumber?.trim() || undefined,
       bankName: editingMethod.bankName?.trim() || undefined,
@@ -667,6 +667,65 @@ export const AdminPaymentMethodsManager: React.FC<AdminPaymentMethodsManagerProp
                 </div>
               </div>
 
+              {/* Payment Method Logo Upload (For all payment methods: EasyPaisa, JazzCash, Bank Transfer, COD, Visa/Mastercard, etc.) */}
+              <div className="border-t border-stone-200 pt-4">
+                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                  Payment Method Logo / Image (Optional)
+                </label>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  {editingMethod.logoUrl ? (
+                    <div className="relative group shrink-0">
+                      <img 
+                        src={editingMethod.logoUrl} 
+                        alt="Payment Method Logo" 
+                        className="w-16 h-16 rounded-xl border border-stone-300 object-contain p-1 bg-white shadow-xs"
+                        referrerPolicy="no-referrer"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setEditingMethod({ ...editingMethod, logoUrl: undefined })}
+                        className="absolute -top-2 -right-2 p-1 bg-rose-600 text-white rounded-full hover:bg-rose-700 shadow-sm transition-colors cursor-pointer"
+                        title="Remove logo"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-16 h-16 rounded-xl border border-dashed border-stone-300 flex flex-col items-center justify-center text-stone-400 bg-stone-50 shrink-0">
+                      <ImageIcon className="w-6 h-6" />
+                      <span className="text-[9px] mt-0.5 font-medium">Logo</span>
+                    </div>
+                  )}
+
+                  <div className="flex-1 space-y-2 w-full">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <label className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-stone-300 bg-white hover:bg-stone-50 cursor-pointer text-stone-700 transition-colors shadow-2xs ${isUploadingLogo ? 'opacity-50 pointer-events-none' : ''}`}>
+                        <Upload className="w-3.5 h-3.5" />
+                        {isUploadingLogo ? 'Uploading Logo...' : 'Upload Logo / Image'}
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          className="hidden" 
+                          onChange={handleLogoUpload}
+                          disabled={isUploadingLogo}
+                        />
+                      </label>
+                      <span className="text-xs text-stone-400">or paste image URL:</span>
+                    </div>
+                    <input
+                      type="text"
+                      value={editingMethod.logoUrl || ''}
+                      onChange={e => setEditingMethod({ ...editingMethod, logoUrl: e.target.value })}
+                      placeholder="https://example.com/payment-logo.png"
+                      className="w-full px-3 py-1.5 text-xs border border-stone-300 rounded-lg text-stone-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+                <p className="text-[11px] text-stone-400 mt-1">
+                  Upload an image/PNG logo for this payment option. It will be prominently displayed on the checkout card.
+                </p>
+              </div>
+
               {/* Account details (for non-COD) */}
               {editingMethod.type !== 'cod' && (
                 <div className="border-t border-stone-200 pt-4 space-y-4">
@@ -726,65 +785,6 @@ export const AdminPaymentMethodsManager: React.FC<AdminPaymentMethodsManagerProp
                         className="w-full px-3 py-2 font-mono text-xs border border-stone-300 rounded-lg text-stone-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                       />
                     </div>
-                  </div>
-
-                  {/* Payment Method Logo Upload (Online Methods Only) */}
-                  <div>
-                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                      Payment Method Logo / Icon (Optional)
-                    </label>
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                      {editingMethod.logoUrl ? (
-                        <div className="relative group shrink-0">
-                          <img 
-                            src={editingMethod.logoUrl} 
-                            alt="Payment Method Logo" 
-                            className="w-16 h-16 rounded-xl border border-stone-300 object-contain p-1 bg-white shadow-xs"
-                            referrerPolicy="no-referrer"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setEditingMethod({ ...editingMethod, logoUrl: undefined })}
-                            className="absolute -top-2 -right-2 p-1 bg-rose-600 text-white rounded-full hover:bg-rose-700 shadow-sm transition-colors cursor-pointer"
-                            title="Remove logo"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="w-16 h-16 rounded-xl border border-dashed border-stone-300 flex flex-col items-center justify-center text-stone-400 bg-stone-50 shrink-0">
-                          <ImageIcon className="w-6 h-6" />
-                          <span className="text-[9px] mt-0.5 font-medium">Logo</span>
-                        </div>
-                      )}
-
-                      <div className="flex-1 space-y-2 w-full">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <label className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-stone-300 bg-white hover:bg-stone-50 cursor-pointer text-stone-700 transition-colors shadow-2xs ${isUploadingLogo ? 'opacity-50 pointer-events-none' : ''}`}>
-                            <Upload className="w-3.5 h-3.5" />
-                            {isUploadingLogo ? 'Uploading Logo...' : 'Upload Logo / Image'}
-                            <input 
-                              type="file" 
-                              accept="image/*" 
-                              className="hidden" 
-                              onChange={handleLogoUpload}
-                              disabled={isUploadingLogo}
-                            />
-                          </label>
-                          <span className="text-xs text-stone-400">or paste image URL:</span>
-                        </div>
-                        <input
-                          type="text"
-                          value={editingMethod.logoUrl || ''}
-                          onChange={e => setEditingMethod({ ...editingMethod, logoUrl: e.target.value })}
-                          placeholder="https://example.com/payment-logo.png"
-                          className="w-full px-3 py-1.5 text-xs border border-stone-300 rounded-lg text-stone-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-[11px] text-stone-400 mt-1">
-                      Upload your official logo for Easypaisa, JazzCash, Meezan Bank, or custom online account. Appears directly on the checkout screen.
-                    </p>
                   </div>
 
                   {/* QR Code Upload / Link */}

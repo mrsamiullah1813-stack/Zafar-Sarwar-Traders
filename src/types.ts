@@ -1740,20 +1740,36 @@ export type FittingVariant = FittingItemVariant;
 
 export type PriceFontFamily = 
   | 'Plus Jakarta Sans'
-  | 'Inter'
-  | 'Poppins'
+  | 'Outfit'
+  | 'Cinzel'
+  | 'Cormorant Garamond'
+  | 'Syne'
+  | 'Urbanist'
+  | 'Sora'
+  | 'Manrope'
   | 'Montserrat'
+  | 'Playfair Display'
+  | 'Prata'
+  | 'Bebas Neue'
+  | 'Oswald'
+  | 'Rajdhani'
+  | 'Chakra Petch'
+  | 'Lexend'
+  | 'Space Grotesk'
+  | 'Poppins'
+  | 'DM Sans'
+  | 'Inter'
   | 'Roboto'
   | 'Open Sans'
   | 'Lato'
-  | 'Playfair Display'
-  | 'DM Sans'
-  | 'System Sans';
+  | 'System Default'
+  | 'System Sans'
+  | string;
 
-export type PriceFontWeight = '400' | '500' | '600' | '700' | '800';
+export type PriceFontWeight = '400' | '500' | '600' | '700' | '800' | '900';
 export type PriceFontSizeScale = 'sm' | 'md' | 'lg' | 'xl';
-export type PriceLetterSpacing = 'tight' | 'normal' | 'wide';
-export type PriceStyle = 'normal' | 'bold' | 'semibold';
+export type PriceLetterSpacing = 'tight' | 'normal' | 'wide' | 'ultra-wide';
+export type PriceStyle = 'normal' | 'bold' | 'semibold' | 'italic';
 
 export interface PricingTypographySettings {
   color: string; // HEX or color code e.g. '#e5a93d'

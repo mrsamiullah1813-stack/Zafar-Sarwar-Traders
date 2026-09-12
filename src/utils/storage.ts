@@ -1313,7 +1313,7 @@ export const normalizePaymentMethod = (m: any, idx: number = 0): PaymentMethodCo
     return defaultPaymentMethods[0];
   }
   const isCod = m.type === 'cod' || m.id === 'cod' || (m.name || '').toLowerCase().includes('cash on delivery');
-  const logo = !isCod ? (m.logoUrl || m.logo_url || m.imageUrl || m.image_url || undefined) : undefined;
+  const logo = m.logoUrl || m.logo_url || m.imageUrl || m.image_url || undefined;
   const qr = m.qrCodeUrl || m.qr_code_url || m.qrCode || m.qr_code || undefined;
 
   return {
@@ -1635,18 +1635,47 @@ export const applyPricingTypographyToRoot = (settings: PricingTypographySettings
     root.style.setProperty('--product-price-weight', safe.fontWeight || '700');
 
     const fontVal = (safe.fontFamily || 'Plus Jakarta Sans').trim();
-    if (fontVal === 'System Sans' || fontVal === 'Default') {
+    if (fontVal === 'System Sans' || fontVal === 'System Default' || fontVal === 'Default') {
       root.style.setProperty('--product-price-font', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif');
     } else {
-      root.style.setProperty('--product-price-font', `"${fontVal}", sans-serif`);
+      const serifFonts = ['Playfair Display', 'Cinzel', 'Cormorant Garamond', 'Prata'];
+      const fallback = serifFonts.includes(fontVal) ? 'serif' : 'sans-serif';
+      root.style.setProperty('--product-price-font', `"${fontVal}", ${fallback}`);
       
       // Dynamically load Google Font if not a system font
-      const googleFontFamilies = ['Inter', 'Poppins', 'Montserrat', 'Roboto', 'Open Sans', 'Lato', 'Playfair Display', 'DM Sans', 'Plus Jakarta Sans'];
+      const googleFontFamilies = [
+        'Plus Jakarta Sans',
+        'Outfit',
+        'Cinzel',
+        'Cormorant Garamond',
+        'Syne',
+        'Urbanist',
+        'Sora',
+        'Manrope',
+        'Montserrat',
+        'Playfair Display',
+        'Prata',
+        'Bebas Neue',
+        'Oswald',
+        'Rajdhani',
+        'Chakra Petch',
+        'Lexend',
+        'Space Grotesk',
+        'Poppins',
+        'DM Sans',
+        'Inter',
+        'Roboto',
+        'Open Sans',
+        'Lato'
+      ];
       if (googleFontFamilies.includes(fontVal)) {
-        const fontId = 'google-font-price-typography';
+        const fontId = `google-font-price-typography`;
         let linkEl = document.getElementById(fontId) as HTMLLinkElement | null;
         const fontParam = encodeURIComponent(fontVal);
-        const href = `https://fonts.googleapis.com/css2?family=${fontParam}:wght@400;500;600;700;800&display=swap`;
+        const href = fontVal === 'Bebas Neue' 
+          ? `https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap`
+          : `https://fonts.googleapis.com/css2?family=${fontParam}:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,600;1,700&display=swap`;
+        
         if (!linkEl) {
           linkEl = document.createElement('link');
           linkEl.id = fontId;
@@ -1670,10 +1699,11 @@ export const applyPricingTypographyToRoot = (settings: PricingTypographySettings
     const spacingMap: Record<string, string> = {
       tight: '-0.025em',
       normal: '0em',
-      wide: '0.05em'
+      wide: '0.04em',
+      'ultra-wide': '0.08em'
     };
     root.style.setProperty('--product-price-letter-spacing', spacingMap[safe.letterSpacing || 'normal'] || '0em');
-    root.style.setProperty('--product-price-style', safe.priceStyle === 'semibold' ? 'normal' : (safe.priceStyle || 'normal'));
+    root.style.setProperty('--product-price-style', safe.priceStyle === 'italic' ? 'italic' : 'normal');
   } catch (e) {
     console.warn('Error applying pricing typography to root', e);
   }

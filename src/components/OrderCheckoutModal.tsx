@@ -28,7 +28,7 @@ type CheckoutStep = 'cart' | 'customer' | 'address' | 'payment_method' | 'paymen
 interface PaymentMethodLogoBadgeProps {
   method: PaymentMethodConfig;
   className?: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'card';
 }
 
 export const PaymentMethodLogoBadge: React.FC<PaymentMethodLogoBadgeProps> = ({ 
@@ -36,10 +36,22 @@ export const PaymentMethodLogoBadge: React.FC<PaymentMethodLogoBadgeProps> = ({
   className = '',
   size = 'md'
 }) => {
-  const isCodMethod = method.type === 'cod' || method.id === 'cod' || (method.name || '').toLowerCase().includes('cash on delivery');
-  const customLogoUrl = !isCodMethod ? ((method as any).logoUrl || (method as any).imageUrl) : undefined;
+  const customLogoUrl = (method as any).logoUrl || (method as any).imageUrl || (method as any).logo_url || (method as any).image_url;
 
   if (customLogoUrl) {
+    if (size === 'card') {
+      return (
+        <div className={`h-12 sm:h-14 w-full max-w-[140px] flex items-center justify-center p-0.5 select-none ${className}`}>
+          <img 
+            src={customLogoUrl} 
+            alt={method.name} 
+            className="max-h-full max-w-full object-contain pointer-events-none"
+            referrerPolicy="no-referrer" 
+          />
+        </div>
+      );
+    }
+
     return (
       <div className={`rounded-xl overflow-hidden bg-white border border-slate-200 flex items-center justify-center shrink-0 shadow-2xs ${
         size === 'sm' ? 'w-8 h-8 p-1' : size === 'lg' ? 'w-14 h-14 p-1.5' : 'w-11 h-11 sm:w-12 sm:h-12 p-1.5'
@@ -47,7 +59,7 @@ export const PaymentMethodLogoBadge: React.FC<PaymentMethodLogoBadgeProps> = ({
         <img 
           src={customLogoUrl} 
           alt={method.name} 
-          className="w-full h-full object-contain"
+          className="w-full h-full object-contain pointer-events-none"
           referrerPolicy="no-referrer" 
         />
       </div>
@@ -73,7 +85,9 @@ export const PaymentMethodLogoBadge: React.FC<PaymentMethodLogoBadgeProps> = ({
     ? 'w-8 h-8 rounded-lg' 
     : size === 'lg' 
       ? 'w-14 h-14 rounded-2xl' 
-      : 'w-11 h-11 sm:w-12 sm:h-12 rounded-xl';
+      : size === 'card'
+        ? 'w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl'
+        : 'w-11 h-11 sm:w-12 sm:h-12 rounded-xl';
 
   if (isEasypaisa) {
     return (
@@ -82,9 +96,9 @@ export const PaymentMethodLogoBadge: React.FC<PaymentMethodLogoBadgeProps> = ({
         title="Easypaisa Mobile Account"
       >
         <div className="flex items-center justify-center">
-          <Smartphone className={size === 'sm' ? 'w-3 h-3' : 'w-4 h-4'} />
+          <Smartphone className={size === 'sm' ? 'w-3 h-3' : size === 'card' ? 'w-4 h-4 sm:w-5 sm:h-5' : 'w-4 h-4'} />
         </div>
-        <span className="text-[8.5px] sm:text-[9px] font-black tracking-tight leading-none text-white uppercase mt-0.5">
+        <span className={`${size === 'card' ? 'text-[8px] sm:text-[9px]' : 'text-[8.5px] sm:text-[9px]'} font-black tracking-tight leading-none text-white uppercase mt-0.5`}>
           easy<span className="text-emerald-200">paisa</span>
         </span>
       </div>
@@ -98,9 +112,9 @@ export const PaymentMethodLogoBadge: React.FC<PaymentMethodLogoBadgeProps> = ({
         title="JazzCash Mobile Account"
       >
         <div className="flex items-center justify-center">
-          <Smartphone className={size === 'sm' ? 'w-3 h-3 text-amber-300' : 'w-4 h-4 text-amber-300'} />
+          <Smartphone className={size === 'sm' ? 'w-3 h-3 text-amber-300' : size === 'card' ? 'w-4 h-4 sm:w-5 sm:h-5 text-amber-300' : 'w-4 h-4 text-amber-300'} />
         </div>
-        <span className="text-[8.5px] sm:text-[9px] font-black tracking-tight leading-none text-amber-300 uppercase mt-0.5">
+        <span className={`${size === 'card' ? 'text-[8px] sm:text-[9px]' : 'text-[8.5px] sm:text-[9px]'} font-black tracking-tight leading-none text-amber-300 uppercase mt-0.5`}>
           Jazz<span className="text-white">Cash</span>
         </span>
       </div>
@@ -113,8 +127,8 @@ export const PaymentMethodLogoBadge: React.FC<PaymentMethodLogoBadgeProps> = ({
         className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-900 text-white flex flex-col items-center justify-center shadow-xs border border-emerald-400/30 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
         title="Cash on Delivery"
       >
-        <Truck className={size === 'sm' ? 'w-3.5 h-3.5 text-emerald-100' : 'w-4 h-4 text-emerald-100'} />
-        <span className="text-[8.5px] sm:text-[9px] font-black tracking-wider leading-none text-emerald-100 uppercase mt-0.5">
+        <Truck className={size === 'sm' ? 'w-3.5 h-3.5 text-emerald-100' : size === 'card' ? 'w-4 h-4 sm:w-5 sm:h-5 text-emerald-100' : 'w-4 h-4 text-emerald-100'} />
+        <span className={`${size === 'card' ? 'text-[8px] sm:text-[9px]' : 'text-[8.5px] sm:text-[9px]'} font-black tracking-wider leading-none text-emerald-100 uppercase mt-0.5`}>
           COD
         </span>
       </div>
@@ -127,8 +141,8 @@ export const PaymentMethodLogoBadge: React.FC<PaymentMethodLogoBadgeProps> = ({
         className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-[#0B2545] via-[#133C55] to-[#0A192F] text-white flex flex-col items-center justify-center shadow-xs border border-amber-400/40 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
         title="Meezan Bank"
       >
-        <Building2 className={size === 'sm' ? 'w-3.5 h-3.5 text-amber-300' : 'w-4 h-4 text-amber-300'} />
-        <span className="text-[8px] sm:text-[8.5px] font-extrabold tracking-tight leading-none text-amber-300 uppercase mt-0.5">
+        <Building2 className={size === 'sm' ? 'w-3.5 h-3.5 text-amber-300' : size === 'card' ? 'w-4 h-4 sm:w-5 sm:h-5 text-amber-300' : 'w-4 h-4 text-amber-300'} />
+        <span className={`${size === 'card' ? 'text-[7.5px] sm:text-[8.5px]' : 'text-[8px] sm:text-[8.5px]'} font-extrabold tracking-tight leading-none text-amber-300 uppercase mt-0.5`}>
           MEEZAN
         </span>
       </div>
@@ -141,8 +155,8 @@ export const PaymentMethodLogoBadge: React.FC<PaymentMethodLogoBadgeProps> = ({
         className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-[#005B52] to-[#003831] text-white flex flex-col items-center justify-center shadow-xs border border-teal-300/40 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
         title="Habib Bank Limited (HBL)"
       >
-        <Building2 className={size === 'sm' ? 'w-3.5 h-3.5 text-teal-200' : 'w-4 h-4 text-teal-200'} />
-        <span className="text-[8.5px] sm:text-[9px] font-black tracking-wider leading-none text-white uppercase mt-0.5">
+        <Building2 className={size === 'sm' ? 'w-3.5 h-3.5 text-teal-200' : size === 'card' ? 'w-4 h-4 sm:w-5 sm:h-5 text-teal-200' : 'w-4 h-4 text-teal-200'} />
+        <span className={`${size === 'card' ? 'text-[8px] sm:text-[9px]' : 'text-[8.5px] sm:text-[9px]'} font-black tracking-wider leading-none text-white uppercase mt-0.5`}>
           HBL
         </span>
       </div>
@@ -155,8 +169,8 @@ export const PaymentMethodLogoBadge: React.FC<PaymentMethodLogoBadgeProps> = ({
         className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-[#101010] to-[#252525] text-white flex flex-col items-center justify-center shadow-xs border border-teal-400/40 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
         title="SadaPay"
       >
-        <Wallet className={size === 'sm' ? 'w-3.5 h-3.5 text-teal-400' : 'w-4 h-4 text-teal-400'} />
-        <span className="text-[8px] sm:text-[8.5px] font-black tracking-tight leading-none text-teal-300 uppercase mt-0.5">
+        <Wallet className={size === 'sm' ? 'w-3.5 h-3.5 text-teal-400' : size === 'card' ? 'w-4 h-4 sm:w-5 sm:h-5 text-teal-400' : 'w-4 h-4 text-teal-400'} />
+        <span className={`${size === 'card' ? 'text-[7.5px] sm:text-[8.5px]' : 'text-[8px] sm:text-[8.5px]'} font-black tracking-tight leading-none text-teal-300 uppercase mt-0.5`}>
           SADAPAY
         </span>
       </div>
@@ -169,8 +183,8 @@ export const PaymentMethodLogoBadge: React.FC<PaymentMethodLogoBadgeProps> = ({
         className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-[#F36F21] to-[#D05106] text-white flex flex-col items-center justify-center shadow-xs border border-orange-300/40 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
         title="NayaPay"
       >
-        <Wallet className={size === 'sm' ? 'w-3.5 h-3.5 text-white' : 'w-4 h-4 text-white'} />
-        <span className="text-[8px] sm:text-[8.5px] font-black tracking-tight leading-none text-white uppercase mt-0.5">
+        <Wallet className={size === 'sm' ? 'w-3.5 h-3.5 text-white' : size === 'card' ? 'w-4 h-4 sm:w-5 sm:h-5 text-white' : 'w-4 h-4 text-white'} />
+        <span className={`${size === 'card' ? 'text-[7.5px] sm:text-[8.5px]' : 'text-[8px] sm:text-[8.5px]'} font-black tracking-tight leading-none text-white uppercase mt-0.5`}>
           NAYAPAY
         </span>
       </div>
@@ -183,8 +197,8 @@ export const PaymentMethodLogoBadge: React.FC<PaymentMethodLogoBadgeProps> = ({
         className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-indigo-700 via-blue-700 to-indigo-900 text-white flex flex-col items-center justify-center shadow-xs border border-indigo-300/40 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
         title="Credit / Debit Card"
       >
-        <CreditCard className={size === 'sm' ? 'w-3.5 h-3.5 text-indigo-200' : 'w-4 h-4 text-indigo-200'} />
-        <span className="text-[8.5px] sm:text-[9px] font-black tracking-wider leading-none text-white uppercase mt-0.5">
+        <CreditCard className={size === 'sm' ? 'w-3.5 h-3.5 text-indigo-200' : size === 'card' ? 'w-4 h-4 sm:w-5 sm:h-5 text-indigo-200' : 'w-4 h-4 text-indigo-200'} />
+        <span className={`${size === 'card' ? 'text-[8px] sm:text-[9px]' : 'text-[8.5px] sm:text-[9px]'} font-black tracking-wider leading-none text-white uppercase mt-0.5`}>
           CARD
         </span>
       </div>
@@ -200,8 +214,8 @@ export const PaymentMethodLogoBadge: React.FC<PaymentMethodLogoBadgeProps> = ({
         className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-blue-700 via-blue-800 to-slate-900 text-white flex flex-col items-center justify-center shadow-xs border border-blue-400/30 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
         title={method.bankName || method.name}
       >
-        <Building2 className={size === 'sm' ? 'w-3.5 h-3.5 text-blue-200' : 'w-4 h-4 text-blue-200'} />
-        <span className="text-[8px] sm:text-[8.5px] font-black tracking-wider leading-none text-blue-100 uppercase mt-0.5 truncate max-w-[42px]">
+        <Building2 className={size === 'sm' ? 'w-3.5 h-3.5 text-blue-200' : size === 'card' ? 'w-4 h-4 sm:w-5 sm:h-5 text-blue-200' : 'w-4 h-4 text-blue-200'} />
+        <span className={`${size === 'card' ? 'text-[7.5px] sm:text-[8.5px]' : 'text-[8px] sm:text-[8.5px]'} font-black tracking-wider leading-none text-blue-100 uppercase mt-0.5 truncate max-w-[48px]`}>
           {acronym}
         </span>
       </div>
@@ -215,8 +229,8 @@ export const PaymentMethodLogoBadge: React.FC<PaymentMethodLogoBadgeProps> = ({
       className={`${containerSizeClasses} shrink-0 bg-gradient-to-br from-slate-700 to-slate-900 text-white flex flex-col items-center justify-center shadow-xs border border-slate-500/30 relative overflow-hidden select-none transition-transform duration-200 group-hover:scale-105 ${className}`}
       title={method.name}
     >
-      <CreditCard className={size === 'sm' ? 'w-3.5 h-3.5 text-slate-300' : 'w-4 h-4 text-slate-300'} />
-      <span className="text-[8px] sm:text-[8.5px] font-black tracking-wider leading-none text-slate-200 uppercase mt-0.5 truncate max-w-[42px]">
+      <CreditCard className={size === 'sm' ? 'w-3.5 h-3.5 text-slate-300' : size === 'card' ? 'w-4 h-4 sm:w-5 sm:h-5 text-slate-300' : 'w-4 h-4 text-slate-300'} />
+      <span className={`${size === 'card' ? 'text-[7.5px] sm:text-[8.5px]' : 'text-[8px] sm:text-[8.5px]'} font-black tracking-wider leading-none text-slate-200 uppercase mt-0.5 truncate max-w-[48px]`}>
         {initials}
       </span>
     </div>
@@ -1627,8 +1641,8 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {/* Card-Based Grid Layout / Visual Radio Button Cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-3.5">
+                  {/* Card-Based Logo Grid Layout */}
+                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
                     {paymentMethods.map((method) => {
                       const isSelected = selectedPaymentMethodId === method.id;
                       const isCod = method.type === 'cod' || method.id === 'cod';
@@ -1637,9 +1651,6 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                       const methodAdvanceAmt = methodRequiresAdvance 
                         ? Math.max(checkoutSettings.codAdvanceMinAmount || 0, Math.round((grandTotal * methodAdvancePct) / 100)) 
                         : 0;
-                      const methodRemainingAmt = methodRequiresAdvance 
-                        ? Math.max(0, grandTotal - methodAdvanceAmt) 
-                        : grandTotal;
 
                       return (
                         <div
@@ -1654,87 +1665,62 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                               setSelectedPaymentMethodId(method.id);
                             }
                           }}
-                          className={`group relative flex flex-col justify-between rounded-2xl border-2 p-3.5 sm:p-4 transition-all duration-200 cursor-pointer select-none text-left min-h-[125px] ${
+                          className={`group relative flex flex-col items-center justify-between rounded-xl sm:rounded-2xl border-2 p-3 sm:p-4 transition-all duration-200 cursor-pointer select-none text-center bg-white min-h-[145px] sm:min-h-[155px] ${
                             isSelected
-                              ? 'border-blue-600 bg-blue-50/25 ring-2 ring-blue-600/20 shadow-md shadow-blue-500/10'
-                              : 'border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/60 hover:shadow-xs'
+                              ? 'border-blue-600 ring-2 ring-blue-600/15 shadow-md shadow-blue-500/10'
+                              : 'border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/50 hover:shadow-xs'
                           }`}
                         >
-                          {/* Top Accent Stripe for Selected Card */}
-                          {isSelected && (
-                            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 rounded-t-2xl" />
-                          )}
-
-                          {/* Top Section: Logo/Icon + Selection Indicator */}
-                          <div>
-                            <div className="flex items-center justify-between gap-2">
-                              {/* Payment Brand / Type Icon */}
-                              <PaymentMethodLogoBadge method={method} />
-
-                              {/* Visual Radio / Checkmark Indicator */}
-                              <div className="shrink-0">
-                                {isSelected ? (
-                                  <div className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-xs ring-2 ring-blue-600/20">
-                                    <Check className="w-3 h-3 stroke-[3]" />
-                                  </div>
-                                ) : (
-                                  <div className="w-5 h-5 rounded-full border-2 border-slate-300 group-hover:border-slate-400 bg-white transition-colors" />
-                                )}
+                          {/* Selection Checkmark Indicator in top corner */}
+                          <div className="absolute top-2.5 right-2.5 z-10">
+                            {isSelected ? (
+                              <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-xs ring-2 ring-blue-600/20">
+                                <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 stroke-[3]" />
                               </div>
-                            </div>
-
-                            {/* Payment Method Name & Subtitle */}
-                            <div className="mt-2.5">
-                              <h5 className={`font-bold text-xs sm:text-sm leading-snug truncate ${
-                                isSelected ? 'text-blue-950 font-bold' : 'text-slate-900'
-                              }`}>
-                                {method.name}
-                              </h5>
-
-                              <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
-                                {isCod
-                                  ? (methodRequiresAdvance ? 'Advance online + balance COD' : 'Pay cash upon delivery')
-                                  : (method.bankName ? method.bankName : method.accountTitle ? `A/C: ${method.accountTitle}` : 'Direct Account Transfer')}
-                              </p>
-                            </div>
+                            ) : (
+                              <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full border-2 border-slate-300 group-hover:border-slate-400 bg-white transition-colors" />
+                            )}
                           </div>
 
-                          {/* Bottom Row: Badges / Price */}
-                          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-1.5 text-xs">
-                            <div className="flex flex-wrap items-center gap-1 min-w-0">
-                              {isCod && !methodRequiresAdvance && (
-                                <span className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 truncate">
-                                  Doorstep COD
-                                </span>
-                              )}
-                              {isCod && methodRequiresAdvance && (
-                                <span className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-300 truncate">
-                                  {methodAdvancePct}% Advance
-                                </span>
-                              )}
-                              {method.badgeText && !isCod && (
-                                <span className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 truncate">
-                                  {method.badgeText}
-                                </span>
-                              )}
-                              {method.qrCodeUrl && (
-                                <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
-                                  <QrCode className="w-2.5 h-2.5" /> QR
-                                </span>
-                              )}
+                          {/* Top QR or Badge Pill if available */}
+                          {method.badgeText && !isCod && (
+                            <div className="absolute top-2 left-2 z-10">
+                              <span className="inline-block text-[8.5px] sm:text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 max-w-[85px] truncate">
+                                {method.badgeText}
+                              </span>
                             </div>
+                          )}
 
-                            <div className="text-right shrink-0">
-                              {isCod && methodRequiresAdvance ? (
-                                <span className="text-[11px] font-bold text-amber-800 font-mono">
-                                  Adv: PKR {methodAdvanceAmt.toLocaleString('en-PK')}
-                                </span>
-                              ) : (
-                                <span className="text-[11px] font-bold text-slate-900 font-mono">
-                                  PKR {grandTotal.toLocaleString('en-PK')}
-                                </span>
-                              )}
-                            </div>
+                          {/* Center: Prominently Displayed Payment Logo */}
+                          <div className="w-full flex-1 flex items-center justify-center py-2">
+                            <PaymentMethodLogoBadge method={method} size="card" />
+                          </div>
+
+                          {/* Bottom: Payment Method Name & Subtitle below logo */}
+                          <div className="w-full mt-2 flex flex-col items-center justify-end">
+                            <h5 className={`font-bold text-xs sm:text-[13px] leading-snug line-clamp-2 ${
+                              isSelected ? 'text-blue-950 font-bold' : 'text-slate-900'
+                            }`}>
+                              {method.name}
+                            </h5>
+
+                            {isCod ? (
+                              <span className="text-[10px] sm:text-[11px] font-medium text-slate-500 mt-0.5 truncate max-w-full">
+                                {methodRequiresAdvance ? `${methodAdvancePct}% Adv + COD` : 'Cash on Delivery'}
+                              </span>
+                            ) : method.bankName ? (
+                              <span className="text-[10px] sm:text-[11px] font-medium text-slate-500 mt-0.5 truncate max-w-full">
+                                {method.bankName}
+                              </span>
+                            ) : method.accountTitle ? (
+                              <span className="text-[10px] sm:text-[11px] font-medium text-slate-500 mt-0.5 truncate max-w-full">
+                                {method.accountTitle}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] sm:text-[11px] font-medium text-slate-400 mt-0.5 truncate max-w-full">
+                                Direct Payment
+                              </span>
+                            )}
                           </div>
                         </div>
                       );
