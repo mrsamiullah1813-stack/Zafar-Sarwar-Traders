@@ -89,6 +89,25 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
+  // Middleware to catch and format JSON parse errors
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err instanceof SyntaxError && ("body" in err || "status" in err || (err.message && err.message.includes("JSON")))) {
+      return res.status(400).json({
+        success: false,
+        error: "JSON_VALIDATION_ERROR",
+        message: "Invalid JSON format in request body"
+      });
+    }
+    if (err && (err.type === "entity.parse.failed" || (err.status === 400 && err.message && err.message.toLowerCase().includes("json")))) {
+      return res.status(400).json({
+        success: false,
+        error: "JSON_VALIDATION_ERROR",
+        message: "Invalid JSON format in request body"
+      });
+    }
+    next(err);
+  });
+
   // =========================================================
   // LOCAL UPLOADS STATIC DIRECTORY
   // =========================================================
@@ -161,44 +180,39 @@ async function startServer() {
 
   // Production Sitemap Endpoint for Google Search Console & Search Engines
   app.get("/sitemap.xml", (req, res) => {
-    const candidatePaths = [
-      path.join(process.cwd(), "public", "sitemap.xml"),
-      path.join(process.cwd(), "dist", "sitemap.xml"),
-    ];
-    for (const p of candidatePaths) {
-      if (fs.existsSync(p)) {
-        res.header("Content-Type", "application/xml; charset=utf-8");
-        return res.sendFile(p);
-      }
-    }
-    const defaultXml = `<?xml version="1.0" encoding="UTF-8"?>
+    // Resolve canonical base domain dynamically to match the exact host requested
+    const rawHost = (req.headers["x-forwarded-host"] as string) || req.headers.host || "zafarsarwartraders.shop";
+    const host = rawHost.split(",")[0].trim().split(":")[0].toLowerCase();
+    const canonicalOrigin = host.includes("zafarsarwartraders")
+      ? `https://${host}`
+      : "https://zafarsarwartraders.shop";
+
+    const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+  <!-- Primary Homepage & Luxury Showroom -->
   <url>
-    <loc>https://zafarsarwartraders.com/</loc>
+    <loc>${canonicalOrigin}/</loc>
     <lastmod>${new Date().toISOString().split("T")[0]}</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
 </urlset>`;
+
     res.header("Content-Type", "application/xml; charset=utf-8");
-    return res.send(defaultXml);
+    return res.send(sitemapXml);
   });
 
   // Production Robots.txt Endpoint
   app.get("/robots.txt", (req, res) => {
-    const candidatePaths = [
-      path.join(process.cwd(), "public", "robots.txt"),
-      path.join(process.cwd(), "dist", "robots.txt"),
-    ];
-    for (const p of candidatePaths) {
-      if (fs.existsSync(p)) {
-        res.header("Content-Type", "text/plain; charset=utf-8");
-        return res.sendFile(p);
-      }
-    }
-    const defaultTxt = `# Robots.txt for Zafar Sarwar Traders
+    const rawHost = (req.headers["x-forwarded-host"] as string) || req.headers.host || "zafarsarwartraders.shop";
+    const host = rawHost.split(",")[0].trim().split(":")[0].toLowerCase();
+    const canonicalOrigin = host.includes("zafarsarwartraders")
+      ? `https://${host}`
+      : "https://zafarsarwartraders.shop";
+
+    const robotsTxt = `# Robots.txt for Zafar Sarwar Traders
 User-agent: *
 Allow: /
 
@@ -208,10 +222,11 @@ Disallow: /*?admin=*
 Disallow: /*&admin=*
 
 # Sitemap reference
-Sitemap: https://zafarsarwartraders.com/sitemap.xml
+Sitemap: ${canonicalOrigin}/sitemap.xml
 `;
+
     res.header("Content-Type", "text/plain; charset=utf-8");
-    return res.send(defaultTxt);
+    return res.send(robotsTxt);
   });
 
   // Health check endpoint
@@ -5523,9 +5538,18 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
   // AI Luxury Bathroom & Building Material Consultant API
   app.post("/api/ai-consultant", async (req, res) => {
     try {
+      if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+        return res.status(400).json({
+          success: false,
+          error: "SCHEMA_VALIDATION_ERROR",
+          message: "Request body must be a valid JSON object."
+        });
+      }
+
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
         return res.status(500).json({
+          success: false,
           error: "GEMINI_API_KEY is missing in environment secrets.",
         });
       }
@@ -5561,20 +5585,36 @@ Respond in clean JSON format with these exact keys:
 Ensure tone is highly professional, inspiring, and elegant like Kohler, Hansgrohe, Grohe, or Porsche design aesthetics.`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.8-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
         },
       });
 
-      const responseText = response.text || "{}";
-      const parsedData = JSON.parse(responseText);
+      let responseText = (response.text || "{}").trim();
+      if (responseText.startsWith("```")) {
+        responseText = responseText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+      }
+      let parsedData: any = {};
+      try {
+        parsedData = JSON.parse(responseText);
+      } catch {
+        parsedData = {
+          headline: "Tailored Luxury Specification for Zafar Sarwar Traders",
+          overview: "Curated selection of premier bathroom fixtures and fittings.",
+          recommendedCategories: ["Rain Showers", "Designer Faucets", "Vanity Cabinets", "CPVC Pipes"],
+          keyProducts: [],
+          estimatedMaterialTip: "Ensure pressure-tested CPVC piping before installing luxury thermostatic valves.",
+          whatsappSummary: "Inquiry regarding luxury bathroom fittings from Zafar Sarwar Traders."
+        };
+      }
 
-      return res.json({ success: true, data: parsedData });
+      return res.json({ success: true, error: null, data: parsedData });
     } catch (err: any) {
       console.error("AI Consultant API Error:", err);
       return res.status(500).json({
+        success: false,
         error: "Failed to generate AI consultancy recommendation.",
         details: err?.message || String(err),
       });
@@ -5586,8 +5626,16 @@ Ensure tone is highly professional, inspiring, and elegant like Kohler, Hansgroh
   // =========================================================================
   app.post("/api/ai-chat", async (req, res) => {
     try {
+      if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+        return res.status(400).json({
+          success: false,
+          error: "SCHEMA_VALIDATION_ERROR",
+          message: "Request body must be a valid JSON object."
+        });
+      }
+
       const apiKey = process.env.GEMINI_API_KEY;
-      const { message, history = [], storeContext = {} } = req.body;
+      const { message = "", history = [], storeContext = {} } = req.body;
 
       // 1. Fetch live ground truth data directly from Supabase / server cache
       const catalog = await getCachedDatabaseCatalogForAi(storeContext);
@@ -6036,10 +6084,10 @@ CUSTOMER QUERY:
 "${message}"
 `;
 
-      const selectedModel = aiConfig?.selectedModel || "gemini-2.5-flash";
+      const selectedModel = aiConfig?.selectedModel || "gemini-3.8-flash";
 
       const response = await ai.models.generateContent({
-        model: selectedModel.includes("gemini") ? selectedModel : "gemini-2.5-flash",
+        model: selectedModel.includes("gemini") ? selectedModel : "gemini-3.8-flash",
         contents: promptContext,
         config: {
           systemInstruction,
@@ -6048,7 +6096,10 @@ CUSTOMER QUERY:
         },
       });
 
-      const text = response.text || "{}";
+      let text = (response.text || "{}").trim();
+      if (text.startsWith("```")) {
+        text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+      }
       let parsed: any = {};
       try {
         parsed = JSON.parse(text);
@@ -6059,6 +6110,7 @@ CUSTOMER QUERY:
 
       return res.json({
         success: true,
+        error: null,
         data: {
           reply: parsed.reply || (isUrduQuery ? "میں آپ کی رہنمائی کے لیے حاضر ہوں۔ آپ کو کون سی پروڈکٹ یا قیمت معلوم کرنی ہے؟" : "I'd be glad to help you with Zafar Sarwar Traders products. How can I assist you today?"),
           recommendedProducts: parsed.recommendedProducts || (candidateProducts.length > 0 ? candidateProducts.slice(0, 3).map((p: any) => ({
@@ -6102,6 +6154,14 @@ CUSTOMER QUERY:
   // 🎨 AI PAINT COLOR VISUALIZER MULTIMODAL API ENDPOINT
   // =========================================================
   app.post("/api/ai/paint-visualizer", async (req, res) => {
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+      return res.status(400).json({
+        success: false,
+        error: "SCHEMA_VALIDATION_ERROR",
+        message: "Request body must be a valid JSON object."
+      });
+    }
+
     const defaultFallbackPalettes = [
       {
         id: "palette-1",
@@ -6649,7 +6709,7 @@ Please analyze this space and provide complete, coordinated color palettes stric
         : [{ text: promptText }];
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.8-flash",
         contents: contentsPayload,
         config: {
           systemInstruction,
@@ -6658,7 +6718,10 @@ Please analyze this space and provide complete, coordinated color palettes stric
         },
       });
 
-      const text = response.text || "{}";
+      let text = (response.text || "{}").trim();
+      if (text.startsWith("```")) {
+        text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+      }
       let parsedResult: any = {};
       try {
         parsedResult = JSON.parse(text);
@@ -6703,6 +6766,7 @@ Please analyze this space and provide complete, coordinated color palettes stric
 
       return res.json({
         success: true,
+        error: null,
         data: parsedResult
       });
 
@@ -6731,12 +6795,26 @@ Please analyze this space and provide complete, coordinated color palettes stric
   app.get("/api/tts/voices", handleTtsVoicesGet);
 
   app.get("/api/cms/load", (req, res) => {
-    return res.json({ success: true, data: cmsDataStore });
+    return res.json({ success: true, error: null, data: cmsDataStore });
   });
 
   app.post("/api/cms/save", async (req, res) => {
     try {
+      if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+        return res.status(400).json({
+          success: false,
+          error: "SCHEMA_VALIDATION_ERROR",
+          message: "Request body must be a valid JSON object."
+        });
+      }
       const { key, payload } = req.body;
+      if (!key) {
+        return res.status(400).json({
+          success: false,
+          error: "SCHEMA_VALIDATION_ERROR",
+          message: "Key is required in request body."
+        });
+      }
       if (key) {
         if (key === "zst_orders" || key === "zst_orders_v1") {
           const current = Array.isArray(cmsDataStore["zst_orders"]) ? [...cmsDataStore["zst_orders"]] : [];
@@ -6759,7 +6837,7 @@ Please analyze this space and provide complete, coordinated color palettes stric
         await persistDataStoreToDisk();
         invalidateAiCatalogCache();
       }
-      return res.json({ success: true, key });
+      return res.json({ success: true, error: null, key });
     } catch (e: any) {
       console.error("CMS Save Error:", e);
       return res.status(500).json({ success: false, error: e?.message || String(e) });
@@ -6768,7 +6846,21 @@ Please analyze this space and provide complete, coordinated color palettes stric
 
   app.post("/api/cms/save-all", async (req, res) => {
     try {
+      if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+        return res.status(400).json({
+          success: false,
+          error: "SCHEMA_VALIDATION_ERROR",
+          message: "Request body must be a valid JSON object."
+        });
+      }
       const { data } = req.body;
+      if (!data || typeof data !== "object" || Array.isArray(data)) {
+        return res.status(400).json({
+          success: false,
+          error: "SCHEMA_VALIDATION_ERROR",
+          message: "Data field is required and must be an object."
+        });
+      }
       if (data && typeof data === "object") {
         cmsDataStore = { ...cmsDataStore, ...data };
         if (data.zst_orders_v1 && !data.zst_orders) {
@@ -6783,11 +6875,42 @@ Please analyze this space and provide complete, coordinated color palettes stric
         await persistDataStoreToDisk();
         invalidateAiCatalogCache();
       }
-      return res.json({ success: true, keys: Object.keys(cmsDataStore) });
+      return res.json({ success: true, error: null, keys: Object.keys(cmsDataStore) });
     } catch (e: any) {
       console.error("CMS Batch Save Error:", e);
       return res.status(500).json({ success: false, error: e?.message || String(e) });
     }
+  });
+
+  // Global API Error Middleware for standard JSON error formatting
+  app.use("/api", (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err instanceof SyntaxError && ("body" in err || "status" in err || (err.message && err.message.includes("JSON")))) {
+      return res.status(400).json({
+        success: false,
+        error: "JSON_VALIDATION_ERROR",
+        message: "Invalid JSON format in request body"
+      });
+    }
+    if (err && (err.type === "entity.parse.failed" || (err.status === 400 && err.message && err.message.toLowerCase().includes("json")))) {
+      return res.status(400).json({
+        success: false,
+        error: "JSON_VALIDATION_ERROR",
+        message: "Invalid JSON format in request body"
+      });
+    }
+    if (err && (err.name === "ValidationError" || err.type === "schema.validation.failed" || err.code === "SCHEMA_VALIDATION_ERROR")) {
+      return res.status(400).json({
+        success: false,
+        error: "SCHEMA_VALIDATION_ERROR",
+        message: err.message || "Schema validation failed"
+      });
+    }
+    console.error("Unhandled API Error:", err);
+    return res.status(err.status || 500).json({
+      success: false,
+      error: err.code || err.name || "INTERNAL_SERVER_ERROR",
+      message: err.message || "An unexpected error occurred"
+    });
   });
 
 

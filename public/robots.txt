@@ -8,5 +8,5 @@ Disallow: /*?admin=*
 Disallow: /*&admin=*
 
 # Sitemap reference
-Sitemap: https://zafarsarwartraders.com/sitemap.xml
+Sitemap: https://zafarsarwartraders.shop/sitemap.xml
 
