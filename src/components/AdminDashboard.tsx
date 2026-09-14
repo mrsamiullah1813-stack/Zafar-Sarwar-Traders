@@ -857,6 +857,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
           <button
             type="button"
+            id="btn-header-delivery-fee-mgmt"
+            onClick={() => setActiveTab('delivery')}
+            className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
+              activeTab === 'delivery'
+                ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
+                : 'bg-slate-800/90 hover:bg-slate-700 text-amber-300 border-amber-500/40 hover:border-amber-400'
+            }`}
+            title="City-Wise & Order-Value Delivery Slabs"
+          >
+            <Truck className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="hidden sm:inline">Delivery Fee Management</span>
+            <span className="sm:hidden">Delivery Fees</span>
+          </button>
+
+          <button
+            type="button"
             id="btn-view-public-storefront"
             onClick={(e) => {
               e.preventDefault();
@@ -1058,19 +1074,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
 
             <button
+              id="nav-btn-delivery-fee-mgmt"
               onClick={() => setActiveTab('delivery')}
               className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all ${
                 activeTab === 'delivery'
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-950'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                  ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20 font-extrabold'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-slate-800/50 hover:border-amber-500/30'
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <Truck className="w-4 h-4 text-sky-400" />
-                <span>Delivery Management</span>
+                <Truck className={`w-4 h-4 ${activeTab === 'delivery' ? 'text-slate-950' : 'text-amber-400'}`} />
+                <span>Delivery Fee Management</span>
               </div>
-              <span className="px-2 py-0.5 rounded-full bg-sky-950 text-[10px] text-sky-300 font-mono font-bold">
-                Pakistan
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                activeTab === 'delivery'
+                  ? 'bg-slate-950 text-amber-300'
+                  : 'bg-amber-950/80 text-amber-300 border border-amber-500/30'
+              }`}>
+                City Slabs
               </span>
             </button>
 

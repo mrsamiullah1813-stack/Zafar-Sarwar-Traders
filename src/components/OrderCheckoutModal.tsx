@@ -11,6 +11,7 @@ import {
   DeliverySettings, AppliedCouponState, PaymentMethodConfig, OrderStatus, PaymentStatus,
   HowToOrderConfig
 } from '../types';
+import { calculateCityDeliveryFee, formatTierRange, formatTierFee } from '../utils/deliveryFeeCalculator';
 import { loadDeliverySettings, generateNextOrderId, loadPaymentMethods, loadHowToOrderConfig, openWhatsAppLink, safeSetLocalStorage, STORAGE_KEYS } from '../utils/storage';
 import { getOrGenerateCustomerId } from '../utils/customerStorage';
 import { getProductPricingDetails, getVariantPricingDetails, getActiveProductPrice } from '../utils/pricingUtils';
@@ -501,15 +502,26 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
   const discountedSubtotal = Math.max(0, subtotal - couponDiscountAmount);
   const effectiveSubtotal = appliedCoupon ? discountedSubtotal : subtotal;
 
-  const isFreeDelivery = checkoutSettings.freeDeliveryThreshold 
-    ? effectiveSubtotal >= checkoutSettings.freeDeliveryThreshold 
-    : false;
+  const effectiveFallbackFee = deliverySettings.globalFallbackFee ?? deliverySettings.globalDeliveryFeeAmount ?? checkoutSettings.deliveryFee ?? 250;
+  const effectiveFreeThreshold = deliverySettings.globalFreeDeliveryThreshold ?? deliverySettings.freeDeliveryThreshold ?? checkoutSettings.freeDeliveryThreshold;
+  const globalMinFee = deliverySettings.minDeliveryFee;
+  const globalMaxFee = deliverySettings.maxDeliveryFee;
+
+  const deliveryCalculation = calculateCityDeliveryFee(
+    matchedCity,
+    effectiveSubtotal,
+    effectiveFallbackFee,
+    effectiveFreeThreshold,
+    globalMinFee,
+    globalMaxFee
+  );
 
   const cityDeliveryFee = isCustomCitySelected 
-    ? (checkoutSettings.deliveryFee || 250)
-    : (matchedCity ? (typeof matchedCity.deliveryFee === 'number' ? matchedCity.deliveryFee : 250) : (checkoutSettings.deliveryFee || 250));
+    ? (effectiveFreeThreshold && effectiveSubtotal >= effectiveFreeThreshold ? 0 : effectiveFallbackFee)
+    : deliveryCalculation.deliveryFee;
 
-  const deliveryCharges = effectiveSubtotal > 0 ? (isFreeDelivery ? 0 : cityDeliveryFee) : 0;
+  const deliveryCharges = effectiveSubtotal > 0 ? cityDeliveryFee : 0;
+  const isFreeDelivery = effectiveSubtotal > 0 && deliveryCharges === 0;
   
   const taxAmount = checkoutSettings.enableTaxes && checkoutSettings.taxRatePercent > 0
     ? Math.round((effectiveSubtotal * checkoutSettings.taxRatePercent) / 100)
@@ -1316,12 +1328,26 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                       </span>
                       <span className="font-bold font-mono">
                         {isFreeDelivery ? (
-                          <span className="text-emerald-600 font-bold uppercase text-[11px]">FREE Delivery</span>
+                          <span className="text-emerald-600 font-bold uppercase text-[11px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">FREE Delivery</span>
                         ) : (
                           `PKR ${deliveryCharges.toLocaleString('en-PK')}`
                         )}
                       </span>
                     </div>
+
+                    {/* Tier information notice */}
+                    {matchedCity && deliveryCalculation.hasTiers && !isCustomCitySelected && (
+                      <div className="text-[11px] flex flex-col items-end -mt-1 pb-1">
+                        <span className="font-medium text-slate-500">
+                          {deliveryCalculation.tierDescription || `${matchedCity.cityName} Order-Value Tier`}
+                        </span>
+                        {deliveryCalculation.nextFreeTierNotice && (
+                          <span className="text-amber-700 font-semibold text-[10px] mt-0.5 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                            💡 {deliveryCalculation.nextFreeTierNotice}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {taxAmount > 0 && (
                       <div className="flex justify-between items-center">
@@ -1484,11 +1510,20 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                       onChange={(e) => setSelectedCityId(e.target.value)}
                       className="w-full pl-9 pr-8 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white text-slate-900 focus:border-blue-500 outline-none transition-all cursor-pointer appearance-none"
                     >
-                      {activeCities.map((c) => (
-                        <option key={c.id} value={c.cityName}>
-                          📍 {c.cityName} ({c.estimatedDays} • {c.deliveryFee === 0 ? 'FREE' : `PKR ${c.deliveryFee}`})
-                        </option>
-                      ))}
+                      {activeCities.map((c) => {
+                        const feeCalc = calculateCityDeliveryFee(
+                          c,
+                          effectiveSubtotal,
+                          checkoutSettings.deliveryFee || 250,
+                          checkoutSettings.freeDeliveryThreshold
+                        );
+                        const feeDisplay = feeCalc.isFree ? 'FREE' : `PKR ${feeCalc.deliveryFee.toLocaleString('en-PK')}`;
+                        return (
+                          <option key={c.id} value={c.cityName}>
+                            📍 {c.cityName} ({c.estimatedDays} • {feeDisplay})
+                          </option>
+                        );
+                      })}
                       {deliverySettings.enableCustomCity !== false && (
                         <option value={customCityOptionValue}>
                           {customCityLabelText}
@@ -1497,6 +1532,56 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                     </select>
                     <MapPin className="w-4 h-4 text-blue-600 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   </div>
+
+                  {/* City Tier Breakdown Banner */}
+                  {matchedCity && matchedCity.deliveryTiers && matchedCity.deliveryTiers.length > 0 && !isCustomCitySelected && (
+                    <div className="mt-2 p-2.5 rounded-xl bg-blue-50/70 border border-blue-200/80 text-xs space-y-1.5 animate-fadeIn">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-blue-950 flex items-center gap-1.5">
+                          <Truck className="w-3.5 h-3.5 text-blue-600" />
+                          <span>{matchedCity.cityName} Order-Value Delivery Rates:</span>
+                        </span>
+                        <span className="text-[11px] font-bold">
+                          {deliveryCalculation.isFree ? (
+                            <span className="text-emerald-700 bg-emerald-100/90 px-2 py-0.5 rounded border border-emerald-300 font-bold uppercase text-[10px]">
+                              FREE Delivery Applied
+                            </span>
+                          ) : (
+                            <span className="text-blue-900 font-mono font-bold">
+                              Current Fee: PKR {deliveryCalculation.deliveryFee.toLocaleString('en-PK')}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {matchedCity.deliveryTiers.map((tier) => {
+                          const isCurrent = deliveryCalculation.matchedTier?.id === tier.id;
+                          const rLabel = formatTierRange(tier);
+                          const fLabel = formatTierFee(tier);
+                          return (
+                            <span
+                              key={tier.id}
+                              className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border transition-all ${
+                                isCurrent
+                                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm ring-1 ring-blue-400 font-bold'
+                                  : 'bg-white text-slate-600 border-slate-200'
+                              }`}
+                            >
+                              {rLabel} → {fLabel}
+                            </span>
+                          );
+                        })}
+                      </div>
+
+                      {deliveryCalculation.nextFreeTierNotice && (
+                        <p className="text-[11px] text-amber-800 font-semibold pt-0.5 flex items-center gap-1">
+                          <span>💡</span>
+                          <span>{deliveryCalculation.nextFreeTierNotice}</span>
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Custom City Manual Input Field */}

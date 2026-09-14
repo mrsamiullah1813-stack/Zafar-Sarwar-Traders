@@ -126,7 +126,7 @@ export const initialBusinessConfig: BusinessConfig = {
   orderWhatsapp: "+92 310 8002863",
   supportWhatsapp: "+92 310 8002863",
   deliveryPhone: "+92 310 8002863",
-  email: "info@zafarsarwartraders.com",
+  email: "info@zafarsarwartraders.shop",
   hoursWeekday: "Monday – Saturday: 8:00 AM – 9:00 PM",
   hoursSunday: "Sunday: 10:00 AM – 6:00 PM",
   openingTime: "08:00 AM",

@@ -19,14 +19,36 @@ import {
   LayoutGrid,
   List,
   Star,
-  DollarSign
+  DollarSign,
+  ArrowUp,
+  ArrowDown,
+  Layers,
+  AlertTriangle,
+  Sparkles,
+  Send,
+  RefreshCw,
+  Globe,
+  Zap,
+  Calculator,
+  Sliders,
+  CheckSquare,
+  Square,
+  HelpCircle
 } from 'lucide-react';
-import { DeliverySettings, CityDeliveryInfo } from '../types';
+import { DeliverySettings, CityDeliveryInfo, DeliveryFeeTier } from '../types';
 import { loadDeliverySettings, saveDeliverySettings } from '../utils/storage';
+import { 
+  validateDeliveryTiers, 
+  generateDefaultCityTiers, 
+  formatTierRange, 
+  formatTierFee,
+  calculateCityDeliveryFee
+} from '../utils/deliveryFeeCalculator';
 import { 
   upsertDeliveryCityInSupabase, 
   saveSiteSettingToSupabase,
-  deleteDeliveryCityFromSupabase 
+  deleteDeliveryCityFromSupabase,
+  saveDeliveryCitiesToSupabase
 } from '../services/supabaseService';
 
 interface AdminDeliveryManagerProps {
@@ -36,38 +58,74 @@ interface AdminDeliveryManagerProps {
 export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onShowToast }) => {
   const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>(() => loadDeliverySettings());
   const [citySearch, setCitySearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'contact_to_confirm' | 'unavailable'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'custom_rules' | 'fallback' | 'unavailable'>('all');
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [isSaving, setIsSaving] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'applied' | 'saved' | 'unsaved'>('applied');
+  const [lastAppliedTime, setLastAppliedTime] = useState<string>('Live on Storefront');
   
   // City Edit Modal State
   const [editingCity, setEditingCity] = useState<CityDeliveryInfo | null>(null);
   const [isCityModalOpen, setIsCityModalOpen] = useState(false);
   const [coverageInput, setCoverageInput] = useState('');
 
+  // Live Testbench State
+  const [testCityId, setTestCityId] = useState<string>('city-chiniot');
+  const [testSubtotal, setTestSubtotal] = useState<number>(7500);
+
   // New Note Input
   const [newNoteText, setNewNoteText] = useState('');
 
-  const handleSaveGeneralSettings = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setIsSaving(true);
+  // Save changes locally to draft
+  const handleSaveChanges = () => {
     try {
       saveDeliverySettings(deliverySettings);
-      const res = await saveSiteSettingToSupabase('delivery_settings', deliverySettings);
-      if (res.success) {
-        onShowToast('Delivery Settings & Logistics synchronized with database successfully!');
-      } else {
-        onShowToast('Saved locally. Database sync warning: ' + (res.error || 'Check connection'));
-      }
-    } catch (err) {
-      console.warn('Sync warning:', err);
-      onShowToast('Delivery settings saved locally!');
-    } finally {
-      setIsSaving(false);
+      setSyncStatus('saved');
+      onShowToast('✓ Saved: Delivery fee rules saved in draft! Click [APPLY TO WEBSITE] to push live.');
+    } catch (err: any) {
+      onShowToast('Failed to save settings: ' + (err?.message || String(err)));
     }
   };
 
-  const handleToggleCityStatus = async (cityId: string) => {
+  // Push changes live to Supabase production database & broadcast checkout update
+  const executeApplyToWebsite = async (settingsToApply: DeliverySettings) => {
+    setIsApplying(true);
+    try {
+      // 1. Save locally
+      saveDeliverySettings(settingsToApply);
+
+      // 2. Push city delivery slabs to Supabase
+      const citiesRes = await saveDeliveryCitiesToSupabase(settingsToApply.cities);
+      if (citiesRes && citiesRes.success === false) {
+        throw new Error(citiesRes.error || 'Failed to save delivery cities to database');
+      }
+
+      // 3. Push general site delivery settings to Supabase
+      const settingsRes = await saveSiteSettingToSupabase('delivery_settings', settingsToApply);
+      if (settingsRes && settingsRes.success === false) {
+        throw new Error(settingsRes.error || 'Failed to sync delivery settings to database');
+      }
+
+      // 4. Dispatch browser custom event for instant frontend checkout recalculation
+      window.dispatchEvent(new CustomEvent('zst_delivery_settings_updated', { detail: settingsToApply }));
+
+      setSyncStatus('applied');
+      setLastAppliedTime(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+      onShowToast('🚀 LIVE: Delivery fee rules and slabs successfully applied to production database & checkout!');
+    } catch (err: any) {
+      console.error('[Delivery Manager] Apply failed:', err);
+      onShowToast('⚠️ Error applying to database: ' + (err?.message || 'Check database connection.'));
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  const handleApplyToWebsite = async () => {
+    await executeApplyToWebsite(deliverySettings);
+  };
+
+  const handleToggleCityStatus = (cityId: string) => {
     const targetCity = deliverySettings.cities.find(c => c.id === cityId);
     if (!targetCity) return;
 
@@ -78,21 +136,38 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
     const updated = { ...deliverySettings, cities: updatedCities };
     setDeliverySettings(updated);
     saveDeliverySettings(updated);
+    setSyncStatus('unsaved');
     
-    // Save to DB
-    const updatedCity = { ...targetCity, isEnabled: newIsEnabled };
-    upsertDeliveryCityInSupabase(updatedCity);
+    // Also update single record in Supabase in background
+    upsertDeliveryCityInSupabase({ ...targetCity, isEnabled: newIsEnabled });
 
-    onShowToast(`Delivery ${newIsEnabled ? 'enabled' : 'disabled'} for ${targetCity.cityName}!`);
+    onShowToast(`Delivery for ${targetCity.cityName} set to ${newIsEnabled ? 'Enabled' : 'Disabled'}! Click [APPLY TO WEBSITE] to push live.`);
+  };
+
+  const handleToggleCustomRules = (cityId: string) => {
+    const targetCity = deliverySettings.cities.find(c => c.id === cityId);
+    if (!targetCity) return;
+
+    const newUseCustomRules = targetCity.useCustomRules === false ? true : false;
+    const updatedCities = deliverySettings.cities.map(c => 
+      c.id === cityId ? { ...c, useCustomRules: newUseCustomRules, isOptional: !newUseCustomRules } : c
+    );
+    const updated = { ...deliverySettings, cities: updatedCities };
+    setDeliverySettings(updated);
+    saveDeliverySettings(updated);
+    setSyncStatus('unsaved');
+    
+    onShowToast(`${targetCity.cityName}: Custom fee rules ${newUseCustomRules ? 'ACTIVATED' : 'SET TO GLOBAL FALLBACK'}!`);
   };
 
   const handleSetDefaultCity = async (cityId: string) => {
     const updated = { ...deliverySettings, defaultSelectedCityId: cityId };
     setDeliverySettings(updated);
     saveDeliverySettings(updated);
+    setSyncStatus('unsaved');
     await saveSiteSettingToSupabase('delivery_settings', updated);
     const cName = deliverySettings.cities.find(c => c.id === cityId)?.cityName || cityId;
-    onShowToast(`Set ${cName} as default selected delivery city!`);
+    onShowToast(`Set ${cName} as default selected delivery city! Click [APPLY TO WEBSITE] to push live.`);
   };
 
   const handleDeleteCity = async (cityId: string, cityName: string) => {
@@ -101,11 +176,88 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
       const updated = { ...deliverySettings, cities: updatedCities };
       setDeliverySettings(updated);
       saveDeliverySettings(updated);
+      setSyncStatus('unsaved');
       
       // Delete in DB
       await deleteDeliveryCityFromSupabase(cityId);
-      onShowToast(`${cityName} deleted from delivery cities.`);
+      onShowToast(`Deleted ${cityName} from delivery cities. Click [APPLY TO WEBSITE] to confirm live.`);
     }
+  };
+
+  const tierValidation = useMemo(() => {
+    if (!editingCity || editingCity.deliveryFeeType !== 'tiered') {
+      return { isValid: true, errors: [], warnings: [] };
+    }
+    return validateDeliveryTiers(editingCity.deliveryTiers || []);
+  }, [editingCity?.deliveryTiers, editingCity?.deliveryFeeType]);
+
+  const handleAddTier = () => {
+    if (!editingCity) return;
+    const currentTiers = editingCity.deliveryTiers || [];
+    let nextMin = 0;
+    if (currentTiers.length > 0) {
+      const lastTier = currentTiers[currentTiers.length - 1];
+      if (lastTier.maxAmount !== null && lastTier.maxAmount !== undefined) {
+        nextMin = lastTier.maxAmount + 1;
+      } else {
+        nextMin = lastTier.minAmount + 5000;
+      }
+    }
+    const newTier: DeliveryFeeTier = {
+      id: `tier-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+      minAmount: nextMin,
+      maxAmount: null,
+      fee: 0,
+      isFree: true,
+      label: ''
+    };
+    setEditingCity({
+      ...editingCity,
+      deliveryTiers: [...currentTiers, newTier]
+    });
+  };
+
+  const handleUpdateTier = (idx: number, updates: Partial<DeliveryFeeTier>) => {
+    if (!editingCity) return;
+    const currentTiers = [...(editingCity.deliveryTiers || [])];
+    if (!currentTiers[idx]) return;
+    currentTiers[idx] = { ...currentTiers[idx], ...updates };
+    setEditingCity({
+      ...editingCity,
+      deliveryTiers: currentTiers
+    });
+  };
+
+  const handleDeleteTier = (idx: number) => {
+    if (!editingCity) return;
+    const currentTiers = (editingCity.deliveryTiers || []).filter((_, i) => i !== idx);
+    setEditingCity({
+      ...editingCity,
+      deliveryTiers: currentTiers
+    });
+  };
+
+  const handleMoveTier = (idx: number, direction: 'up' | 'down') => {
+    if (!editingCity) return;
+    const currentTiers = [...(editingCity.deliveryTiers || [])];
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= currentTiers.length) return;
+    const temp = currentTiers[idx];
+    currentTiers[idx] = currentTiers[targetIdx];
+    currentTiers[targetIdx] = temp;
+    setEditingCity({
+      ...editingCity,
+      deliveryTiers: currentTiers
+    });
+  };
+
+  const handleLoadDefaultTiers = () => {
+    if (!editingCity) return;
+    setEditingCity({
+      ...editingCity,
+      deliveryFeeType: 'tiered',
+      deliveryTiers: generateDefaultCityTiers(editingCity.cityName || 'City')
+    });
   };
 
   const handleOpenAddCityModal = () => {
@@ -116,44 +268,78 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
       areaTown: '',
       status: 'available',
       estimatedDays: '1–2 Working Days',
-      deliveryFee: 0,
-      deliveryFeeType: 'free',
+      deliveryFee: 200,
+      baseFee: 200,
+      minFee: 0,
+      maxFee: 5000,
+      freeDeliveryThreshold: 10000,
+      deliveryFeeType: 'tiered',
       deliveryFeeCustomText: '',
-      freeDelivery: true,
+      freeDelivery: false,
       minOrderAmount: undefined,
       additionalAddress: '',
       isSameDayAvailable: false,
       isNextDayAvailable: true,
       isEnabled: true,
+      isOptional: false,
+      useCustomRules: true,
       notes: '',
       coverageAreas: [],
-      displayOrder: deliverySettings.cities.length + 1
+      displayOrder: deliverySettings.cities.length + 1,
+      deliveryTiers: generateDefaultCityTiers('New City')
     });
     setCoverageInput('');
     setIsCityModalOpen(true);
   };
 
   const handleOpenEditCityModal = (city: CityDeliveryInfo) => {
+    const hasTiers = Array.isArray(city.deliveryTiers) && city.deliveryTiers.length > 0;
+    const feeType = city.deliveryFeeType || (hasTiers ? 'tiered' : (city.deliveryFee === 0 ? 'free' : 'fixed'));
     setEditingCity({ 
       ...city,
       status: city.status || 'available',
-      deliveryFeeType: city.deliveryFeeType || (city.deliveryFee === 0 ? 'free' : 'fixed'),
-      freeDelivery: city.freeDelivery !== undefined ? city.freeDelivery : (city.deliveryFee === 0 || city.deliveryFeeType === 'free')
+      deliveryFeeType: feeType,
+      useCustomRules: city.useCustomRules !== false,
+      baseFee: city.baseFee ?? city.deliveryFee ?? 200,
+      minFee: city.minFee ?? 0,
+      maxFee: city.maxFee ?? 5000,
+      freeDeliveryThreshold: city.freeDeliveryThreshold ?? (feeType === 'free' ? 0 : 10000),
+      freeDelivery: city.freeDelivery !== undefined ? city.freeDelivery : (city.deliveryFee === 0 || feeType === 'free'),
+      deliveryTiers: hasTiers 
+        ? [...city.deliveryTiers!] 
+        : (feeType === 'tiered' ? generateDefaultCityTiers(city.cityName) : [])
     });
     setCoverageInput(Array.isArray(city.coverageAreas) ? city.coverageAreas.join(', ') : '');
     setIsCityModalOpen(true);
   };
 
-  const handleSaveCity = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveCity = async (e?: React.FormEvent, andApplyLive: boolean = false) => {
+    if (e) e.preventDefault();
     if (!editingCity || !editingCity.cityName.trim()) {
       alert('City name is required.');
       return;
     }
 
+    if (editingCity.deliveryFeeType === 'tiered') {
+      const tiers = editingCity.deliveryTiers || [];
+      if (tiers.length === 0) {
+        alert('Please add at least one order-value pricing tier or select a different delivery fee mode.');
+        return;
+      }
+      const validation = validateDeliveryTiers(tiers);
+      if (!validation.isValid) {
+        alert(`Cannot save tiered pricing:\n• ${validation.errors.join('\n• ')}`);
+        return;
+      }
+    }
+
     const coverageArray = coverageInput
       ? coverageInput.split(',').map(s => s.trim()).filter(Boolean)
       : (editingCity.coverageAreas || []);
+
+    const sortedTiers = (editingCity.deliveryFeeType === 'tiered' && editingCity.deliveryTiers)
+      ? [...editingCity.deliveryTiers].sort((a, b) => a.minAmount - b.minAmount)
+      : (editingCity.deliveryTiers || undefined);
 
     const updatedCityRecord: CityDeliveryInfo = {
       ...editingCity,
@@ -162,7 +348,19 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
       notes: editingCity.notes ? editingCity.notes.trim() : undefined,
       additionalAddress: editingCity.additionalAddress ? editingCity.additionalAddress.trim() : undefined,
       coverageAreas: coverageArray,
-      freeDelivery: Boolean(editingCity.freeDelivery || editingCity.deliveryFeeType === 'free' || editingCity.deliveryFee === 0)
+      deliveryTiers: sortedTiers,
+      baseFee: editingCity.baseFee ?? editingCity.deliveryFee ?? 200,
+      minFee: typeof editingCity.minFee === 'number' ? editingCity.minFee : 0,
+      maxFee: typeof editingCity.maxFee === 'number' ? editingCity.maxFee : 5000,
+      freeDeliveryThreshold: typeof editingCity.freeDeliveryThreshold === 'number' ? editingCity.freeDeliveryThreshold : undefined,
+      useCustomRules: editingCity.useCustomRules !== false,
+      isOptional: editingCity.useCustomRules === false,
+      freeDelivery: Boolean(
+        editingCity.freeDelivery || 
+        editingCity.deliveryFeeType === 'free' || 
+        (editingCity.deliveryFeeType === 'fixed' && editingCity.deliveryFee === 0) ||
+        (editingCity.deliveryFeeType === 'tiered' && sortedTiers?.some(t => t.fee === 0 || t.isFree))
+      )
     };
 
     const existsIndex = deliverySettings.cities.findIndex(c => c.id === updatedCityRecord.id);
@@ -180,13 +378,19 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
     const updated = { ...deliverySettings, cities: updatedCities };
     setDeliverySettings(updated);
     saveDeliverySettings(updated);
-    
-    // Push city to DB
-    await upsertDeliveryCityInSupabase(updatedCityRecord);
 
-    setIsCityModalOpen(false);
-    setEditingCity(null);
-    onShowToast(`Delivery zone saved for ${updatedCityRecord.cityName}!`);
+    if (andApplyLive) {
+      setIsCityModalOpen(false);
+      setEditingCity(null);
+      await executeApplyToWebsite(updated);
+    } else {
+      setSyncStatus('unsaved');
+      setIsCityModalOpen(false);
+      setEditingCity(null);
+      // Sync single city in Supabase
+      upsertDeliveryCityInSupabase(updatedCityRecord);
+      onShowToast(`City "${updatedCityRecord.cityName}" updated in draft! Click [APPLY TO WEBSITE] to push live.`);
+    }
   };
 
   const handleAddDeliveryNote = () => {
@@ -225,50 +429,211 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
 
       // 2. Status Filter
       let matchesStatus = true;
-      if (statusFilter !== 'all') {
-        const currentStatus = c.status || 'available';
-        matchesStatus = currentStatus === statusFilter;
+      if (statusFilter === 'available') {
+        matchesStatus = (!c.status || c.status === 'available') && c.isEnabled !== false;
+      } else if (statusFilter === 'custom_rules') {
+        matchesStatus = c.useCustomRules !== false;
+      } else if (statusFilter === 'fallback') {
+        matchesStatus = c.useCustomRules === false;
+      } else if (statusFilter === 'unavailable') {
+        matchesStatus = c.status === 'unavailable' || c.isEnabled === false;
       }
 
       return matchesSearch && matchesStatus;
     });
   }, [deliverySettings.cities, citySearch, statusFilter]);
 
+  // Live Test Calculation
+  const selectedTestCity = deliverySettings.cities.find(c => c.id === testCityId) || deliverySettings.cities[0];
+  const liveTestResult = useMemo(() => {
+    const fallbackRate = deliverySettings.globalFallbackFee ?? deliverySettings.globalDeliveryFeeAmount ?? 250;
+    const globalFree = deliverySettings.globalFreeDeliveryThreshold ?? deliverySettings.freeDeliveryThreshold;
+    return calculateCityDeliveryFee(
+      selectedTestCity,
+      testSubtotal,
+      fallbackRate,
+      globalFree,
+      deliverySettings.minDeliveryFee,
+      deliverySettings.maxDeliveryFee
+    );
+  }, [selectedTestCity, testSubtotal, deliverySettings]);
+
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-12">
       {/* Header Banner */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
         <div className="absolute -right-10 -bottom-10 w-72 h-72 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
           <div>
-            <div className="flex items-center gap-2 text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">
-              <Truck className="w-4 h-4" />
-              <span>Admin Delivery Cities & Logistics Management</span>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[11px] font-bold tracking-wide uppercase">
+                <Truck className="w-3.5 h-3.5 text-amber-400" />
+                <span>Dynamic City-Wise Delivery Fee Management</span>
+              </span>
+
+              {/* Real-time sync status pill */}
+              {syncStatus === 'unsaved' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[11px] font-bold animate-pulse">
+                  <AlertTriangle className="w-3 h-3 text-amber-400" />
+                  <span>● Unsaved Changes (Draft)</span>
+                </span>
+              )}
+              {syncStatus === 'saved' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/40 text-[11px] font-bold">
+                  <Check className="w-3 h-3 text-sky-400" />
+                  <span>✓ Saved to Draft (Ready to Apply)</span>
+                </span>
+              )}
+              {syncStatus === 'applied' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  <span>● Live on Website & Checkout ({lastAppliedTime})</span>
+                </span>
+              )}
             </div>
-            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-white">Delivery Cities & Shipping</h2>
-            <p className="text-slate-400 text-xs sm:text-sm mt-1 max-w-2xl">
-              Control nationwide destination cities, delivery availability, charges, estimated durations, and WhatsApp checkout preferences.
+
+            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-white tracking-tight">Delivery Fee Management</h2>
+            <p className="text-slate-400 text-xs sm:text-sm mt-1 max-w-2xl leading-relaxed">
+              Configure unlimited delivery cities across Pakistan with customizable base fees, minimum/maximum fee caps, optional city toggles, free shipping thresholds, and order-value slabs that calculate automatically on checkout.
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Top Admin Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2.5">
             <button
               type="button"
               onClick={handleOpenAddCityModal}
-              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-2xl flex items-center gap-2 shadow-lg transition-all"
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-2xl flex items-center gap-2 shadow-lg shadow-blue-600/20 transition-all active:scale-95"
             >
               <Plus className="w-4 h-4" />
-              <span>Add Delivery City</span>
+              <span>+ Add City</span>
             </button>
 
             <button
-              onClick={() => handleSaveGeneralSettings()}
+              type="button"
+              onClick={handleSaveChanges}
               disabled={isSaving}
-              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-2xl flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all disabled:opacity-50"
+              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold rounded-2xl flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+              title="Save local changes to draft"
             >
-              <Save className="w-4 h-4" />
-              <span>{isSaving ? 'Saving...' : 'Save Changes'}</span>
+              <Save className="w-4 h-4 text-amber-400" />
+              <span>Save Draft</span>
             </button>
+
+            <button
+              type="button"
+              onClick={handleApplyToWebsite}
+              disabled={isApplying}
+              className={`px-5 py-2.5 text-xs font-bold rounded-2xl flex items-center gap-2 shadow-lg transition-all active:scale-95 disabled:opacity-50 ${
+                syncStatus !== 'applied'
+                  ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 ring-2 ring-emerald-400/50 shadow-emerald-500/30 font-black'
+                  : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
+              }`}
+              title="Deploy all city rules and slabs directly to production database & checkout"
+            >
+              <Zap className={`w-4 h-4 ${isApplying ? 'animate-spin' : ''}`} />
+              <span>{isApplying ? 'Applying Live...' : 'Apply to Website'}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Global Fallback Fee & Storewide Thresholds Card */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <Globe className="w-5 h-5 text-amber-400" />
+            <div>
+              <h3 className="text-base font-serif font-bold text-white">Global Fallback Fee & Nationwide Rules</h3>
+              <p className="text-xs text-slate-400">
+                Applied to unconfigured cities, custom addresses, or cities with the "Optional Custom Rule" toggle turned OFF.
+              </p>
+            </div>
+          </div>
+
+          <span className="text-[11px] font-mono font-bold text-amber-300 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/25">
+            Fallback Rate: PKR {(deliverySettings.globalFallbackFee ?? deliverySettings.globalDeliveryFeeAmount ?? 250).toLocaleString()}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+          {/* Global Fallback Fee */}
+          <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1.5">
+            <label className="block font-semibold text-slate-300">
+              Default Fallback Fee (PKR) *
+            </label>
+            <input
+              type="number"
+              min={0}
+              value={deliverySettings.globalFallbackFee ?? deliverySettings.globalDeliveryFeeAmount ?? 250}
+              onChange={(e) => {
+                const val = Math.max(0, parseInt(e.target.value) || 0);
+                setDeliverySettings({ ...deliverySettings, globalFallbackFee: val, globalDeliveryFeeAmount: val });
+                setSyncStatus('unsaved');
+              }}
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+            />
+            <p className="text-[10px] text-slate-500">Charged for standard cities without custom slabs.</p>
+          </div>
+
+          {/* Storewide Free Delivery Over */}
+          <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1.5">
+            <label className="block font-semibold text-slate-300">
+              Storewide Free Shipping Over (PKR)
+            </label>
+            <input
+              type="number"
+              min={0}
+              placeholder="e.g. 50000"
+              value={deliverySettings.globalFreeDeliveryThreshold ?? deliverySettings.freeDeliveryThreshold ?? 50000}
+              onChange={(e) => {
+                const val = Math.max(0, parseInt(e.target.value) || 0);
+                setDeliverySettings({ ...deliverySettings, globalFreeDeliveryThreshold: val, freeDeliveryThreshold: val });
+                setSyncStatus('unsaved');
+              }}
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+            />
+            <p className="text-[10px] text-slate-500">Cart subtotal threshold for 100% free delivery nationwide.</p>
+          </div>
+
+          {/* Min Delivery Fee Floor */}
+          <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1.5">
+            <label className="block font-semibold text-slate-300">
+              Global Min Fee Floor (PKR)
+            </label>
+            <input
+              type="number"
+              min={0}
+              placeholder="0"
+              value={deliverySettings.minDeliveryFee ?? 0}
+              onChange={(e) => {
+                const val = Math.max(0, parseInt(e.target.value) || 0);
+                setDeliverySettings({ ...deliverySettings, minDeliveryFee: val });
+                setSyncStatus('unsaved');
+              }}
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+            />
+            <p className="text-[10px] text-slate-500">Lowest possible fee charged for any delivery.</p>
+          </div>
+
+          {/* Max Delivery Fee Cap */}
+          <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1.5">
+            <label className="block font-semibold text-slate-300">
+              Global Max Fee Cap (PKR)
+            </label>
+            <input
+              type="number"
+              min={0}
+              placeholder="5000"
+              value={deliverySettings.maxDeliveryFee ?? 5000}
+              onChange={(e) => {
+                const val = Math.max(0, parseInt(e.target.value) || 0);
+                setDeliverySettings({ ...deliverySettings, maxDeliveryFee: val });
+                setSyncStatus('unsaved');
+              }}
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+            />
+            <p className="text-[10px] text-slate-500">Ceiling cap: Fee will never exceed this amount.</p>
           </div>
         </div>
       </div>
@@ -285,8 +650,10 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
               <div className="flex items-center gap-2.5">
                 <MapPin className="w-5 h-5 text-amber-400" />
                 <div>
-                  <h3 className="text-base font-serif font-bold text-white">Delivery Cities Directory</h3>
-                  <p className="text-xs text-slate-400">Total {deliverySettings.cities.length} cities configured</p>
+                  <h3 className="text-base font-serif font-bold text-white">Configured Delivery Cities & Fee Slabs</h3>
+                  <p className="text-xs text-slate-400">
+                    Total {deliverySettings.cities.length} cities ({deliverySettings.cities.filter(c => c.useCustomRules !== false).length} with custom rules active)
+                  </p>
                 </div>
               </div>
 
@@ -335,11 +702,11 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
                 />
               </div>
 
-              <div className="flex items-center gap-1.5 text-xs">
+              <div className="flex items-center gap-1.5 text-xs overflow-x-auto pb-1 sm:pb-0">
                 <button
                   type="button"
                   onClick={() => setStatusFilter('all')}
-                  className={`px-3 py-1.5 rounded-xl font-semibold transition-all border ${
+                  className={`px-3 py-1.5 rounded-xl font-semibold transition-all border whitespace-nowrap ${
                     statusFilter === 'all'
                       ? 'bg-amber-500 text-slate-950 border-amber-400'
                       : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -350,20 +717,34 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
 
                 <button
                   type="button"
-                  onClick={() => setStatusFilter('available')}
-                  className={`px-3 py-1.5 rounded-xl font-semibold transition-all border ${
-                    statusFilter === 'available'
+                  onClick={() => setStatusFilter('custom_rules')}
+                  className={`px-3 py-1.5 rounded-xl font-semibold transition-all border whitespace-nowrap ${
+                    statusFilter === 'custom_rules'
                       ? 'bg-emerald-500 text-slate-950 border-emerald-400'
                       : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
                   }`}
+                  title="Cities with custom fee rules active"
                 >
-                  Available ({deliverySettings.cities.filter(c => (!c.status || c.status === 'available') && c.isEnabled !== false).length})
+                  Custom Slabs ({deliverySettings.cities.filter(c => c.useCustomRules !== false).length})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('fallback')}
+                  className={`px-3 py-1.5 rounded-xl font-semibold transition-all border whitespace-nowrap ${
+                    statusFilter === 'fallback'
+                      ? 'bg-sky-500 text-slate-950 border-sky-400'
+                      : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+                  }`}
+                  title="Cities set to use global fallback rate"
+                >
+                  Global Fallback ({deliverySettings.cities.filter(c => c.useCustomRules === false).length})
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setStatusFilter('unavailable')}
-                  className={`px-3 py-1.5 rounded-xl font-semibold transition-all border ${
+                  className={`px-3 py-1.5 rounded-xl font-semibold transition-all border whitespace-nowrap ${
                     statusFilter === 'unavailable'
                       ? 'bg-rose-500 text-slate-950 border-rose-400'
                       : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -374,17 +755,18 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
               </div>
             </div>
 
-            {/* TABLE VIEW: CITY | DELIVERY | FEE | TIME | STATUS | ACTIONS */}
+            {/* TABLE VIEW: CITY | ACTIVE / OPTIONAL TOGGLE | SLABS & LIMITS | CURRENT DELIVERY CONFIGURATION | TIME | ACTIONS */}
             {viewMode === 'table' ? (
               <div className="overflow-x-auto rounded-2xl border border-slate-800">
                 <table className="w-full text-left text-xs text-slate-300">
                   <thead className="bg-slate-950 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
                     <tr>
-                      <th className="p-3">City</th>
-                      <th className="p-3 text-center">Delivery</th>
-                      <th className="p-3">Fee</th>
-                      <th className="p-3">Time</th>
-                      <th className="p-3">Status</th>
+                      <th className="p-3">City Name</th>
+                      <th className="p-3 text-center">Status</th>
+                      <th className="p-3 text-center">Custom Rule</th>
+                      <th className="p-3">Delivery Slabs & Limits</th>
+                      <th className="p-3">Fee Configuration</th>
+                      <th className="p-3">Est. Time</th>
                       <th className="p-3 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -392,63 +774,139 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
                     {filteredCities.map((city) => {
                       const isDefault = deliverySettings.defaultSelectedCityId === city.id;
                       const isFree = city.freeDelivery || city.deliveryFeeType === 'free' || city.deliveryFee === 0;
+                      const hasTiers = Array.isArray(city.deliveryTiers) && city.deliveryTiers.length > 0;
+                      const useCustom = city.useCustomRules !== false;
 
                       return (
                         <tr key={city.id} className="hover:bg-slate-800/40 transition-colors">
-                          {/* CITY */}
+                          {/* CITY NAME */}
                           <td className="p-3">
                             <div className="flex items-center gap-2">
                               <span className="font-bold text-white text-sm">{city.cityName}</span>
                               {isDefault && (
-                                <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold">
+                                <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold">
                                   Default
                                 </span>
                               )}
                             </div>
                             {city.areaTown && (
-                              <p className="text-[11px] text-slate-400 font-medium truncate max-w-[180px]">
-                                {city.areaTown}
+                              <p className="text-[11px] text-slate-400 font-medium truncate max-w-[160px]">
+                                📍 {city.areaTown}
                               </p>
                             )}
                           </td>
 
-                          {/* DELIVERY */}
+                          {/* STATUS (ENABLED / DISABLED) */}
+                          <td className="p-3 text-center">
+                            <div className="flex flex-col items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCityStatus(city.id)}
+                                title={city.isEnabled !== false ? 'Click to disable' : 'Click to enable'}
+                                className="inline-flex items-center"
+                              >
+                                {city.isEnabled !== false ? (
+                                  <ToggleRight className="w-6 h-6 text-emerald-400 hover:text-emerald-300 transition-colors" />
+                                ) : (
+                                  <ToggleLeft className="w-6 h-6 text-slate-600 hover:text-slate-500 transition-colors" />
+                                )}
+                              </button>
+                              <span className={`px-2 py-0.2 rounded-full text-[9px] font-bold border ${
+                                city.isEnabled !== false && city.status !== 'unavailable'
+                                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                                  : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+                              }`}>
+                                {city.isEnabled !== false && city.status !== 'unavailable' ? 'Active' : 'Disabled'}
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* OPTIONAL CUSTOM RULES TOGGLE */}
                           <td className="p-3 text-center">
                             <button
                               type="button"
-                              onClick={() => handleToggleCityStatus(city.id)}
-                              title={city.isEnabled !== false ? 'Click to disable' : 'Click to enable'}
-                              className="inline-flex items-center"
+                              onClick={() => handleToggleCustomRules(city.id)}
+                              title={useCustom ? 'Custom rules active (click to use global fallback)' : 'Using global fallback rate (click to activate custom rules)'}
+                              className={`px-2 py-1 rounded-xl text-[10px] font-bold border transition-all inline-flex items-center gap-1 ${
+                                useCustom 
+                                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20' 
+                                  : 'bg-sky-500/10 text-sky-300 border-sky-500/30 hover:bg-sky-500/20'
+                              }`}
                             >
-                              {city.isEnabled !== false ? (
-                                <ToggleRight className="w-6 h-6 text-emerald-400 hover:text-emerald-300 transition-colors" />
-                              ) : (
-                                <ToggleLeft className="w-6 h-6 text-slate-600 hover:text-slate-500 transition-colors" />
-                              )}
+                              {useCustom ? <CheckSquare className="w-3 h-3 text-emerald-400" /> : <Square className="w-3 h-3 text-sky-400" />}
+                              <span>{useCustom ? 'Custom' : 'Fallback'}</span>
                             </button>
                           </td>
 
-                          {/* FEE */}
+                          {/* SLABS & LIMITS */}
                           <td className="p-3">
-                            <span className={`font-mono font-bold ${isFree ? 'text-emerald-400' : 'text-white'}`}>
-                              {isFree ? 'FREE' : `Rs. ${(city.deliveryFee ?? 0).toLocaleString()}`}
-                            </span>
+                            {useCustom ? (
+                              hasTiers ? (
+                                <div className="space-y-1">
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/25">
+                                    <Layers className="w-3 h-3 text-amber-400" />
+                                    <span>{city.deliveryTiers!.length} Slabs</span>
+                                  </span>
+                                  {city.freeDeliveryThreshold && (
+                                    <p className="text-[10px] text-emerald-400 font-mono">
+                                      Free over: PKR {city.freeDeliveryThreshold.toLocaleString()}
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="space-y-0.5">
+                                  <span className="text-[11px] text-slate-300 font-medium bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                                    {isFree ? 'Free Flat' : `Flat: PKR ${(city.baseFee ?? city.deliveryFee ?? 0).toLocaleString()}`}
+                                  </span>
+                                  {(city.minFee || city.maxFee) && (
+                                    <p className="text-[10px] text-slate-400 font-mono">
+                                      Limits: {city.minFee || 0} – {city.maxFee || '∞'}
+                                    </p>
+                                  )}
+                                </div>
+                              )
+                            ) : (
+                              <span className="text-[11px] text-sky-400 italic">
+                                Global Fallback Rate
+                              </span>
+                            )}
+                          </td>
+
+                          {/* CURRENT DELIVERY CONFIGURATION */}
+                          <td className="p-3">
+                            {useCustom ? (
+                              hasTiers ? (
+                                <div className="flex flex-wrap gap-1 max-w-xs">
+                                  {city.deliveryTiers!.map((tier, tIdx) => {
+                                    const tierIsFree = tier.isFree || tier.fee === 0;
+                                    return (
+                                      <span 
+                                        key={tIdx} 
+                                        className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300"
+                                      >
+                                        <span className="text-amber-400/90">{formatTierRange(tier)}:</span>
+                                        <strong className={tierIsFree ? 'text-emerald-400' : 'text-white'}>
+                                          {formatTierFee(tier)}
+                                        </strong>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <span className={`font-mono font-bold text-xs ${isFree ? 'text-emerald-400' : 'text-white'}`}>
+                                  {isFree ? 'Always FREE Delivery' : `PKR ${(city.baseFee ?? city.deliveryFee ?? 0).toLocaleString()}`}
+                                </span>
+                              )
+                            ) : (
+                              <span className="text-xs font-mono text-slate-300">
+                                PKR {(deliverySettings.globalFallbackFee ?? deliverySettings.globalDeliveryFeeAmount ?? 250).toLocaleString()} (Standard)
+                              </span>
+                            )}
                           </td>
 
                           {/* TIME */}
                           <td className="p-3">
-                            <span className="text-slate-300">{city.estimatedDays || '1–2 Days'}</span>
-                          </td>
-
-                          {/* STATUS */}
-                          <td className="p-3">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border inline-block ${
-                              city.isEnabled !== false && city.status !== 'unavailable'
-                                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-                                : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
-                            }`}>
-                              {city.isEnabled !== false && city.status !== 'unavailable' ? 'Active' : 'Disabled'}
-                            </span>
+                            <span className="text-slate-300 text-xs">{city.estimatedDays || '1–2 Days'}</span>
                           </td>
 
                           {/* ACTIONS */}
@@ -456,25 +914,28 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
                             <div className="flex items-center justify-end gap-1.5">
                               <button
                                 type="button"
+                                onClick={() => handleOpenEditCityModal(city)}
+                                title="Edit City Delivery Slabs"
+                                className="px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center gap-1 transition-all"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                                <span>Edit</span>
+                              </button>
+
+                              <button
+                                type="button"
                                 onClick={() => handleSetDefaultCity(city.id)}
                                 title={isDefault ? 'Current Default City' : 'Set as Default City'}
-                                className={`p-1.5 rounded-lg transition-colors ${isDefault ? 'text-amber-400 bg-amber-500/10' : 'text-slate-500 hover:text-amber-400'}`}
+                                className={`p-1.5 rounded-xl transition-colors ${isDefault ? 'text-amber-400 bg-amber-500/10' : 'text-slate-500 hover:text-amber-400'}`}
                               >
                                 <Star className="w-4 h-4 fill-current" />
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEditCityModal(city)}
-                                title="Edit City"
-                                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
-                              >
-                                <Edit3 className="w-4 h-4" />
-                              </button>
+
                               <button
                                 type="button"
                                 onClick={() => handleDeleteCity(city.id, city.cityName)}
                                 title="Delete City"
-                                className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition-colors"
+                                className="p-1.5 text-slate-400 hover:text-rose-400 rounded-xl hover:bg-slate-800 transition-colors"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -488,10 +949,12 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
               </div>
             ) : (
               /* CARDS GRID VIEW */
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 max-h-[550px] overflow-y-auto pr-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 max-h-[580px] overflow-y-auto pr-1">
                 {filteredCities.map((city) => {
                   const isDefault = deliverySettings.defaultSelectedCityId === city.id;
                   const isFree = city.freeDelivery || city.deliveryFeeType === 'free' || city.deliveryFee === 0;
+                  const hasTiers = Array.isArray(city.deliveryTiers) && city.deliveryTiers.length > 0;
+                  const useCustom = city.useCustomRules !== false;
 
                   return (
                     <div 
@@ -505,7 +968,7 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-serif font-bold text-white text-sm">{city.cityName}</span>
+                            <span className="font-serif font-bold text-white text-base">{city.cityName}</span>
                             {isDefault && (
                               <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 text-[9px] font-bold">
                                 Default
@@ -520,15 +983,27 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
                           )}
 
                           <p className="text-xs text-amber-400 font-medium mt-1">
-                            ⏱️ {city.estimatedDays}
+                            ⏱️ {city.estimatedDays || '1–2 Working Days'}
                           </p>
                         </div>
 
+                        {/* Top quick controls */}
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
+                            onClick={() => handleToggleCustomRules(city.id)}
+                            title={useCustom ? 'Custom rules active' : 'Using global fallback rate'}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
+                              useCustom ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                            }`}
+                          >
+                            {useCustom ? 'Custom' : 'Fallback'}
+                          </button>
+
+                          <button
+                            type="button"
                             onClick={() => handleToggleCityStatus(city.id)}
-                            title={city.isEnabled !== false ? 'Disable Delivery' : 'Enable Delivery'}
+                            title={city.isEnabled !== false ? 'Click to Disable' : 'Click to Enable'}
                             className="p-1.5 text-slate-400 hover:text-white transition-colors"
                           >
                             {city.isEnabled !== false ? (
@@ -540,35 +1015,69 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
 
                           <button
                             type="button"
-                            onClick={() => handleOpenEditCityModal(city)}
-                            className="p-1.5 text-slate-400 hover:text-amber-400 transition-colors"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-
-                          <button
-                            type="button"
                             onClick={() => handleDeleteCity(city.id, city.cityName)}
                             className="p-1.5 text-slate-400 hover:text-rose-400 transition-colors"
+                            title="Delete City"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
 
-                      {/* Status badge & Fee */}
-                      <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                          city.isEnabled !== false
-                            ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-                            : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
-                        }`}>
-                          {city.isEnabled !== false ? 'Active' : 'Disabled'}
-                        </span>
+                      {/* Delivery Slabs / Configuration Breakdown */}
+                      <div className="mt-3 pt-2.5 border-t border-slate-800/80 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            city.isEnabled !== false
+                              ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                              : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+                          }`}>
+                            {city.isEnabled !== false ? 'Active' : 'Disabled'}
+                          </span>
 
-                        <span className="font-bold text-emerald-400 font-mono">
-                          {isFree ? 'FREE DELIVERY' : `Rs. ${(city.deliveryFee ?? 0).toLocaleString()}`}
-                        </span>
+                          {useCustom ? (
+                            hasTiers ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 text-[10px] font-bold">
+                                <Layers className="w-3 h-3 text-amber-400" />
+                                <span>{city.deliveryTiers!.length} Pricing Slabs</span>
+                              </span>
+                            ) : (
+                              <span className="font-bold text-emerald-400 font-mono text-xs">
+                                {isFree ? 'FREE DELIVERY' : `Rs. ${(city.baseFee ?? city.deliveryFee ?? 0).toLocaleString()}`}
+                              </span>
+                            )
+                          ) : (
+                            <span className="text-xs font-mono text-sky-400">
+                              Global Fallback Rate
+                            </span>
+                          )}
+                        </div>
+
+                        {/* List of slabs inside card */}
+                        {useCustom && hasTiers && (
+                          <div className="p-2 rounded-xl bg-slate-900 border border-slate-800/80 space-y-1">
+                            {city.deliveryTiers!.map((t, idx) => (
+                              <div key={idx} className="flex items-center justify-between text-[11px] font-mono">
+                                <span className="text-slate-400">{formatTierRange(t)}:</span>
+                                <span className={t.isFree || t.fee === 0 ? 'text-emerald-400 font-bold' : 'text-amber-300 font-bold'}>
+                                  {formatTierFee(t)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Edit Button in Card */}
+                        <div className="pt-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditCityModal(city)}
+                            className="w-full py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>Edit City Slabs</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -578,7 +1087,7 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
 
             {filteredCities.length === 0 && (
               <div className="text-center py-10 text-slate-500 text-xs">
-                No cities found matching "{citySearch}". Click "Add Delivery City" to create one.
+                No cities found matching "{citySearch}". Click "Add City" to create one.
               </div>
             )}
           </div>
@@ -628,9 +1137,69 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
           </div>
         </div>
 
-        {/* Right 1 Column: Timings, Logistics & WhatsApp */}
+        {/* Right 1 Column: Live Test Sandbox, Timings & Logistics */}
         <div className="space-y-6">
           
+          {/* LIVE TESTBENCH / FEE CALCULATOR SANDBOX */}
+          <div className="bg-slate-900/90 border border-amber-500/30 rounded-3xl p-6 shadow-xl space-y-4">
+            <div className="flex items-center gap-2 pb-3 border-b border-slate-800">
+              <Calculator className="w-4 h-4 text-amber-400" />
+              <h3 className="text-base font-serif font-bold text-white">Live Fee Calculator Testbench</h3>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Simulate live checkout calculations instantly to verify city rules and slabs.
+            </p>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Test City</label>
+                <select
+                  value={testCityId}
+                  onChange={(e) => setTestCityId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                >
+                  {deliverySettings.cities.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.cityName} {c.useCustomRules === false ? '(Fallback Rate)' : (c.deliveryTiers && c.deliveryTiers.length > 0 ? `(${c.deliveryTiers.length} Slabs)` : `(PKR ${c.baseFee ?? c.deliveryFee ?? 0})`)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Cart Subtotal (PKR)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={500}
+                  value={testSubtotal}
+                  onChange={(e) => setTestSubtotal(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              {/* Result Preview Box */}
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 mt-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Calculated Fee:</span>
+                  <span className={`font-mono font-bold text-sm ${liveTestResult.isFree ? 'text-emerald-400' : 'text-amber-300'}`}>
+                    {liveTestResult.isFree ? 'FREE DELIVERY (Rs. 0)' : `Rs. ${liveTestResult.deliveryFee.toLocaleString()}`}
+                  </span>
+                </div>
+
+                <div className="text-[11px] text-slate-300 font-mono bg-slate-900 p-2 rounded-lg border border-slate-800">
+                  {liveTestResult.tierDescription}
+                </div>
+
+                {liveTestResult.nextFreeTierNotice && (
+                  <p className="text-[11px] text-emerald-400 font-medium">
+                    ✨ {liveTestResult.nextFreeTierNotice}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
             <h3 className="text-base font-serif font-bold text-white flex items-center gap-2 pb-3 border-b border-slate-800">
               <Clock className="w-4 h-4 text-emerald-400" />
@@ -738,7 +1307,7 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
 
             <button
               type="button"
-              onClick={() => handleSaveGeneralSettings()}
+              onClick={() => handleSaveChanges()}
               disabled={isSaving}
               className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-2xl transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 mt-3 disabled:opacity-50"
             >
@@ -756,7 +1325,7 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
       {/* ======================================================== */}
       {isCityModalOpen && editingCity && (
         <div className="fixed inset-0 z-[110] flex justify-center items-start sm:items-center p-3 sm:p-6 bg-black/80 backdrop-blur-sm animate-fadeIn overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg my-auto p-6 sm:p-7 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-xl my-auto p-6 sm:p-7 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <h3 className="text-lg font-serif font-bold text-white flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-amber-400" />
@@ -771,47 +1340,69 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
             </div>
 
             <form onSubmit={handleSaveCity} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  City Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Chiniot, Lahore, Faisalabad, Jhang..."
-                  value={editingCity.cityName}
-                  onChange={(e) => setEditingCity({ ...editingCity, cityName: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    City Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Chiniot, Lahore, Faisalabad, Jhang..."
+                    value={editingCity.cityName}
+                    onChange={(e) => setEditingCity({ ...editingCity, cityName: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Specific Area / Town / Tehsil (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Chenab Nagar, Bhowana, Lalian..."
+                    value={editingCity.areaTown || ''}
+                    onChange={(e) => setEditingCity({ ...editingCity, areaTown: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Specific Area / Town / Neighborhood (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Chenab Nagar, Bhowana, Lalian..."
-                  value={editingCity.areaTown || ''}
-                  onChange={(e) => setEditingCity({ ...editingCity, areaTown: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
-                />
-              </div>
+              {/* Delivery Availability Status & Custom Rules Toggle */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Delivery Availability Status
+                  </label>
+                  <select
+                    value={editingCity.status || 'available'}
+                    onChange={(e) => setEditingCity({ ...editingCity, status: e.target.value as any })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="available">✅ Active & Available</option>
+                    <option value="contact_to_confirm">⚠️ Contact to Confirm</option>
+                    <option value="unavailable">❌ Disabled / Unavailable</option>
+                  </select>
+                </div>
 
-              {/* Delivery Availability Status */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Delivery Availability Status
-                </label>
-                <select
-                  value={editingCity.status || 'available'}
-                  onChange={(e) => setEditingCity({ ...editingCity, status: e.target.value as any })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
-                >
-                  <option value="available">✅ Active & Available</option>
-                  <option value="contact_to_confirm">⚠️ Contact to Confirm</option>
-                  <option value="unavailable">❌ Disabled / Unavailable</option>
-                </select>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Custom City Rules Toggle
+                  </label>
+                  <select
+                    value={editingCity.useCustomRules !== false ? 'custom' : 'fallback'}
+                    onChange={(e) => setEditingCity({ 
+                      ...editingCity, 
+                      useCustomRules: e.target.value === 'custom',
+                      isOptional: e.target.value !== 'custom'
+                    })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="custom">🎯 Custom City Fee Rules (Active)</option>
+                    <option value="fallback">🌐 Use Global Fallback Fee</option>
+                  </select>
+                </div>
               </div>
 
               {/* Estimated Delivery Time & Fee Type */}
@@ -833,34 +1424,335 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
                 {/* Delivery Fee Type */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Delivery Fee Mode
+                    Delivery Fee Calculation Mode
                   </label>
                   <select
-                    value={editingCity.deliveryFeeType || (editingCity.deliveryFee === 0 ? 'free' : 'fixed')}
-                    onChange={(e) => setEditingCity({ 
-                      ...editingCity, 
-                      deliveryFeeType: e.target.value as any,
-                      freeDelivery: e.target.value === 'free'
-                    })}
+                    value={editingCity.deliveryFeeType || (editingCity.deliveryTiers && editingCity.deliveryTiers.length > 0 ? 'tiered' : (editingCity.deliveryFee === 0 ? 'free' : 'fixed'))}
+                    onChange={(e) => {
+                      const mode = e.target.value as any;
+                      const hasTiers = editingCity.deliveryTiers && editingCity.deliveryTiers.length > 0;
+                      setEditingCity({ 
+                        ...editingCity, 
+                        deliveryFeeType: mode,
+                        freeDelivery: mode === 'free',
+                        deliveryTiers: mode === 'tiered' && !hasTiers 
+                          ? generateDefaultCityTiers(editingCity.cityName || 'City')
+                          : editingCity.deliveryTiers
+                      });
+                    }}
                     className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
                   >
-                    <option value="free">🎉 Free Delivery</option>
-                    <option value="fixed">💰 Fixed Amount (PKR)</option>
+                    <option value="tiered">🎯 Order-Value Tiered Slabs</option>
+                    <option value="fixed">💰 Base / Flat Amount (PKR)</option>
+                    <option value="free">🎉 Always Free Delivery</option>
                     <option value="contact">📞 Contact Us for Fee</option>
                   </select>
                 </div>
               </div>
 
-              {editingCity.deliveryFeeType === 'fixed' && (
+              {/* City Limits: Min Fee Floor, Max Fee Cap, Free Delivery Threshold */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Delivery Fee Amount (PKR)
+                    Min Fee (Floor PKR)
                   </label>
                   <input
                     type="number"
                     min={0}
-                    value={editingCity.deliveryFee ?? 0}
-                    onChange={(e) => setEditingCity({ ...editingCity, deliveryFee: Math.max(0, parseInt(e.target.value) || 0) })}
+                    placeholder="0"
+                    value={editingCity.minFee ?? 0}
+                    onChange={(e) => setEditingCity({ ...editingCity, minFee: Math.max(0, parseInt(e.target.value) || 0) })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Max Fee (Cap PKR)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="5000"
+                    value={editingCity.maxFee ?? 5000}
+                    onChange={(e) => setEditingCity({ ...editingCity, maxFee: Math.max(0, parseInt(e.target.value) || 0) })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Free Delivery Over (PKR)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="e.g. 10000"
+                    value={editingCity.freeDeliveryThreshold ?? ''}
+                    onChange={(e) => setEditingCity({ 
+                      ...editingCity, 
+                      freeDeliveryThreshold: e.target.value ? Math.max(0, parseInt(e.target.value) || 0) : undefined 
+                    })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* TIERED DELIVERY PRICING BUILDER */}
+              {editingCity.deliveryFeeType === 'tiered' && (
+                <div className="p-4 rounded-2xl bg-slate-950 border border-amber-500/30 space-y-3.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                        <Layers className="w-4 h-4 text-amber-400" />
+                        <span>Order-Value Delivery Pricing Tiers</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Define automatic delivery fee rules for {editingCity.cityName || 'this city'} based on customer's cart subtotal.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleLoadDefaultTiers}
+                        title="Load standard 0-5k (200), 5k-10k (100), 10k+ (Free) rules"
+                        className="px-2.5 py-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl transition-colors flex items-center gap-1"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>Standard Template</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleAddTier}
+                        className="px-2.5 py-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl transition-colors flex items-center gap-1"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Add Tier</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Validation Error/Warning Card */}
+                  {!tierValidation.isValid && (
+                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                        <span>Tier Configuration Conflicts Detected:</span>
+                      </div>
+                      <ul className="list-disc list-inside space-y-0.5 text-[11px] pl-1">
+                        {tierValidation.errors.map((err, i) => (
+                          <li key={i}>{err}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {tierValidation.warnings.length > 0 && tierValidation.isValid && (
+                    <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] space-y-0.5">
+                      {tierValidation.warnings.map((warn, i) => (
+                        <p key={i} className="flex items-center gap-1">
+                          <span>⚠️</span> <span>{warn}</span>
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Tiers List */}
+                  <div className="space-y-2.5">
+                    {(!editingCity.deliveryTiers || editingCity.deliveryTiers.length === 0) ? (
+                      <div className="text-center py-6 border border-dashed border-slate-800 rounded-xl text-slate-500 text-xs">
+                        <p>No pricing tiers defined for this city yet.</p>
+                        <button
+                          type="button"
+                          onClick={handleLoadDefaultTiers}
+                          className="mt-2 text-amber-400 underline hover:text-amber-300 font-bold"
+                        >
+                          Click here to load standard 3-tier rules
+                        </button>
+                      </div>
+                    ) : (
+                      editingCity.deliveryTiers.map((tier, idx) => {
+                        const isNoUpperLimit = tier.maxAmount === null || tier.maxAmount === undefined;
+                        const isFree = tier.isFree || tier.fee === 0;
+
+                        return (
+                          <div 
+                            key={tier.id || `tier-${idx}`} 
+                            className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2.5"
+                          >
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-white flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-full bg-slate-800 text-amber-400 flex items-center justify-center text-[10px] font-mono">
+                                  {idx + 1}
+                                </span>
+                                <span>Tier #{idx + 1}</span>
+                                <span className="text-[10px] text-slate-400 font-mono bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                                  {formatTierRange(tier)} → <strong className={isFree ? 'text-emerald-400' : 'text-amber-300'}>{formatTierFee(tier)}</strong>
+                                </span>
+                              </span>
+
+                              <div className="flex items-center gap-1">
+                                {idx > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveTier(idx, 'up')}
+                                    title="Move tier up"
+                                    className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800"
+                                  >
+                                    <ArrowUp className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                {idx < (editingCity.deliveryTiers?.length || 0) - 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveTier(idx, 'down')}
+                                    title="Move tier down"
+                                    className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800"
+                                  >
+                                    <ArrowDown className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteTier(idx)}
+                                  title="Delete this tier"
+                                  className="p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-slate-800 transition-colors"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Inputs Row */}
+                            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs">
+                              {/* Min Amount */}
+                              <div className="sm:col-span-4">
+                                <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">
+                                  Min Cart (PKR)
+                                </label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={tier.minAmount}
+                                  onChange={(e) => handleUpdateTier(idx, { minAmount: Math.max(0, parseInt(e.target.value) || 0) })}
+                                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-mono focus:border-amber-500 focus:outline-none"
+                                />
+                              </div>
+
+                              {/* Max Amount */}
+                              <div className="sm:col-span-4">
+                                <div className="flex items-center justify-between mb-0.5">
+                                  <label className="text-[10px] font-semibold text-slate-400">
+                                    Max Cart (PKR)
+                                  </label>
+                                  <label className="flex items-center gap-1 cursor-pointer text-[10px] text-amber-400 font-bold">
+                                    <input
+                                      type="checkbox"
+                                      checked={isNoUpperLimit}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          handleUpdateTier(idx, { maxAmount: null });
+                                        } else {
+                                          handleUpdateTier(idx, { maxAmount: tier.minAmount + 4999 });
+                                        }
+                                      }}
+                                      className="rounded bg-slate-800 border-slate-700 text-amber-500 focus:ring-0"
+                                    />
+                                    <span>∞ No Max</span>
+                                  </label>
+                                </div>
+                                <input
+                                  type="number"
+                                  min={tier.minAmount}
+                                  disabled={isNoUpperLimit}
+                                  value={isNoUpperLimit ? '' : (tier.maxAmount ?? '')}
+                                  placeholder={isNoUpperLimit ? '∞ (Above / No Max)' : 'e.g. 4999'}
+                                  onChange={(e) => handleUpdateTier(idx, { 
+                                    maxAmount: e.target.value === '' ? null : Math.max(0, parseInt(e.target.value) || 0) 
+                                  })}
+                                  className={`w-full bg-slate-950 border rounded-xl px-2.5 py-1.5 text-xs font-mono focus:outline-none ${
+                                    isNoUpperLimit 
+                                      ? 'border-slate-800 text-slate-500 italic bg-slate-950/50' 
+                                      : 'border-slate-700 text-white focus:border-amber-500'
+                                  }`}
+                                />
+                              </div>
+
+                              {/* Delivery Fee */}
+                              <div className="sm:col-span-4">
+                                <div className="flex items-center justify-between mb-0.5">
+                                  <label className="text-[10px] font-semibold text-slate-400">
+                                    Delivery Fee
+                                  </label>
+                                  <label className="flex items-center gap-1 cursor-pointer text-[10px] text-emerald-400 font-bold">
+                                    <input
+                                      type="checkbox"
+                                      checked={isFree}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          handleUpdateTier(idx, { fee: 0, isFree: true });
+                                        } else {
+                                          handleUpdateTier(idx, { fee: 200, isFree: false });
+                                        }
+                                      }}
+                                      className="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0"
+                                    />
+                                    <span>Free</span>
+                                  </label>
+                                </div>
+                                <div className="relative">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    disabled={isFree}
+                                    value={isFree ? 0 : tier.fee}
+                                    onChange={(e) => handleUpdateTier(idx, { 
+                                      fee: Math.max(0, parseInt(e.target.value) || 0),
+                                      isFree: (parseInt(e.target.value) || 0) === 0
+                                    })}
+                                    className={`w-full bg-slate-950 border rounded-xl px-2.5 py-1.5 text-xs font-mono focus:outline-none ${
+                                      isFree 
+                                        ? 'border-emerald-500/40 text-emerald-400 font-bold bg-emerald-950/20' 
+                                        : 'border-slate-700 text-white focus:border-amber-500'
+                                    }`}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Optional Tier Label / Description */}
+                            <div>
+                              <input
+                                type="text"
+                                placeholder="Tier Label (optional, e.g. Standard Delivery, Free Delivery on 10k+)"
+                                value={tier.label || ''}
+                                onChange={(e) => handleUpdateTier(idx, { label: e.target.value })}
+                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-[11px] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {editingCity.deliveryFeeType === 'fixed' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Base / Flat Delivery Fee (PKR)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={editingCity.baseFee ?? editingCity.deliveryFee ?? 0}
+                    onChange={(e) => {
+                      const val = Math.max(0, parseInt(e.target.value) || 0);
+                      setEditingCity({ ...editingCity, baseFee: val, deliveryFee: val });
+                    }}
                     className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
                   />
                 </div>
@@ -953,19 +1845,29 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
                 </label>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-2.5 pt-4 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsCityModalOpen(false)}
-                  className="px-4 py-2 text-xs text-slate-400 hover:text-white"
+                  className="px-4 py-2.5 text-xs text-slate-400 hover:text-white rounded-2xl hover:bg-slate-800 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-2xl shadow-lg transition-all"
+                  onClick={(e) => handleSaveCity(e, false)}
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold rounded-2xl transition-all"
                 >
-                  Save Delivery City
+                  Save to Draft
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => handleSaveCity(e, true)}
+                  disabled={isApplying}
+                  className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold rounded-2xl shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>{isApplying ? 'Applying...' : 'Save & Apply Live'}</span>
                 </button>
               </div>
             </form>

@@ -89,6 +89,53 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
+  // =========================================================
+  // CANONICAL DOMAIN & ZERO-LOOP 301 REDIRECTION MIDDLEWARE
+  // Canonical Production URL: https://zafarsarwartraders.shop/
+  //
+  // Intercepts:
+  // - https://zafarsarwartraders.com/* -> 301 https://zafarsarwartraders.shop/*
+  // - http://zafarsarwartraders.com/*  -> 301 https://zafarsarwartraders.shop/*
+  // - https://www.zafarsarwartraders.com/* -> 301 https://zafarsarwartraders.shop/*
+  // - http://www.zafarsarwartraders.com/*  -> 301 https://zafarsarwartraders.shop/*
+  // - https://www.zafarsarwartraders.shop/* -> 301 https://zafarsarwartraders.shop/*
+  // - http://zafarsarwartraders.shop/*  -> 301 https://zafarsarwartraders.shop/*
+  //
+  // Guarantees:
+  // - Single 301 hop directly to the canonical production URL
+  // - Preserves pathname, search query parameters, and hashes
+  // - Eliminates redirect chains and redirect loops
+  // - Transparently passes local development and container preview URLs
+  // =========================================================
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const rawHost = (req.headers["x-forwarded-host"] as string) || req.headers.host || "";
+    const host = rawHost.split(",")[0].trim().split(":")[0].toLowerCase();
+    const proto = ((req.headers["x-forwarded-proto"] as string) || req.protocol || "http").toLowerCase();
+
+    // Preserve preview containers and local test servers without redirection
+    const isDevOrPreview = !host ||
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host.endsWith(".run.app") ||
+      host.endsWith(".aistudio.google");
+
+    if (!isDevOrPreview) {
+      const isExactCanonical = host === "zafarsarwartraders.shop";
+      const isHttps = proto === "https";
+
+      // Match any domain variation of zafarsarwartraders (such as .com, www.zafarsarwartraders.shop, etc.)
+      const isAlternateDomain = host.includes("zafarsarwartraders") && !isExactCanonical;
+
+      if (isAlternateDomain || (isExactCanonical && !isHttps)) {
+        const canonicalUrl = `https://zafarsarwartraders.shop${req.originalUrl || "/"}`;
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        return res.redirect(301, canonicalUrl);
+      }
+    }
+
+    next();
+  });
+
   // Middleware to catch and format JSON parse errors
   app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (err instanceof SyntaxError && ("body" in err || "status" in err || (err.message && err.message.includes("JSON")))) {
@@ -180,11 +227,11 @@ async function startServer() {
 
   // Production Sitemap Endpoint for Google Search Console & Search Engines
   app.get("/sitemap.xml", (req, res) => {
-    // Resolve canonical base domain dynamically to match the exact host requested
     const rawHost = (req.headers["x-forwarded-host"] as string) || req.headers.host || "zafarsarwartraders.shop";
     const host = rawHost.split(",")[0].trim().split(":")[0].toLowerCase();
-    const canonicalOrigin = host.includes("zafarsarwartraders")
-      ? `https://${host}`
+    const isLocalOrPreview = host === "localhost" || host === "127.0.0.1" || host.endsWith(".run.app") || host.endsWith(".aistudio.google");
+    const canonicalOrigin = isLocalOrPreview
+      ? `${(req.headers["x-forwarded-proto"] as string) || "http"}://${host}`
       : "https://zafarsarwartraders.shop";
 
     const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -208,8 +255,9 @@ async function startServer() {
   app.get("/robots.txt", (req, res) => {
     const rawHost = (req.headers["x-forwarded-host"] as string) || req.headers.host || "zafarsarwartraders.shop";
     const host = rawHost.split(",")[0].trim().split(":")[0].toLowerCase();
-    const canonicalOrigin = host.includes("zafarsarwartraders")
-      ? `https://${host}`
+    const isLocalOrPreview = host === "localhost" || host === "127.0.0.1" || host.endsWith(".run.app") || host.endsWith(".aistudio.google");
+    const canonicalOrigin = isLocalOrPreview
+      ? `${(req.headers["x-forwarded-proto"] as string) || "http"}://${host}`
       : "https://zafarsarwartraders.shop";
 
     const robotsTxt = `# Robots.txt for Zafar Sarwar Traders
@@ -2594,7 +2642,8 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
         same_day_available: Boolean(c.isSameDayAvailable ?? c.same_day_available),
         next_day_available: Boolean(c.isNextDayAvailable ?? c.next_day_available),
         display_order: c.displayOrder ?? c.display_order ?? 0,
-        notes: c.notes || null
+        notes: c.notes || null,
+        delivery_tiers: c.deliveryTiers || c.delivery_tiers || null
       }));
 
       const result = await robustUpsert("delivery_cities", payloads, { onConflict: "id" });

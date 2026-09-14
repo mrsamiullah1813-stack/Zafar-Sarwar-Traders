@@ -329,9 +329,65 @@ export const defaultDeliverySettings: DeliverySettings = {
     '✓ Contact our support team on WhatsApp anytime for live tracking and special delivery arrangements.'
   ],
   cities: [
-    { id: 'city-chiniot', cityName: 'Chiniot', areaTown: 'Chiniot City & Tehsil', status: 'available', estimatedDays: 'Same Day / 1 Day', deliveryFee: 0, deliveryFeeType: 'free', deliveryFeeCustomText: 'Free Local Delivery', isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 1, notes: 'Express direct delivery from our Chiniot showroom.', coverageAreas: ['Chiniot City', 'Katchery Road', 'Jhang Road', 'Faisalabad Road', 'Chenab Nagar / Rabwah', 'Bhowana', 'Lalian'] },
-    { id: 'city-bhowana', cityName: 'Bhowana', areaTown: 'Bhowana Tehsil & Surrounding Area', status: 'available', estimatedDays: '1 Working Day', deliveryFee: 200, deliveryFeeType: 'fixed', isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 2, notes: 'Direct showroom vehicle route.' },
-    { id: 'city-lalian', cityName: 'Lalian', areaTown: 'Lalian Tehsil & Surrounding Area', status: 'available', estimatedDays: '1 Working Day', deliveryFee: 200, deliveryFeeType: 'fixed', isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 3, notes: 'Direct showroom vehicle route.' },
+    { 
+      id: 'city-chiniot', 
+      cityName: 'Chiniot', 
+      areaTown: 'Chiniot City & Tehsil', 
+      status: 'available', 
+      estimatedDays: 'Same Day / 1 Day', 
+      deliveryFee: 200, 
+      deliveryFeeType: 'tiered', 
+      deliveryFeeCustomText: 'Tiered Order Delivery', 
+      isSameDayAvailable: true, 
+      isNextDayAvailable: true, 
+      isEnabled: true, 
+      displayOrder: 1, 
+      notes: 'Express direct delivery from our Chiniot showroom.', 
+      coverageAreas: ['Chiniot City', 'Katchery Road', 'Jhang Road', 'Faisalabad Road', 'Chenab Nagar / Rabwah', 'Bhowana', 'Lalian'],
+      deliveryTiers: [
+        { id: 'tier-chiniot-1', minAmount: 0, maxAmount: 4999, fee: 200, isFree: false, label: 'Standard Local Delivery' },
+        { id: 'tier-chiniot-2', minAmount: 5000, maxAmount: 9999, fee: 100, isFree: false, label: 'Order Value Discount' },
+        { id: 'tier-chiniot-3', minAmount: 10000, maxAmount: null, fee: 0, isFree: true, label: 'Free Delivery (PKR 10,000+)' }
+      ]
+    },
+    { 
+      id: 'city-bhowana', 
+      cityName: 'Bhowana', 
+      areaTown: 'Bhowana Tehsil & Surrounding Area', 
+      status: 'available', 
+      estimatedDays: '1 Working Day', 
+      deliveryFee: 250, 
+      deliveryFeeType: 'tiered', 
+      isSameDayAvailable: true, 
+      isNextDayAvailable: true, 
+      isEnabled: true, 
+      displayOrder: 2, 
+      notes: 'Direct showroom vehicle route.',
+      deliveryTiers: [
+        { id: 'tier-bhowana-1', minAmount: 0, maxAmount: 4999, fee: 250, isFree: false, label: 'Standard Delivery' },
+        { id: 'tier-bhowana-2', minAmount: 5000, maxAmount: 9999, fee: 150, isFree: false, label: 'Order Value Discount' },
+        { id: 'tier-bhowana-3', minAmount: 10000, maxAmount: null, fee: 0, isFree: true, label: 'Free Delivery (PKR 10,000+)' }
+      ]
+    },
+    { 
+      id: 'city-lalian', 
+      cityName: 'Lalian', 
+      areaTown: 'Lalian Tehsil & Surrounding Area', 
+      status: 'available', 
+      estimatedDays: '1 Working Day', 
+      deliveryFee: 250, 
+      deliveryFeeType: 'tiered', 
+      isSameDayAvailable: true, 
+      isNextDayAvailable: true, 
+      isEnabled: true, 
+      displayOrder: 3, 
+      notes: 'Direct showroom vehicle route.',
+      deliveryTiers: [
+        { id: 'tier-lalian-1', minAmount: 0, maxAmount: 4999, fee: 250, isFree: false, label: 'Standard Delivery' },
+        { id: 'tier-lalian-2', minAmount: 5000, maxAmount: 9999, fee: 150, isFree: false, label: 'Order Value Discount' },
+        { id: 'tier-lalian-3', minAmount: 10000, maxAmount: null, fee: 0, isFree: true, label: 'Free Delivery (PKR 10,000+)' }
+      ]
+    },
     { id: 'city-faisalabad', cityName: 'Faisalabad', areaTown: 'All Towns & Industrial Zones', status: 'available', estimatedDays: '1–2 Working Days', deliveryFee: 300, deliveryFeeType: 'fixed', isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 4, notes: 'Daily delivery shuttle available.' },
     { id: 'city-jhang', cityName: 'Jhang', areaTown: 'Jhang City, Saddar & Shorkot', status: 'available', estimatedDays: '1–2 Working Days', deliveryFee: 250, deliveryFeeType: 'fixed', isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 5, notes: 'Showroom delivery route.' },
     { id: 'city-sargodha', cityName: 'Sargodha', areaTown: 'Sargodha City, Cantt & Satellite Town', status: 'available', estimatedDays: '1–2 Working Days', deliveryFee: 250, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 6, notes: 'Direct truck delivery route.' },
@@ -1505,7 +1561,27 @@ export const loadDeliverySettings = (): DeliverySettings => {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.DELIVERY_SETTINGS);
     if (saved !== null) {
-      return { ...defaultDeliverySettings, ...JSON.parse(saved) };
+      const parsed = JSON.parse(saved);
+      // Merge cities to ensure default order-value tiers are populated if not previously set
+      const mergedCities = (parsed.cities || defaultDeliverySettings.cities).map((savedCity: any) => {
+        const defaultMatch = defaultDeliverySettings.cities.find(
+          dc => dc.id === savedCity.id || dc.cityName?.toLowerCase() === savedCity.cityName?.toLowerCase()
+        );
+        if ((!savedCity.deliveryTiers || savedCity.deliveryTiers.length === 0) && defaultMatch?.deliveryTiers) {
+          return {
+            ...savedCity,
+            deliveryFeeType: savedCity.deliveryFeeType || 'tiered',
+            deliveryTiers: defaultMatch.deliveryTiers
+          };
+        }
+        return savedCity;
+      });
+
+      return {
+        ...defaultDeliverySettings,
+        ...parsed,
+        cities: mergedCities
+      };
     }
   } catch (e) {
     console.error('Error loading delivery settings', e);
@@ -1956,13 +2032,40 @@ export const syncWithServerCMS = async (callbacks: {
       }
     }
 
-    // Delivery Cities
-    if (citiesResult.status === 'fulfilled' && citiesResult.value && citiesResult.value.length > 0) {
-      const currentDeliverySettings = loadDeliverySettings();
-      const updatedDeliverySettings = { ...currentDeliverySettings, cities: citiesResult.value };
-      if (callbacks.setDeliverySettings) callbacks.setDeliverySettings(updatedDeliverySettings);
-      safeSetLocalStorage(STORAGE_KEYS.DELIVERY_SETTINGS, updatedDeliverySettings);
+    // Delivery Settings & Cities
+    const currentDeliverySettings = loadDeliverySettings();
+    let updatedDeliverySettings = { ...currentDeliverySettings };
+
+    if (deliveryResult.status === 'fulfilled' && deliveryResult.value && typeof deliveryResult.value === 'object') {
+      const dbDeliverySettings = deliveryResult.value as DeliverySettings;
+      updatedDeliverySettings = {
+        ...updatedDeliverySettings,
+        ...dbDeliverySettings,
+        cities: Array.isArray(dbDeliverySettings.cities) && dbDeliverySettings.cities.length > 0
+          ? dbDeliverySettings.cities
+          : updatedDeliverySettings.cities
+      };
     }
+
+    if (citiesResult.status === 'fulfilled' && citiesResult.value && citiesResult.value.length > 0) {
+      // Merge cities while preserving city deliveryTiers if present in deliveryResult or current settings
+      const mergedCities = citiesResult.value.map(dbCity => {
+        const existing = updatedDeliverySettings.cities?.find(c => c.id === dbCity.id || c.cityName?.toLowerCase() === dbCity.cityName?.toLowerCase());
+        return {
+          ...dbCity,
+          deliveryTiers: (dbCity.deliveryTiers && dbCity.deliveryTiers.length > 0)
+            ? dbCity.deliveryTiers
+            : (existing?.deliveryTiers || undefined)
+        };
+      });
+      updatedDeliverySettings.cities = mergedCities;
+    }
+
+    if (callbacks.setDeliverySettings) callbacks.setDeliverySettings(updatedDeliverySettings);
+    safeSetLocalStorage(STORAGE_KEYS.DELIVERY_SETTINGS, updatedDeliverySettings);
+    try {
+      window.dispatchEvent(new CustomEvent('zst_delivery_settings_updated', { detail: updatedDeliverySettings }));
+    } catch {}
 
     // Announcements
     if (announcementResult.status === 'fulfilled' && announcementResult.value && typeof announcementResult.value === 'object') {

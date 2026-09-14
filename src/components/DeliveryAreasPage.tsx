@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { DeliverySettings, CityDeliveryInfo } from '../types';
 import { loadDeliverySettings } from '../utils/storage';
+import { formatTierRange, formatTierFee } from '../utils/deliveryFeeCalculator';
 
 interface DeliveryAreasPageProps {
   onBackToHome?: () => void;
@@ -66,7 +67,14 @@ export const DeliveryAreasPage: React.FC<DeliveryAreasPageProps> = ({ onBackToHo
     if (customAddressInquiry.trim()) msg += `🏠 Full Address: ${customAddressInquiry.trim()}\n`;
     if (city) {
       msg += `🚚 Estimated Timeline: ${city.estimatedDays}\n`;
-      msg += `💰 Quoted Delivery Fee: ${city.deliveryFee === 0 ? 'FREE' : `PKR ${city.deliveryFee}`}\n`;
+      if (city.deliveryTiers && city.deliveryTiers.length > 0) {
+        msg += `💰 Order-Value Delivery Rates:\n`;
+        city.deliveryTiers.forEach(t => {
+          msg += `   • ${formatTierRange(t)}: ${formatTierFee(t)}\n`;
+        });
+      } else {
+        msg += `💰 Quoted Delivery Fee: ${city.deliveryFee === 0 ? 'FREE' : `PKR ${city.deliveryFee}`}\n`;
+      }
     }
     msg += `\nPlease provide shipping details and available courier/truck dispatch schedule. Thank you!`;
 
@@ -232,11 +240,33 @@ export const DeliveryAreasPage: React.FC<DeliveryAreasPageProps> = ({ onBackToHo
 
                     <div>
                       <span className="text-[10px] text-slate-400 block">Delivery Fee:</span>
-                      <span className="font-bold text-emerald-400 font-mono mt-0.5 block">
-                        {city.deliveryFee === 0 ? 'FREE' : `PKR ${(city.deliveryFee ?? 0).toLocaleString()}`}
-                      </span>
+                      {city.deliveryTiers && city.deliveryTiers.length > 0 ? (
+                        <span className="font-bold text-amber-400 text-[11px] mt-0.5 block">
+                          Order-Based Tiers
+                        </span>
+                      ) : (
+                        <span className="font-bold text-emerald-400 font-mono mt-0.5 block">
+                          {city.deliveryFee === 0 ? 'FREE' : `PKR ${(city.deliveryFee ?? 0).toLocaleString()}`}
+                        </span>
+                      )}
                     </div>
                   </div>
+
+                  {/* Tier Pills if city has tiered pricing */}
+                  {city.deliveryTiers && city.deliveryTiers.length > 0 && (
+                    <div className="mt-2.5 pt-2 border-t border-slate-800/80 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Order Value Rates:
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {city.deliveryTiers.map((t, idx) => (
+                          <span key={t.id || idx} className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-medium border border-slate-700/70">
+                            {formatTierRange(t)} → <strong className={t.isFree || t.fee === 0 ? 'text-emerald-400' : 'text-amber-300'}>{formatTierFee(t)}</strong>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {city.notes && (
                     <p className="text-[11px] text-slate-400 mt-2.5 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/80">

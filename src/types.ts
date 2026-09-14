@@ -920,6 +920,15 @@ export interface CheckoutSettings {
   postOrderWhatsappNumber?: string;
 }
 
+export interface DeliveryFeeTier {
+  id: string;
+  minAmount: number; // e.g. 0 PKR
+  maxAmount: number | null; // e.g. 4999 PKR, or null for "No Limit / Above"
+  fee: number; // e.g. 200 PKR
+  isFree?: boolean; // If true or fee === 0, delivery is free
+  label?: string; // Optional custom tier title, e.g. "Standard Tier", "High-Value Order Tier"
+}
+
 export interface CityDeliveryInfo {
   id: string;
   cityName: string;
@@ -927,17 +936,24 @@ export interface CityDeliveryInfo {
   status?: 'available' | 'unavailable' | 'contact_to_confirm'; // Availability status
   estimatedDays: string;
   deliveryFee: number;
-  deliveryFeeType?: 'free' | 'fixed' | 'contact' | 'custom';
+  baseFee?: number; // Base / Flat delivery fee
+  minFee?: number; // Minimum delivery fee (floor price)
+  maxFee?: number; // Maximum delivery fee (capped price ceiling)
+  deliveryFeeType?: 'free' | 'fixed' | 'contact' | 'custom' | 'tiered';
   deliveryFeeCustomText?: string;
   freeDelivery?: boolean;
+  freeDeliveryThreshold?: number; // Free shipping over specified order amount for this city
   minOrderAmount?: number;
   additionalAddress?: string;
   isSameDayAvailable?: boolean;
   isNextDayAvailable?: boolean;
-  isEnabled: boolean;
+  isEnabled: boolean; // Master active / inactive status
+  isOptional?: boolean; // Optional City Activation Toggle: When ON, custom city rules apply; when OFF/optional, falls back to default global rate
+  useCustomRules?: boolean; // Explicit toggle: whether to use custom city rules or global fallback
   displayOrder?: number;
   notes?: string;
   coverageAreas?: string[]; // Multiple specific neighborhoods or towns
+  deliveryTiers?: DeliveryFeeTier[]; // Unlimited city-specific order-value pricing tiers
 }
 
 export interface DeliverySettings {
@@ -968,8 +984,13 @@ export interface DeliverySettings {
   deliveryNotes?: string[];
   cities: CityDeliveryInfo[];
   defaultDeliveryFee?: number;
+  globalFallbackFee?: number; // Default delivery fee setting for cities without explicit custom rules configured
+  minDeliveryFee?: number; // Global minimum fee floor
+  maxDeliveryFee?: number; // Global maximum fee cap
   defaultEstimatedDays?: string;
   freeDeliveryThreshold?: number;
+  globalFreeDeliveryThreshold?: number;
+  enableFreeDeliveryThreshold?: boolean;
   enableCityOverrides?: boolean;
   expressDeliveryFee?: number;
   enableExpressDelivery?: boolean;

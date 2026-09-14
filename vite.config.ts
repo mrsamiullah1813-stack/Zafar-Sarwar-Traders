@@ -48,6 +48,7 @@ export default defineConfig(({ mode }) => {
     server: {
       hmr: false,
       watch: process.env.DISABLE_HMR === 'true' ? null : undefined,
+      allowedHosts: true,
     },
   };
 });

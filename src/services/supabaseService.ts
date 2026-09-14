@@ -776,7 +776,8 @@ export function mapDbDeliveryCity(r: any, idx: number): CityDeliveryInfo {
     isNextDayAvailable: Boolean(r.next_day_available ?? r.isNextDayAvailable),
     displayOrder: Number(r.display_order ?? idx),
     notes: r.notes || undefined,
-    coverageAreas: Array.isArray(r.coverage_areas) ? r.coverage_areas : (Array.isArray(r.coverageAreas) ? r.coverageAreas : undefined)
+    coverageAreas: Array.isArray(r.coverage_areas) ? r.coverage_areas : (Array.isArray(r.coverageAreas) ? r.coverageAreas : undefined),
+    deliveryTiers: Array.isArray(r.delivery_tiers) ? r.delivery_tiers : (Array.isArray(r.deliveryTiers) ? r.deliveryTiers : undefined)
   };
 }
 

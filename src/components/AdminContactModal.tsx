@@ -52,7 +52,7 @@ export const AdminContactModal: React.FC<AdminContactModalProps> = ({
       setDepartment('Sales & Customer Care');
       setMobileNumber('+92 310 8002863');
       setWhatsappNumber('+92 310 8002863');
-      setEmail('info@zafarsarwartraders.com');
+      setEmail('info@zafarsarwartraders.shop');
       setProfilePhoto('');
       setWorkingHours('9:00 AM - 8:30 PM');
       setAvailabilityStatus('Available');
@@ -265,7 +265,7 @@ export const AdminContactModal: React.FC<AdminContactModalProps> = ({
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="sales@zafarsarwartraders.com"
+                placeholder="sales@zafarsarwartraders.shop"
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
               />
             </div>
