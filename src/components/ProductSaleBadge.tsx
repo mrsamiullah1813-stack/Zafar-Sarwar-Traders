@@ -4,20 +4,23 @@ import { Product } from '../types';
 import { getProductPricingDetails } from '../utils/pricingUtils';
 
 interface ProductSaleBadgeProps {
-  product: Product;
+  product?: Product;
+  pricing?: any;
+  size?: string;
   variant?: 'floating' | 'inline' | 'banner';
   showDiscountPercent?: boolean;
 }
 
 export const ProductSaleBadge: React.FC<ProductSaleBadgeProps> = ({
   product,
+  pricing,
   variant = 'floating',
   showDiscountPercent = true
 }) => {
-  const details = getProductPricingDetails(product);
+  const details = pricing || (product ? getProductPricingDetails(product) : null);
 
   // If sale is not active or product is normal, render nothing!
-  if (!details.isSaleActive) {
+  if (!details || (!details.isSaleActive && !details.isOnSale)) {
     return null;
   }
 

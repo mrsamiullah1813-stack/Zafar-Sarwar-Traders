@@ -145,6 +145,7 @@ export interface ProductQuantityConfig {
 
 export interface Product {
   id: string;
+  slug?: string;
   sku?: string;
   name: string;
   category: string;
@@ -220,11 +221,17 @@ export interface Product {
   seoTitle?: string;
   seoDescription?: string;
   displayOrder?: number;
+  weightKg?: number; // Optional product weight in kilograms (for weight tiers calculation)
+  weightClass?: 'light' | 'heavy'; // Light Weight or Heavy Weight category
+  isHeavy?: boolean; // Flag if product requires heavy freight
   deliveryConfig?: ProductDeliveryConfig;
 }
 
 export interface ProductDeliveryConfig {
   deliveryType?: 'standard' | 'custom' | 'both' | 'inherit';
+  weightKg?: number; // Optional weight in kilograms configured per product
+  weightClass?: 'light' | 'heavy'; // Light Weight or Heavy Weight category
+  isHeavy?: boolean; // Flag if product requires heavy freight
   // Numeric / Range options
   minDeliveryTime?: number;
   maxDeliveryTime?: number;
@@ -259,6 +266,7 @@ export interface ProductBrand {
   logo: string;
   bannerImage?: string;
   description: string;
+  countryOfOrigin?: string;
   officialBadge?: string;
   isFeatured?: boolean;
   isActive?: boolean;
@@ -793,6 +801,9 @@ export interface CustomerOrder {
   items: OrderItem[];
   subtotal: number;
   deliveryCharges: number;
+  deliveryTierDescription?: string;
+  weightClass?: 'light' | 'heavy' | string;
+  totalWeightKg?: number;
   taxAmount: number;
   grandTotal: number;
   createdAt: string;
@@ -929,9 +940,19 @@ export interface DeliveryFeeTier {
   label?: string; // Optional custom tier title, e.g. "Standard Tier", "High-Value Order Tier"
 }
 
+export interface DeliveryWeightTier {
+  id: string;
+  minWeightKg: number; // e.g. 0 kg
+  maxWeightKg: number | null; // e.g. 10 kg, or null for "No Limit / Above"
+  fee: number; // e.g. 200 PKR
+  isFree?: boolean; // If true or fee === 0, weight fee is free
+  label?: string; // Optional custom title, e.g. "Standard Parcel (0–10 kg)", "Heavy Shipment (30+ kg)"
+}
+
 export interface CityDeliveryInfo {
   id: string;
   cityName: string;
+  province?: string; // e.g. "Punjab", "Sindh", "KPK", "Balochistan", "Islamabad Capital"
   areaTown?: string; // Specific area/town e.g. "Chiniot City", "Chenab Nagar", "Lalian", "Bhowana"
   status?: 'available' | 'unavailable' | 'contact_to_confirm'; // Availability status
   estimatedDays: string;
@@ -953,7 +974,13 @@ export interface CityDeliveryInfo {
   displayOrder?: number;
   notes?: string;
   coverageAreas?: string[]; // Multiple specific neighborhoods or towns
-  deliveryTiers?: DeliveryFeeTier[]; // Unlimited city-specific order-value pricing tiers
+  deliveryTiers?: DeliveryFeeTier[]; // City-specific order-value pricing tiers (Light Weight)
+  heavyDeliveryTiers?: DeliveryFeeTier[]; // City-specific order-value pricing tiers (Heavy Weight)
+  lightWeightFee?: number; // Flat / base fee for Light Weight orders
+  heavyWeightFee?: number; // Flat / base fee for Heavy Weight orders
+  enableWeightTiers?: boolean; // Optional weight-based rules toggle for this city
+  weightPricingMode?: 'highest' | 'additive' | 'weight_only'; // How weight tiers combine with order-value tiers
+  weightTiers?: DeliveryWeightTier[]; // Unlimited city-specific weight tiers
 }
 
 export interface DeliverySettings {
@@ -994,6 +1021,9 @@ export interface DeliverySettings {
   enableCityOverrides?: boolean;
   expressDeliveryFee?: number;
   enableExpressDelivery?: boolean;
+  heavyWeightThresholdKg?: number; // Threshold in kg where an order is classified as Heavy Weight (default 10 kg)
+  enableWeightTiers?: boolean; // Global weight tiers master toggle
+  globalWeightPricingMode?: 'highest' | 'additive' | 'weight_only';
   notes?: string;
 }
 

@@ -206,7 +206,7 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
         setCustomMessageLabel('Delivery Info:');
         setDeliveryFeeType('contact');
         setDeliveryFeeAmount(0);
-        setDeliveryFeeCustomText('');
+        setDeliveryFeeCustomText('Delivery depends on city, location and quantity.');
         setDeliveryFeeLabel('Contact for Delivery');
         setDeliveryAreaText('');
         setDeliveryNote('Contact for further details.');
@@ -248,7 +248,7 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       setCustomMessageLabel('Delivery Info:');
       setDeliveryFeeType('contact');
       setDeliveryFeeAmount(0);
-      setDeliveryFeeCustomText('');
+      setDeliveryFeeCustomText('Delivery depends on city, location and quantity.');
       setDeliveryFeeLabel('Contact for Delivery');
       setDeliveryAreaText('');
       setDeliveryNote('Contact for further details.');

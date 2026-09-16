@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Truck, 
   MapPin, 
@@ -33,18 +33,25 @@ import {
   Sliders,
   CheckSquare,
   Square,
-  HelpCircle
+  HelpCircle,
+  Scale
 } from 'lucide-react';
-import { DeliverySettings, CityDeliveryInfo, DeliveryFeeTier } from '../types';
-import { loadDeliverySettings, saveDeliverySettings } from '../utils/storage';
+import { DeliverySettings, CityDeliveryInfo, DeliveryFeeTier, DeliveryWeightTier } from '../types';
+import { loadDeliverySettings, saveDeliverySettings, sanitizeAndDeduplicateCities, defaultDeliverySettings } from '../utils/storage';
 import { 
   validateDeliveryTiers, 
   generateDefaultCityTiers, 
+  validateWeightTiers,
+  generateDefaultCityWeightTiers,
   formatTierRange, 
   formatTierFee,
+  formatWeightTierRange,
+  formatWeightTierFee,
   calculateCityDeliveryFee
 } from '../utils/deliveryFeeCalculator';
 import { 
+  fetchDeliveryCitiesFromSupabase,
+  fetchSiteSettingFromSupabase,
   upsertDeliveryCityInSupabase, 
   saveSiteSettingToSupabase,
   deleteDeliveryCityFromSupabase,
@@ -58,7 +65,7 @@ interface AdminDeliveryManagerProps {
 export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onShowToast }) => {
   const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>(() => loadDeliverySettings());
   const [citySearch, setCitySearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'custom_rules' | 'fallback' | 'unavailable'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'punjab' | 'available' | 'custom_rules' | 'fallback' | 'unavailable'>('all');
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [isSaving, setIsSaving] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
@@ -73,9 +80,48 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
   // Live Testbench State
   const [testCityId, setTestCityId] = useState<string>('city-chiniot');
   const [testSubtotal, setTestSubtotal] = useState<number>(7500);
+  const [testWeightKg, setTestWeightKg] = useState<number>(0);
 
   // New Note Input
   const [newNoteText, setNewNoteText] = useState('');
+
+  // Auto-sync real-time delivery rules from Supabase production database on mount
+  useEffect(() => {
+    let isMounted = true;
+    async function loadCloudDeliveryData() {
+      try {
+        const [cloudSettings, cloudCities] = await Promise.all([
+          fetchSiteSettingFromSupabase<DeliverySettings>('delivery_settings'),
+          fetchDeliveryCitiesFromSupabase()
+        ]);
+        if (!isMounted) return;
+
+        setDeliverySettings(prev => {
+          let updated = { ...prev };
+          if (cloudSettings && typeof cloudSettings === 'object') {
+            updated = { ...updated, ...cloudSettings };
+          }
+          if (Array.isArray(cloudCities) && cloudCities.length > 0) {
+            // Merge cloud cities with any additional cities in prev/default so all cities are preserved
+            const combined = sanitizeAndDeduplicateCities([
+              ...cloudCities,
+              ...(updated.cities || []),
+              ...defaultDeliverySettings.cities
+            ]);
+            updated.cities = combined;
+          } else {
+            updated.cities = sanitizeAndDeduplicateCities(updated.cities || defaultDeliverySettings.cities);
+          }
+          saveDeliverySettings(updated);
+          return updated;
+        });
+      } catch (err) {
+        console.warn('[AdminDeliveryManager] Error loading cloud delivery data:', err);
+      }
+    }
+    loadCloudDeliveryData();
+    return () => { isMounted = false; };
+  }, []);
 
   // Save changes locally to draft
   const handleSaveChanges = () => {
@@ -191,6 +237,13 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
     return validateDeliveryTiers(editingCity.deliveryTiers || []);
   }, [editingCity?.deliveryTiers, editingCity?.deliveryFeeType]);
 
+  const weightTierValidation = useMemo(() => {
+    if (!editingCity || !editingCity.enableWeightTiers) {
+      return { isValid: true, errors: [], warnings: [] };
+    }
+    return validateWeightTiers(editingCity.weightTiers || []);
+  }, [editingCity?.weightTiers, editingCity?.enableWeightTiers]);
+
   const handleAddTier = () => {
     if (!editingCity) return;
     const currentTiers = editingCity.deliveryTiers || [];
@@ -260,6 +313,77 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
     });
   };
 
+  // Weight Tiers Handlers
+  const handleAddWeightTier = () => {
+    if (!editingCity) return;
+    const currentTiers = editingCity.weightTiers || [];
+    let nextMin = 0;
+    if (currentTiers.length > 0) {
+      const lastTier = currentTiers[currentTiers.length - 1];
+      if (lastTier.maxWeightKg !== null && lastTier.maxWeightKg !== undefined) {
+        nextMin = lastTier.maxWeightKg + 0.1;
+      } else {
+        nextMin = lastTier.minWeightKg + 10;
+      }
+    }
+    const newTier: DeliveryWeightTier = {
+      id: `wt-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+      minWeightKg: Math.round(nextMin * 10) / 10,
+      maxWeightKg: null,
+      fee: 300,
+      isFree: false,
+      label: ''
+    };
+    setEditingCity({
+      ...editingCity,
+      weightTiers: [...currentTiers, newTier]
+    });
+  };
+
+  const handleUpdateWeightTier = (idx: number, updates: Partial<DeliveryWeightTier>) => {
+    if (!editingCity) return;
+    const currentTiers = [...(editingCity.weightTiers || [])];
+    if (!currentTiers[idx]) return;
+    currentTiers[idx] = { ...currentTiers[idx], ...updates };
+    setEditingCity({
+      ...editingCity,
+      weightTiers: currentTiers
+    });
+  };
+
+  const handleDeleteWeightTier = (idx: number) => {
+    if (!editingCity) return;
+    const currentTiers = (editingCity.weightTiers || []).filter((_, i) => i !== idx);
+    setEditingCity({
+      ...editingCity,
+      weightTiers: currentTiers
+    });
+  };
+
+  const handleMoveWeightTier = (idx: number, direction: 'up' | 'down') => {
+    if (!editingCity) return;
+    const currentTiers = [...(editingCity.weightTiers || [])];
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= currentTiers.length) return;
+    const temp = currentTiers[idx];
+    currentTiers[idx] = currentTiers[targetIdx];
+    currentTiers[targetIdx] = temp;
+    setEditingCity({
+      ...editingCity,
+      weightTiers: currentTiers
+    });
+  };
+
+  const handleLoadDefaultWeightTiers = () => {
+    if (!editingCity) return;
+    setEditingCity({
+      ...editingCity,
+      enableWeightTiers: true,
+      weightPricingMode: editingCity.weightPricingMode || 'highest',
+      weightTiers: generateDefaultCityWeightTiers()
+    });
+  };
+
   const handleOpenAddCityModal = () => {
     const newId = `city-${Date.now()}`;
     setEditingCity({
@@ -286,7 +410,10 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
       notes: '',
       coverageAreas: [],
       displayOrder: deliverySettings.cities.length + 1,
-      deliveryTiers: generateDefaultCityTiers('New City')
+      deliveryTiers: generateDefaultCityTiers('New City'),
+      enableWeightTiers: false,
+      weightPricingMode: 'highest',
+      weightTiers: generateDefaultCityWeightTiers()
     });
     setCoverageInput('');
     setIsCityModalOpen(true);
@@ -295,6 +422,8 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
   const handleOpenEditCityModal = (city: CityDeliveryInfo) => {
     const hasTiers = Array.isArray(city.deliveryTiers) && city.deliveryTiers.length > 0;
     const feeType = city.deliveryFeeType || (hasTiers ? 'tiered' : (city.deliveryFee === 0 ? 'free' : 'fixed'));
+    const hasWeightTiers = Array.isArray(city.weightTiers) && city.weightTiers.length > 0;
+
     setEditingCity({ 
       ...city,
       status: city.status || 'available',
@@ -307,7 +436,10 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
       freeDelivery: city.freeDelivery !== undefined ? city.freeDelivery : (city.deliveryFee === 0 || feeType === 'free'),
       deliveryTiers: hasTiers 
         ? [...city.deliveryTiers!] 
-        : (feeType === 'tiered' ? generateDefaultCityTiers(city.cityName) : [])
+        : (feeType === 'tiered' ? generateDefaultCityTiers(city.cityName) : []),
+      enableWeightTiers: Boolean(city.enableWeightTiers),
+      weightPricingMode: city.weightPricingMode || 'highest',
+      weightTiers: hasWeightTiers ? [...city.weightTiers!] : generateDefaultCityWeightTiers()
     });
     setCoverageInput(Array.isArray(city.coverageAreas) ? city.coverageAreas.join(', ') : '');
     setIsCityModalOpen(true);
@@ -333,6 +465,19 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
       }
     }
 
+    if (editingCity.enableWeightTiers) {
+      const wTiers = editingCity.weightTiers || [];
+      if (wTiers.length === 0) {
+        alert('Weight-based delivery is enabled, but no weight tiers are defined. Please add at least one weight tier or disable weight-based delivery.');
+        return;
+      }
+      const wValidation = validateWeightTiers(wTiers);
+      if (!wValidation.isValid) {
+        alert(`Cannot save weight-based tiers:\n• ${wValidation.errors.join('\n• ')}`);
+        return;
+      }
+    }
+
     const coverageArray = coverageInput
       ? coverageInput.split(',').map(s => s.trim()).filter(Boolean)
       : (editingCity.coverageAreas || []);
@@ -340,6 +485,10 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
     const sortedTiers = (editingCity.deliveryFeeType === 'tiered' && editingCity.deliveryTiers)
       ? [...editingCity.deliveryTiers].sort((a, b) => a.minAmount - b.minAmount)
       : (editingCity.deliveryTiers || undefined);
+
+    const sortedWeightTiers = (editingCity.enableWeightTiers && editingCity.weightTiers)
+      ? [...editingCity.weightTiers].sort((a, b) => a.minWeightKg - b.minWeightKg)
+      : (editingCity.weightTiers || undefined);
 
     const updatedCityRecord: CityDeliveryInfo = {
       ...editingCity,
@@ -349,6 +498,9 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
       additionalAddress: editingCity.additionalAddress ? editingCity.additionalAddress.trim() : undefined,
       coverageAreas: coverageArray,
       deliveryTiers: sortedTiers,
+      enableWeightTiers: Boolean(editingCity.enableWeightTiers),
+      weightPricingMode: editingCity.weightPricingMode || 'highest',
+      weightTiers: sortedWeightTiers,
       baseFee: editingCity.baseFee ?? editingCity.deliveryFee ?? 200,
       minFee: typeof editingCity.minFee === 'number' ? editingCity.minFee : 0,
       maxFee: typeof editingCity.maxFee === 'number' ? editingCity.maxFee : 5000,
@@ -356,10 +508,8 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
       useCustomRules: editingCity.useCustomRules !== false,
       isOptional: editingCity.useCustomRules === false,
       freeDelivery: Boolean(
-        editingCity.freeDelivery || 
         editingCity.deliveryFeeType === 'free' || 
-        (editingCity.deliveryFeeType === 'fixed' && editingCity.deliveryFee === 0) ||
-        (editingCity.deliveryFeeType === 'tiered' && sortedTiers?.some(t => t.fee === 0 || t.isFree))
+        (editingCity.deliveryFeeType === 'fixed' && editingCity.deliveryFee === 0 && (!sortedTiers || sortedTiers.length === 0))
       )
     };
 
@@ -413,7 +563,7 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
   };
 
   const filteredCities = useMemo(() => {
-    return (deliverySettings?.cities || []).filter(c => {
+    const matches = (deliverySettings?.cities || []).filter(c => {
       if (!c) return false;
       // 1. Search Query
       const q = (citySearch || '').toLowerCase().trim();
@@ -423,13 +573,20 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
         const areaMatch = (c.areaTown || '').toLowerCase().includes(q);
         const daysMatch = (c.estimatedDays || '').toLowerCase().includes(q);
         const notesMatch = (c.notes || '').toLowerCase().includes(q);
+        const provinceMatch = (c.province || '').toLowerCase().includes(q);
         const coverageMatch = Array.isArray(c.coverageAreas) && c.coverageAreas.some(a => a.toLowerCase().includes(q));
-        matchesSearch = nameMatch || areaMatch || daysMatch || notesMatch || coverageMatch;
+        matchesSearch = nameMatch || areaMatch || daysMatch || notesMatch || coverageMatch || provinceMatch;
       }
 
       // 2. Status Filter
       let matchesStatus = true;
-      if (statusFilter === 'available') {
+      if (statusFilter === 'punjab') {
+        matchesStatus = (c.province === 'Punjab' || !c.province || c.province === '') && 
+                        c.province !== 'Sindh' && 
+                        c.province !== 'KPK' && 
+                        c.province !== 'Balochistan' && 
+                        c.province !== 'Federal Capital';
+      } else if (statusFilter === 'available') {
         matchesStatus = (!c.status || c.status === 'available') && c.isEnabled !== false;
       } else if (statusFilter === 'custom_rules') {
         matchesStatus = c.useCustomRules !== false;
@@ -441,6 +598,7 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
 
       return matchesSearch && matchesStatus;
     });
+    return sanitizeAndDeduplicateCities(matches);
   }, [deliverySettings.cities, citySearch, statusFilter]);
 
   // Live Test Calculation
@@ -454,9 +612,10 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
       fallbackRate,
       globalFree,
       deliverySettings.minDeliveryFee,
-      deliverySettings.maxDeliveryFee
+      deliverySettings.maxDeliveryFee,
+      testWeightKg
     );
-  }, [selectedTestCity, testSubtotal, deliverySettings]);
+  }, [selectedTestCity, testSubtotal, deliverySettings, testWeightKg]);
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-12">
@@ -717,6 +876,19 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
 
                 <button
                   type="button"
+                  onClick={() => setStatusFilter('punjab')}
+                  className={`px-3 py-1.5 rounded-xl font-semibold transition-all border whitespace-nowrap ${
+                    statusFilter === 'punjab'
+                      ? 'bg-amber-400 text-slate-950 border-amber-300'
+                      : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+                  }`}
+                  title="Filter Punjab cities"
+                >
+                  📍 Punjab ({deliverySettings.cities.filter(c => (c.province === 'Punjab' || !c.province || c.province === '') && c.province !== 'Sindh' && c.province !== 'KPK' && c.province !== 'Balochistan' && c.province !== 'Federal Capital').length})
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setStatusFilter('custom_rules')}
                   className={`px-3 py-1.5 rounded-xl font-semibold transition-all border whitespace-nowrap ${
                     statusFilter === 'custom_rules'
@@ -771,14 +943,14 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
-                    {filteredCities.map((city) => {
+                    {filteredCities.map((city, cIdx) => {
                       const isDefault = deliverySettings.defaultSelectedCityId === city.id;
                       const isFree = city.freeDelivery || city.deliveryFeeType === 'free' || city.deliveryFee === 0;
                       const hasTiers = Array.isArray(city.deliveryTiers) && city.deliveryTiers.length > 0;
                       const useCustom = city.useCustomRules !== false;
 
                       return (
-                        <tr key={city.id} className="hover:bg-slate-800/40 transition-colors">
+                        <tr key={city.id ? `${city.id}-${cIdx}` : `city-row-${city.cityName}-${cIdx}`} className="hover:bg-slate-800/40 transition-colors">
                           {/* CITY NAME */}
                           <td className="p-3">
                             <div className="flex items-center gap-2">
@@ -847,6 +1019,12 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
                                     <Layers className="w-3 h-3 text-amber-400" />
                                     <span>{city.deliveryTiers!.length} Slabs</span>
                                   </span>
+                                  {city.enableWeightTiers && city.weightTiers && city.weightTiers.length > 0 && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-300 bg-sky-500/10 px-2 py-0.5 rounded-lg border border-sky-500/25">
+                                      <Scale className="w-2.5 h-2.5 text-sky-400" />
+                                      <span>{city.weightTiers.length} Weight Slabs</span>
+                                    </span>
+                                  )}
                                   {city.freeDeliveryThreshold && (
                                     <p className="text-[10px] text-emerald-400 font-mono">
                                       Free over: PKR {city.freeDeliveryThreshold.toLocaleString()}
@@ -950,7 +1128,7 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
             ) : (
               /* CARDS GRID VIEW */
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 max-h-[580px] overflow-y-auto pr-1">
-                {filteredCities.map((city) => {
+                {filteredCities.map((city, cIdx) => {
                   const isDefault = deliverySettings.defaultSelectedCityId === city.id;
                   const isFree = city.freeDelivery || city.deliveryFeeType === 'free' || city.deliveryFee === 0;
                   const hasTiers = Array.isArray(city.deliveryTiers) && city.deliveryTiers.length > 0;
@@ -958,7 +1136,7 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
 
                   return (
                     <div 
-                      key={city.id}
+                      key={city.id ? `${city.id}-${cIdx}` : `city-card-${city.cityName}-${cIdx}`}
                       className={`p-4 rounded-2xl border transition-all ${
                         city.isEnabled !== false 
                           ? 'bg-slate-950/90 border-slate-800 hover:border-slate-700' 
@@ -1178,6 +1356,40 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
                 />
               </div>
 
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-slate-300 font-semibold text-xs flex items-center gap-1.5">
+                    <Scale className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Cart Weight (kg) [Optional]</span>
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-mono">{testWeightKg} kg</span>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={testWeightKg}
+                  onChange={(e) => setTestWeightKg(Math.max(0, parseFloat(e.target.value) || 0))}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                />
+                <div className="flex gap-1.5 mt-1.5">
+                  {[0, 5, 15, 35].map(w => (
+                    <button
+                      key={w}
+                      type="button"
+                      onClick={() => setTestWeightKg(w)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-mono border transition-all ${
+                        testWeightKg === w
+                          ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold'
+                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                      }`}
+                    >
+                      {w} kg
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Result Preview Box */}
               <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 mt-2">
                 <div className="flex items-center justify-between text-xs">
@@ -1187,8 +1399,13 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
                   </span>
                 </div>
 
-                <div className="text-[11px] text-slate-300 font-mono bg-slate-900 p-2 rounded-lg border border-slate-800">
-                  {liveTestResult.tierDescription}
+                <div className="text-[11px] text-slate-300 font-mono bg-slate-900 p-2 rounded-lg border border-slate-800 space-y-1">
+                  <div>{liveTestResult.tierDescription}</div>
+                  {liveTestResult.weightTierDescription && (
+                    <div className="text-amber-300 pt-1 border-t border-slate-800/80">
+                      ⚖️ {liveTestResult.weightTierDescription}
+                    </div>
+                  )}
                 </div>
 
                 {liveTestResult.nextFreeTierNotice && (
@@ -1340,7 +1557,7 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
             </div>
 
             <form onSubmit={handleSaveCity} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
                     City Name *
@@ -1366,6 +1583,25 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
                     onChange={(e) => setEditingCity({ ...editingCity, areaTown: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Province / Territory
+                  </label>
+                  <select
+                    value={editingCity.province || 'Punjab'}
+                    onChange={(e) => setEditingCity({ ...editingCity, province: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="Punjab">Punjab</option>
+                    <option value="Federal Capital">Federal Capital (Islamabad)</option>
+                    <option value="Sindh">Sindh</option>
+                    <option value="KPK">KPK</option>
+                    <option value="Balochistan">Balochistan</option>
+                    <option value="Azad Kashmir">Azad Kashmir</option>
+                    <option value="Gilgit-Baltistan">Gilgit-Baltistan</option>
+                  </select>
                 </div>
               </div>
 
@@ -1757,6 +1993,342 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
                   />
                 </div>
               )}
+
+              {/* Optional Weight-Based Surcharges / Tiers Section */}
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Scale className="w-4 h-4 text-amber-400" />
+                      <h4 className="text-xs font-bold text-amber-300">
+                        Optional Weight Surcharges & Slabs (Parcels / Freight)
+                      </h4>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Configure parcel weight rules for {editingCity.cityName || 'this city'} (e.g. 0–10 kg, 10.1–30 kg, 30+ kg).
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const willEnable = !editingCity.enableWeightTiers;
+                      setEditingCity({
+                        ...editingCity,
+                        enableWeightTiers: willEnable,
+                        weightPricingMode: editingCity.weightPricingMode || 'highest',
+                        weightTiers: willEnable && (!editingCity.weightTiers || editingCity.weightTiers.length === 0)
+                          ? generateDefaultCityWeightTiers()
+                          : editingCity.weightTiers
+                      });
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all ${
+                      editingCity.enableWeightTiers
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                        : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-white'
+                    }`}
+                  >
+                    {editingCity.enableWeightTiers ? (
+                      <>
+                        <ToggleRight className="w-4 h-4 text-amber-400" />
+                        <span>Weight Rules Active</span>
+                      </>
+                    ) : (
+                      <>
+                        <ToggleLeft className="w-4 h-4 text-slate-500" />
+                        <span>Weight Rules Disabled</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {editingCity.enableWeightTiers && (
+                  <div className="space-y-4 pt-1 animate-fadeIn">
+                    {/* Mode Selector */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1.5">
+                        Weight Pricing Calculation Mode:
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {[
+                          {
+                            id: 'highest',
+                            title: 'Highest of Both (Recommended)',
+                            desc: 'Max(Cart Value Fee, Weight Fee). Free cart rules still protect the customer.'
+                          },
+                          {
+                            id: 'additive',
+                            title: 'Additive Surcharge',
+                            desc: 'Cart Value Fee + Weight Surcharge added together.'
+                          },
+                          {
+                            id: 'weight_only',
+                            title: 'Weight Rate Only',
+                            desc: 'Ignore order value; charge solely based on weight tier.'
+                          }
+                        ].map((m) => {
+                          const isSelected = (editingCity.weightPricingMode || 'highest') === m.id;
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => setEditingCity({ ...editingCity, weightPricingMode: m.id as any })}
+                              className={`p-2.5 rounded-xl text-left border transition-all ${
+                                isSelected
+                                  ? 'bg-amber-500/10 border-amber-500 text-white'
+                                  : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 font-bold text-xs">
+                                <span className={isSelected ? 'text-amber-400' : 'text-slate-500'}>
+                                  {isSelected ? '●' : '○'}
+                                </span>
+                                <span>{m.title}</span>
+                              </div>
+                              <p className="text-[10px] text-slate-400 mt-1 leading-snug">
+                                {m.desc}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Quick Presets & Add Slabs Bar */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <span className="text-xs font-semibold text-slate-300">
+                        Weight Slabs ({editingCity.weightTiers?.length || 0})
+                      </span>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleLoadDefaultWeightTiers}
+                          title="Load 0-10kg (200 PKR), 10.1-30kg (400 PKR), 30+kg (800 PKR)"
+                          className="px-2.5 py-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl transition-colors flex items-center gap-1"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          <span>Load Standard Slabs</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleAddWeightTier}
+                          className="px-2.5 py-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl transition-colors flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>Add Weight Slab</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Weight Validation Feedback */}
+                    {!weightTierValidation.isValid && (
+                      <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs space-y-1">
+                        <div className="flex items-center gap-1.5 font-bold">
+                          <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                          <span>Weight Slab Configuration Conflicts Detected:</span>
+                        </div>
+                        <ul className="list-disc list-inside space-y-0.5 text-[11px] pl-1">
+                          {weightTierValidation.errors.map((err, i) => (
+                            <li key={i}>{err}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {weightTierValidation.warnings.length > 0 && weightTierValidation.isValid && (
+                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] space-y-0.5">
+                        {weightTierValidation.warnings.map((warn, i) => (
+                          <p key={i} className="flex items-center gap-1">
+                            <span>⚠️</span> <span>{warn}</span>
+                          </p>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Weight Tiers List */}
+                    <div className="space-y-2.5">
+                      {(!editingCity.weightTiers || editingCity.weightTiers.length === 0) ? (
+                        <div className="text-center py-6 border border-dashed border-slate-800 rounded-xl text-slate-500 text-xs">
+                          <p>No weight tiers configured yet.</p>
+                          <button
+                            type="button"
+                            onClick={handleLoadDefaultWeightTiers}
+                            className="mt-2 text-amber-400 underline hover:text-amber-300 font-bold"
+                          >
+                            Click to load standard slabs (0–10kg, 10–30kg, 30+kg)
+                          </button>
+                        </div>
+                      ) : (
+                        editingCity.weightTiers.map((wt, idx) => {
+                          const isNoMax = wt.maxWeightKg === null || wt.maxWeightKg === undefined;
+                          const isFree = wt.isFree || wt.fee === 0;
+
+                          return (
+                            <div
+                              key={wt.id || `wt-${idx}`}
+                              className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2.5"
+                            >
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-bold text-white flex items-center gap-2">
+                                  <span className="w-5 h-5 rounded-full bg-slate-800 text-amber-400 flex items-center justify-center text-[10px] font-mono">
+                                    W{idx + 1}
+                                  </span>
+                                  <span>Weight Slab #{idx + 1}</span>
+                                  <span className="text-[10px] text-slate-400 font-mono bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                                    {formatWeightTierRange(wt)} → <strong className={isFree ? 'text-emerald-400' : 'text-amber-300'}>{formatWeightTierFee(wt)}</strong>
+                                  </span>
+                                </span>
+
+                                <div className="flex items-center gap-1">
+                                  {idx > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveWeightTier(idx, 'up')}
+                                      title="Move weight slab up"
+                                      className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800"
+                                    >
+                                      <ArrowUp className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                  {idx < (editingCity.weightTiers?.length || 0) - 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveWeightTier(idx, 'down')}
+                                      title="Move weight slab down"
+                                      className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800"
+                                    >
+                                      <ArrowDown className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteWeightTier(idx)}
+                                    title="Delete this weight slab"
+                                    className="p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-slate-800 transition-colors"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Weight Inputs */}
+                              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs">
+                                {/* Min Weight */}
+                                <div className="sm:col-span-4">
+                                  <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">
+                                    Min Weight (kg)
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step={0.1}
+                                    value={wt.minWeightKg}
+                                    onChange={(e) => handleUpdateWeightTier(idx, { minWeightKg: Math.max(0, parseFloat(e.target.value) || 0) })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-mono focus:border-amber-500 focus:outline-none"
+                                  />
+                                </div>
+
+                                {/* Max Weight */}
+                                <div className="sm:col-span-4">
+                                  <div className="flex items-center justify-between mb-0.5">
+                                    <label className="text-[10px] font-semibold text-slate-400">
+                                      Max Weight (kg)
+                                    </label>
+                                    <label className="flex items-center gap-1 cursor-pointer text-[10px] text-amber-400 font-bold">
+                                      <input
+                                        type="checkbox"
+                                        checked={isNoMax}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            handleUpdateWeightTier(idx, { maxWeightKg: null });
+                                          } else {
+                                            handleUpdateWeightTier(idx, { maxWeightKg: wt.minWeightKg + 10 });
+                                          }
+                                        }}
+                                        className="rounded bg-slate-800 border-slate-700 text-amber-500 focus:ring-0"
+                                      />
+                                      <span>∞ No Max</span>
+                                    </label>
+                                  </div>
+                                  <input
+                                    type="number"
+                                    min={wt.minWeightKg}
+                                    step={0.1}
+                                    disabled={isNoMax}
+                                    value={isNoMax ? '' : (wt.maxWeightKg ?? '')}
+                                    placeholder={isNoMax ? '∞ (Above / Heavy Cargo)' : 'e.g. 10.0'}
+                                    onChange={(e) => handleUpdateWeightTier(idx, { 
+                                      maxWeightKg: e.target.value === '' ? null : Math.max(0, parseFloat(e.target.value) || 0) 
+                                    })}
+                                    className={`w-full bg-slate-950 border rounded-xl px-2.5 py-1.5 text-xs font-mono focus:outline-none ${
+                                      isNoMax 
+                                        ? 'border-slate-800 text-slate-500 italic bg-slate-950/50' 
+                                        : 'border-slate-700 text-white focus:border-amber-500'
+                                    }`}
+                                  />
+                                </div>
+
+                                {/* Fee */}
+                                <div className="sm:col-span-4">
+                                  <div className="flex items-center justify-between mb-0.5">
+                                    <label className="text-[10px] font-semibold text-slate-400">
+                                      Delivery Fee (PKR)
+                                    </label>
+                                    <label className="flex items-center gap-1 cursor-pointer text-[10px] text-emerald-400 font-bold">
+                                      <input
+                                        type="checkbox"
+                                        checked={isFree}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            handleUpdateWeightTier(idx, { fee: 0, isFree: true });
+                                          } else {
+                                            handleUpdateWeightTier(idx, { fee: 300, isFree: false });
+                                          }
+                                        }}
+                                        className="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0"
+                                      />
+                                      <span>Free</span>
+                                    </label>
+                                  </div>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step={50}
+                                    disabled={isFree}
+                                    value={isFree ? 0 : wt.fee}
+                                    onChange={(e) => handleUpdateWeightTier(idx, { 
+                                      fee: Math.max(0, parseInt(e.target.value) || 0),
+                                      isFree: (parseInt(e.target.value) || 0) === 0
+                                    })}
+                                    className={`w-full bg-slate-950 border rounded-xl px-2.5 py-1.5 text-xs font-mono focus:outline-none ${
+                                      isFree 
+                                        ? 'border-emerald-500/40 text-emerald-400 font-bold bg-emerald-950/20' 
+                                        : 'border-slate-700 text-white focus:border-amber-500'
+                                    }`}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Label */}
+                              <div>
+                                <input
+                                  type="text"
+                                  placeholder="Weight Slab Label (optional, e.g. Standard Parcel 0–10kg, Heavy Freight 30kg+)"
+                                  value={wt.label || ''}
+                                  onChange={(e) => handleUpdateWeightTier(idx, { label: e.target.value })}
+                                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-[11px] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                                />
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Minimum Order Amount (Optional) */}
               <div>

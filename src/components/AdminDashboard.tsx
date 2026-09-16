@@ -83,6 +83,7 @@ import { getPatternLockStatus, savePatternLock, togglePatternLock } from '../ser
 import { Product, ProductCategory, ProductVideo, BusinessConfig, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, ThemeSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig } from '../types';
 import { getAdminPin, setAdminPin, loadPlannerConfig, savePlannerConfig, loadBuildMaterialEstimatorConfig, saveBuildMaterialEstimatorConfig, loadAiAssistantConfig, saveAiAssistantConfig, loadThemeSettings, saveThemeSettings, loadHeroSettings, saveHeroSettings, loadSmartToolsSettings, saveSmartToolsSettings, loadFittingBuilderConfig, saveFittingBuilderConfig, loadAnnouncementSettings, saveAnnouncementSettings, deleteProductFromStorage, saveStoredProducts, saveStoredProductSingle, deleteCategoryFromStorage, saveStoredCategories, saveStoredCategorySingle, deleteBrandFromStorage, saveStoredBrands, saveStoredBrandSingle } from '../utils/storage';
 import { resetToHome } from '../utils/navigationHistory';
+import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
 
 interface AdminDashboardProps {
   products: Product[];
@@ -1618,8 +1619,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <td className="py-3 px-4">
                                 <div className="flex items-center gap-3">
                                   <img
-                                    src={prod.image || prod.images?.[0] || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=200&q=80'}
+                                    src={normalizeProductImage(prod.image || prod.images?.[0], prod.category, prod.name)}
                                     alt={prod.name}
+                                    onError={(e) => handleImageError(e, prod.category, prod.name)}
                                     className="w-12 h-12 rounded-lg object-cover bg-slate-950 border border-slate-800 shrink-0"
                                   />
                                   <div>

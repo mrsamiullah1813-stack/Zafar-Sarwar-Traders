@@ -186,6 +186,40 @@ async function startServer() {
       } catch (err) {
         console.warn("Storage buckets initial verification notice:", err);
       }
+
+      // Auto-heal legacy mismatched IDs in delivery_cities table
+      try {
+        const { data: dbCities } = await dbClient.from("delivery_cities").select("*");
+        if (Array.isArray(dbCities)) {
+          for (const row of dbCities) {
+            const name = (row.name || row.city_name || "").trim().toLowerCase();
+            const id = String(row.id);
+            let targetId: string | null = null;
+            if (id === 'city-karachi' && !name.includes('karachi')) {
+              targetId = name.includes('bhowana') ? 'city-bhowana' : `city-${name.replace(/[^a-z0-9]+/g, '-')}`;
+            } else if (id === 'city-peshawar' && !name.includes('peshawar')) {
+              targetId = name.includes('pindi') ? 'city-pindi-bhatiyan' : `city-${name.replace(/[^a-z0-9]+/g, '-')}`;
+            } else if (id === 'city-quetta' && !name.includes('quetta')) {
+              targetId = name.includes('lalian') ? 'city-lalian' : `city-${name.replace(/[^a-z0-9]+/g, '-')}`;
+            } else if (id === 'city-hyderabad' && !name.includes('hyderabad')) {
+              targetId = name.includes('chenab') ? 'city-chenab-nagar' : `city-${name.replace(/[^a-z0-9]+/g, '-')}`;
+            } else if (id === 'city-sukkur' && !name.includes('sukkur')) {
+              targetId = name.includes('okara') ? 'city-okara' : `city-${name.replace(/[^a-z0-9]+/g, '-')}`;
+            }
+
+            if (targetId) {
+              console.log(`[DB Migration] Repairing mismatched city ID: ${id} (${row.name}) -> ${targetId}`);
+              await dbClient.from("delivery_cities").delete().eq("id", id);
+              await dbClient.from("delivery_cities").upsert({
+                ...row,
+                id: targetId
+              }, { onConflict: "id" });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[DB Migration] Delivery cities legacy ID check notice:", err);
+      }
     })();
   }
 
@@ -2620,7 +2654,27 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
     try {
       const { data, error } = await dbClient.from("delivery_cities").select("*").order("display_order", { ascending: true });
       if (error) return res.status(500).json({ success: false, error: error.message });
-      return res.json({ success: true, data });
+      
+      // Auto-correct any legacy ID mismatches in the response
+      const sanitized = (data || []).map((row: any) => {
+        const name = (row.name || row.city_name || "").trim().toLowerCase();
+        const id = String(row.id);
+        let correctedId = id;
+        if (id === 'city-karachi' && !name.includes('karachi')) {
+          correctedId = name.includes('bhowana') ? 'city-bhowana' : `city-${name.replace(/[^a-z0-9]+/g, '-')}`;
+        } else if (id === 'city-peshawar' && !name.includes('peshawar')) {
+          correctedId = name.includes('pindi') ? 'city-pindi-bhatiyan' : `city-${name.replace(/[^a-z0-9]+/g, '-')}`;
+        } else if (id === 'city-quetta' && !name.includes('quetta')) {
+          correctedId = name.includes('lalian') ? 'city-lalian' : `city-${name.replace(/[^a-z0-9]+/g, '-')}`;
+        } else if (id === 'city-hyderabad' && !name.includes('hyderabad')) {
+          correctedId = name.includes('chenab') ? 'city-chenab-nagar' : `city-${name.replace(/[^a-z0-9]+/g, '-')}`;
+        } else if (id === 'city-sukkur' && !name.includes('sukkur')) {
+          correctedId = name.includes('okara') ? 'city-okara' : `city-${name.replace(/[^a-z0-9]+/g, '-')}`;
+        }
+        return { ...row, id: correctedId };
+      });
+
+      return res.json({ success: true, data: sanitized });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
@@ -2633,17 +2687,33 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
       const list = Array.isArray(cities) ? cities : (req.body.city ? [req.body.city] : []);
       if (list.length === 0) return res.json({ success: true });
 
+      // Always save to durable CMS store for immediate consistency
+      cmsDataStore["delivery_cities"] = list;
+      await persistDataStoreToDisk();
+
       const payloads = list.map((c: any) => ({
         id: c.id,
         name: c.cityName || c.name,
-        delivery_fee: c.deliveryFee ?? c.delivery_fee ?? 0,
+        delivery_fee: c.deliveryFee ?? c.delivery_fee ?? c.fee ?? 0,
+        fee: c.deliveryFee ?? c.delivery_fee ?? c.fee ?? 0,
         estimated_days: c.estimatedDays || c.estimated_days || "2-4 Days",
-        enabled: Boolean(c.isEnabled ?? c.enabled ?? true),
+        enabled: Boolean(c.isEnabled ?? c.enabled ?? c.active ?? true),
+        active: Boolean(c.isEnabled ?? c.enabled ?? c.active ?? true),
         same_day_available: Boolean(c.isSameDayAvailable ?? c.same_day_available),
+        is_same_day_available: Boolean(c.isSameDayAvailable ?? c.same_day_available),
         next_day_available: Boolean(c.isNextDayAvailable ?? c.next_day_available),
+        is_next_day_available: Boolean(c.isNextDayAvailable ?? c.next_day_available),
         display_order: c.displayOrder ?? c.display_order ?? 0,
         notes: c.notes || null,
-        delivery_tiers: c.deliveryTiers || c.delivery_tiers || null
+        province: c.province || 'Punjab',
+        base_fee: c.baseFee ?? c.deliveryFee ?? c.fee ?? 0,
+        light_weight_fee: c.lightWeightFee ?? c.deliveryFee ?? c.fee ?? 0,
+        heavy_weight_fee: c.heavyWeightFee || null,
+        delivery_tiers: c.deliveryTiers || c.delivery_tiers || null,
+        heavy_delivery_tiers: c.heavyDeliveryTiers || c.heavy_delivery_tiers || null,
+        weight_tiers: c.weightTiers || c.weight_tiers || null,
+        enable_weight_tiers: Boolean(c.enableWeightTiers ?? c.enable_weight_tiers ?? false),
+        weight_pricing_mode: c.weightPricingMode || c.weight_pricing_mode || 'highest'
       }));
 
       const result = await robustUpsert("delivery_cities", payloads, { onConflict: "id" });

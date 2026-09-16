@@ -3,6 +3,7 @@ import { Search, X, MessageSquare, ArrowRight, Check } from 'lucide-react';
 import { Product, ProductCategory, BusinessConfig } from '../types';
 import { filterProducts } from '../utils/searchUtils';
 import { trackSearchQuery } from '../utils/analyticsStorage';
+import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
 
 interface SearchModalProps {
   products: Product[];
@@ -131,9 +132,10 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                       >
                         <div className="flex items-center gap-3">
                           <img
-                            src={prod.image}
+                            src={normalizeProductImage(prod.image, prod.category, prod.name)}
                             alt={prod.name}
                             referrerPolicy="no-referrer"
+                            onError={(e) => handleImageError(e, prod.category, prod.name)}
                             className="w-10 h-10 rounded-lg object-cover"
                           />
                           <div>

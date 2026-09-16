@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   X, ShoppingBag, CheckCircle2, Truck, ShieldCheck, Phone, MapPin, 
   User, FileText, Send, Building2, Info, Compass, Mail, CreditCard, 
@@ -11,13 +11,21 @@ import {
   DeliverySettings, AppliedCouponState, PaymentMethodConfig, OrderStatus, PaymentStatus,
   HowToOrderConfig
 } from '../types';
-import { calculateCityDeliveryFee, formatTierRange, formatTierFee } from '../utils/deliveryFeeCalculator';
-import { loadDeliverySettings, generateNextOrderId, loadPaymentMethods, loadHowToOrderConfig, openWhatsAppLink, safeSetLocalStorage, STORAGE_KEYS } from '../utils/storage';
+import { 
+  calculateCityDeliveryFee, 
+  determineCartWeightClass,
+  formatTierRange, 
+  formatTierFee,
+  formatWeightTierRange,
+  formatWeightTierFee
+} from '../utils/deliveryFeeCalculator';
+import { loadDeliverySettings, generateNextOrderId, loadPaymentMethods, loadHowToOrderConfig, openWhatsAppLink, safeSetLocalStorage, STORAGE_KEYS, sanitizeAndDeduplicateCities } from '../utils/storage';
 import { getOrGenerateCustomerId } from '../utils/customerStorage';
 import { getProductPricingDetails, getVariantPricingDetails, getActiveProductPrice } from '../utils/pricingUtils';
 import { fetchPaymentMethodsFromSupabase, uploadMediaToSupabase, uploadPaymentProof, fetchHowToOrderConfigFromSupabase, fetchDeliveryCitiesFromSupabase } from '../services/supabaseService';
 import { CouponPromoBox } from './CouponPromoBox';
 import { pushNavigationState, replaceNavigationState, navigateBackSafe, addNavigationListener, resetToHome } from '../utils/navigationHistory';
+import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
 
 type CheckoutStep = 'cart' | 'customer' | 'address' | 'payment_method' | 'payment_instructions' | 'payment_proof' | 'confirmation';
 
@@ -327,7 +335,10 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     return () => window.removeEventListener('zst_delivery_settings_updated', handleDeliveryUpdated);
   }, [isOpen]);
 
-  const activeCities = deliverySettings.cities.filter(c => c.isEnabled);
+  const activeCities = useMemo(() => {
+    const list = (deliverySettings.cities || []).filter(c => c && c.isEnabled);
+    return sanitizeAndDeduplicateCities(list);
+  }, [deliverySettings.cities]);
 
   const customCityOptionValue = 'CUSTOM_CITY_OPTION';
   const customCityLabelText = deliverySettings.customCityLabel || '➕ Custom City / Address';
@@ -459,10 +470,24 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   const rawItems = directItem ? [directItem] : (Array.isArray(cartItems) ? cartItems : []);
   const items = rawItems.filter(item => Boolean(item && item.product));
+
+  const totalCartWeightKg = useMemo(() => {
+    return items.reduce((sum, item) => {
+      const w = Number(item.product?.weightKg ?? item.product?.deliveryConfig?.weightKg ?? 0);
+      return sum + (w * (Number(item.quantity) || 1));
+    }, 0);
+  }, [items]);
+
+  const cartWeightClassification = useMemo(() => {
+    return determineCartWeightClass(
+      items.map(item => ({ product: item.product, quantity: item.quantity })),
+      deliverySettings.heavyWeightThresholdKg ?? 10
+    );
+  }, [items, deliverySettings.heavyWeightThresholdKg]);
+
+  if (!isOpen) return null;
 
   const safeSelectedCityId = String(selectedCityId || '');
   const isCustomCitySelected = safeSelectedCityId === customCityOptionValue || safeSelectedCityId === 'Other';
@@ -511,16 +536,17 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     matchedCity,
     effectiveSubtotal,
     effectiveFallbackFee,
-    effectiveFreeThreshold,
+    undefined,
     globalMinFee,
-    globalMaxFee
+    globalMaxFee,
+    totalCartWeightKg,
+    cartWeightClassification.weightClass,
+    cartWeightClassification.totalItemCount,
+    cartWeightClassification.heavyItemCount,
+    items
   );
 
-  const cityDeliveryFee = isCustomCitySelected 
-    ? (effectiveFreeThreshold && effectiveSubtotal >= effectiveFreeThreshold ? 0 : effectiveFallbackFee)
-    : deliveryCalculation.deliveryFee;
-
-  const deliveryCharges = effectiveSubtotal > 0 ? cityDeliveryFee : 0;
+  const deliveryCharges = effectiveSubtotal > 0 ? (deliveryCalculation.isFree ? 0 : Math.max(200, deliveryCalculation.deliveryFee)) : 0;
   const isFreeDelivery = effectiveSubtotal > 0 && deliveryCharges === 0;
   
   const taxAmount = checkoutSettings.enableTaxes && checkoutSettings.taxRatePercent > 0
@@ -893,6 +919,9 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
       couponDiscountPercentage: appliedCoupon?.discountPercentage,
       couponDiscountAmount: couponDiscountAmount,
       deliveryCharges,
+      deliveryTierDescription: deliveryCalculation.tierDescription || deliveryCalculation.matchedTier?.label,
+      weightClass: cartWeightClassification.weightClass,
+      totalWeightKg: totalCartWeightKg > 0 ? totalCartWeightKg : undefined,
       taxAmount,
       grandTotal,
       createdAt: new Date().toISOString(),
@@ -1257,8 +1286,9 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                       return (
                         <div key={idx} className="pt-2.5 first:pt-0 flex items-center gap-3">
                           <img
-                            src={p.images?.[0] || p.image || undefined}
+                            src={normalizeProductImage(p.images?.[0] || p.image, p.category, p.name)}
                             alt={p.name}
+                            onError={(e) => handleImageError(e, p.category, p.name)}
                             className="w-14 h-14 rounded-xl object-cover border border-slate-200 bg-white shrink-0"
                           />
                           <div className="flex-1 min-w-0 text-xs">
@@ -1510,16 +1540,23 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                       onChange={(e) => setSelectedCityId(e.target.value)}
                       className="w-full pl-9 pr-8 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white text-slate-900 focus:border-blue-500 outline-none transition-all cursor-pointer appearance-none"
                     >
-                      {activeCities.map((c) => {
+                      {activeCities.map((c, idx) => {
                         const feeCalc = calculateCityDeliveryFee(
                           c,
                           effectiveSubtotal,
-                          checkoutSettings.deliveryFee || 250,
-                          checkoutSettings.freeDeliveryThreshold
+                          effectiveFallbackFee,
+                          undefined,
+                          globalMinFee,
+                          globalMaxFee,
+                          totalCartWeightKg,
+                          cartWeightClassification.weightClass,
+                          cartWeightClassification.totalItemCount,
+                          cartWeightClassification.heavyItemCount,
+                          items
                         );
                         const feeDisplay = feeCalc.isFree ? 'FREE' : `PKR ${feeCalc.deliveryFee.toLocaleString('en-PK')}`;
                         return (
-                          <option key={c.id} value={c.cityName}>
+                          <option key={c.id ? `${c.id}-${idx}` : `checkout-city-${c.cityName}-${idx}`} value={c.cityName}>
                             📍 {c.cityName} ({c.estimatedDays} • {feeDisplay})
                           </option>
                         );
@@ -1533,51 +1570,42 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                     <MapPin className="w-4 h-4 text-blue-600 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   </div>
 
-                  {/* City Tier Breakdown Banner */}
-                  {matchedCity && matchedCity.deliveryTiers && matchedCity.deliveryTiers.length > 0 && !isCustomCitySelected && (
+                  {/* City Delivery Details Banner */}
+                  {matchedCity && !isCustomCitySelected && (
                     <div className="mt-2 p-2.5 rounded-xl bg-blue-50/70 border border-blue-200/80 text-xs space-y-1.5 animate-fadeIn">
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-blue-950 flex items-center gap-1.5">
                           <Truck className="w-3.5 h-3.5 text-blue-600" />
-                          <span>{matchedCity.cityName} Order-Value Delivery Rates:</span>
+                          <span>{matchedCity.cityName} Delivery Details:</span>
                         </span>
                         <span className="text-[11px] font-bold">
-                          {deliveryCalculation.isFree ? (
-                            <span className="text-emerald-700 bg-emerald-100/90 px-2 py-0.5 rounded border border-emerald-300 font-bold uppercase text-[10px]">
-                              FREE Delivery Applied
-                            </span>
-                          ) : (
-                            <span className="text-blue-900 font-mono font-bold">
-                              Current Fee: PKR {deliveryCalculation.deliveryFee.toLocaleString('en-PK')}
-                            </span>
-                          )}
+                          <span className="text-blue-900 font-mono font-bold">
+                            Fee: PKR {deliveryCalculation.deliveryFee.toLocaleString('en-PK')}
+                          </span>
                         </span>
                       </div>
 
-                      <div className="flex flex-wrap gap-1.5 pt-0.5">
-                        {matchedCity.deliveryTiers.map((tier) => {
-                          const isCurrent = deliveryCalculation.matchedTier?.id === tier.id;
-                          const rLabel = formatTierRange(tier);
-                          const fLabel = formatTierFee(tier);
-                          return (
-                            <span
-                              key={tier.id}
-                              className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border transition-all ${
-                                isCurrent
-                                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm ring-1 ring-blue-400 font-bold'
-                                  : 'bg-white text-slate-600 border-slate-200'
-                              }`}
-                            >
-                              {rLabel} → {fLabel}
-                            </span>
-                          );
-                        })}
+                      <div className="flex flex-wrap gap-2 text-[11px] text-slate-600 pt-0.5">
+                        <span className="bg-white px-2 py-0.5 rounded border border-slate-200 font-medium">
+                          ⏱ {matchedCity.estimatedDays || '1–3 Working Days'}
+                        </span>
+                        <span className="bg-white px-2 py-0.5 rounded border border-slate-200 font-medium">
+                          📦 {cartWeightClassification.weightClass === 'heavy' ? 'Heavy / Bulky Cargo' : 'Standard Parcel'}
+                        </span>
+                        {totalCartWeightKg > 0 && (
+                          <span className="bg-white px-2 py-0.5 rounded border border-slate-200 font-medium font-mono">
+                            ⚖️ {totalCartWeightKg} kg
+                          </span>
+                        )}
+                        {cartWeightClassification.totalItemCount > 1 && (
+                          <span className="bg-white px-2 py-0.5 rounded border border-slate-200 font-medium font-mono">
+                            🔢 {cartWeightClassification.totalItemCount} Items
+                          </span>
+                        )}
                       </div>
-
-                      {deliveryCalculation.nextFreeTierNotice && (
-                        <p className="text-[11px] text-amber-800 font-semibold pt-0.5 flex items-center gap-1">
-                          <span>💡</span>
-                          <span>{deliveryCalculation.nextFreeTierNotice}</span>
+                      {matchedCity.notes && (
+                        <p className="text-[10px] text-slate-500 italic">
+                          ℹ️ {matchedCity.notes}
                         </p>
                       )}
                     </div>

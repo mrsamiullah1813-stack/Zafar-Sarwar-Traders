@@ -21,7 +21,7 @@ import {
   Info
 } from 'lucide-react';
 import { DeliverySettings, CityDeliveryInfo } from '../types';
-import { loadDeliverySettings } from '../utils/storage';
+import { loadDeliverySettings, sanitizeAndDeduplicateCities } from '../utils/storage';
 import { formatTierRange, formatTierFee } from '../utils/deliveryFeeCalculator';
 
 interface DeliveryAreasPageProps {
@@ -37,7 +37,8 @@ export const DeliveryAreasPage: React.FC<DeliveryAreasPageProps> = ({ onBackToHo
   const [customAddressInquiry, setCustomAddressInquiry] = useState('');
 
   const activeCities = useMemo(() => {
-    return (deliverySettings?.cities || []).filter(c => c && c.isEnabled !== false);
+    const list = (deliverySettings?.cities || []).filter(c => c && c.isEnabled !== false);
+    return sanitizeAndDeduplicateCities(list);
   }, [deliverySettings]);
 
   const filteredCities = useMemo(() => {
@@ -181,13 +182,13 @@ export const DeliveryAreasPage: React.FC<DeliveryAreasPageProps> = ({ onBackToHo
 
         {/* Cities Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredCities.map((city) => {
+          {filteredCities.map((city, cIdx) => {
             const isAvailable = city.status !== 'unavailable' && city.isEnabled !== false;
             const isContact = city.status === 'contact_to_confirm';
 
             return (
               <div 
-                key={city.id}
+                key={city.id ? `${city.id}-${cIdx}` : `area-city-${city.cityName}-${cIdx}`}
                 className="bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 rounded-3xl p-5 space-y-4 transition-all hover:shadow-xl hover:shadow-amber-500/5 group flex flex-col justify-between"
               >
                 <div>
@@ -242,11 +243,13 @@ export const DeliveryAreasPage: React.FC<DeliveryAreasPageProps> = ({ onBackToHo
                       <span className="text-[10px] text-slate-400 block">Delivery Fee:</span>
                       {city.deliveryTiers && city.deliveryTiers.length > 0 ? (
                         <span className="font-bold text-amber-400 text-[11px] mt-0.5 block">
-                          Order-Based Tiers
+                          From PKR {Math.max(200, city.deliveryTiers[0]?.fee || city.deliveryFee || 200).toLocaleString()}
                         </span>
                       ) : (
-                        <span className="font-bold text-emerald-400 font-mono mt-0.5 block">
-                          {city.deliveryFee === 0 ? 'FREE' : `PKR ${(city.deliveryFee ?? 0).toLocaleString()}`}
+                        <span className="font-bold text-amber-300 font-mono mt-0.5 block">
+                          {typeof city.deliveryFee === 'number' && city.deliveryFee > 0
+                            ? `PKR ${Math.max(200, city.deliveryFee).toLocaleString()}`
+                            : 'From PKR 200'}
                         </span>
                       )}
                     </div>

@@ -7,11 +7,13 @@ import { CinematicSection } from './cinematic/CinematicSection';
 interface BrandsSectionProps {
   brands: ProductBrand[];
   products: Product[];
+  onSelectBrand?: (brand: ProductBrand) => void;
 }
 
 export const BrandsSection: React.FC<BrandsSectionProps> = ({
   brands,
-  products
+  products,
+  onSelectBrand
 }) => {
   const activeBrands = useMemo(() => {
     const safeBrands = Array.isArray(brands) ? brands : [];
@@ -82,9 +84,10 @@ export const BrandsSection: React.FC<BrandsSectionProps> = ({
                   hidden: { opacity: 0, scale: 0.95, y: 15 },
                   visible: { opacity: 1, scale: 1, y: 0, transition: { duration: 0.4 } }
                 }}
-                className="cursor-default select-none"
+                className={onSelectBrand ? "cursor-pointer" : "cursor-default select-none"}
+                onClick={() => onSelectBrand && onSelectBrand(brand)}
               >
-                <div className="relative rounded-2xl bg-slate-900/90 p-4 border border-slate-800/90 flex flex-col items-center text-center justify-between shadow-lg h-full cursor-default select-none">
+                <div className="relative rounded-2xl bg-slate-900/90 p-4 border border-slate-800/90 flex flex-col items-center text-center justify-between shadow-lg h-full hover:border-blue-500/50 hover:bg-slate-850 transition-all group">
                   
                   {/* Brand Logo Container */}
                   <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-slate-950 border border-slate-800 p-2 overflow-hidden flex items-center justify-center mb-3 shrink-0">

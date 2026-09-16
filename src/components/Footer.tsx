@@ -15,6 +15,7 @@ import { BusinessConfig } from '../types';
 interface FooterProps {
   config: BusinessConfig;
   onSelectCategory: (categoryId: string) => void;
+  onNavigate?: (path: string) => void;
   onReplayIntro?: () => void;
   onOpenThemeModal?: () => void;
   onOpenDeliveryChecker?: () => void;
@@ -24,6 +25,7 @@ interface FooterProps {
 export const Footer: React.FC<FooterProps> = ({ 
   config, 
   onSelectCategory, 
+  onNavigate,
   onReplayIntro, 
   onOpenThemeModal,
   onOpenDeliveryChecker,
@@ -34,6 +36,16 @@ export const Footer: React.FC<FooterProps> = ({
     const targetPhone = rawNumber.replace(/[^0-9]/g, '') || '923108002863';
     const text = encodeURIComponent(`Hello ${config.name || 'Zafar Sarwar Traders'}, I am visiting your website and would like to inquire about your products.`);
     window.open(`https://wa.me/${targetPhone}?text=${text}`, '_blank');
+  };
+
+  const handleLinkClick = (path: string, e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    if (onNavigate) {
+      onNavigate(path);
+    } else {
+      window.history.pushState(null, '', path);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
   };
 
   return (
@@ -47,8 +59,12 @@ export const Footer: React.FC<FooterProps> = ({
           
           {/* Col 1: Brand Info */}
           <div className="lg:col-span-4 space-y-4">
-            <a href="#hero" className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-400 p-[1.5px] shadow-lg shadow-amber-950/20">
+            <a 
+              href="/" 
+              onClick={(e) => handleLinkClick('/', e)} 
+              className="flex items-center gap-3 cursor-pointer group"
+            >
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-400 p-[1.5px] shadow-lg shadow-amber-950/20 group-hover:scale-105 transition-transform">
                 <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
                   <Building2 className="w-5 h-5 text-amber-400" />
                 </div>
@@ -99,14 +115,24 @@ export const Footer: React.FC<FooterProps> = ({
                   </button>
                 </li>
               )}
-              {['Home', 'About Us', 'Categories', 'Products', 'Why Us', 'Gallery', 'Reviews', 'FAQ', 'Contact'].map((item) => (
-                <li key={item}>
-                  <a
-                    href={`#${item.toLowerCase().replace(/\s+/g, '-')}`}
-                    className="hover:text-amber-300 transition-colors"
+              {[
+                { label: 'Home', path: '/' },
+                { label: 'Online Store', path: '/store' },
+                { label: 'Categories', path: '/categories' },
+                { label: 'Brands', path: '/brands' },
+                { label: 'Smart Tools Hub', path: '/smart-tools' },
+                { label: 'Delivery Coverage', path: '/delivery' },
+                { label: 'About Us', path: '/about' },
+                { label: 'Showroom & Contact', path: '/contact' },
+              ].map((item) => (
+                <li key={item.path}>
+                  <button
+                    type="button"
+                    onClick={(e) => handleLinkClick(item.path, e)}
+                    className="hover:text-amber-300 transition-colors text-left cursor-pointer"
                   >
-                    {item}
-                  </a>
+                    {item.label}
+                  </button>
                 </li>
               ))}
             </ul>

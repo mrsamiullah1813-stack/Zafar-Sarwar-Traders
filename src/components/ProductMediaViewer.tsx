@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Product, ProductVariant, PaintShade, ProductVideo } from '../types';
 import { VideoPlayer } from './VideoPlayer';
+import { normalizeProductImage, getCategoryFallbackImage, handleImageError } from '../utils/imageUtils';
 
 export interface ProductMediaItem {
   id: string;
@@ -53,12 +54,13 @@ export function compileProductMediaList(
   const seenUrls = new Set<string>();
 
   // 1. Primary Product Image
-  if (product.image && product.image.trim() !== '') {
-    seenUrls.add(product.image);
+  const normalizedPrimary = normalizeProductImage(product.image, product.category, product.name);
+  if (normalizedPrimary && normalizedPrimary.trim() !== '') {
+    seenUrls.add(normalizedPrimary);
     items.push({
       id: `media-primary-${product.id}`,
       type: 'image',
-      url: product.image,
+      url: normalizedPrimary,
       title: product.name,
       caption: 'Showroom Flagship Display Photo',
       badge: 'Main Photo',
@@ -68,7 +70,8 @@ export function compileProductMediaList(
 
   // 2. Additional Gallery Images
   if (Array.isArray(product.images)) {
-    product.images.forEach((imgUrl, idx) => {
+    product.images.forEach((rawImgUrl, idx) => {
+      const imgUrl = normalizeProductImage(rawImgUrl, product.category, product.name);
       if (imgUrl && typeof imgUrl === 'string' && imgUrl.trim() !== '' && !seenUrls.has(imgUrl)) {
         seenUrls.add(imgUrl);
         items.push({
@@ -174,7 +177,7 @@ export function compileProductMediaList(
     items.push({
       id: `media-fallback-${product.id}`,
       type: 'image',
-      url: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1200&q=80',
+      url: getCategoryFallbackImage(product.category, product.name),
       title: product.name,
       caption: 'Luxury Sanitaryware & Building Materials',
       badge: 'Display',
@@ -665,10 +668,7 @@ export const ProductMediaViewer: React.FC<ProductMediaViewerProps> = ({
                   onLoad={() => setImageLoading(false)}
                   onError={(e) => {
                     setImageLoading(false);
-                    const target = e.currentTarget;
-                    if (!target.src.includes('unsplash.com/photo-1584622650111')) {
-                      target.src = 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1200&q=80';
-                    }
+                    handleImageError(e, product.category, product.name);
                   }}
                   style={{
                     transform: `scale(${zoomLevel}) translate(${panPosition.x / zoomLevel}px, ${panPosition.y / zoomLevel}px)`,

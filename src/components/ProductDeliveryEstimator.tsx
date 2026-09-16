@@ -14,7 +14,9 @@ import {
   Edit3
 } from 'lucide-react';
 import { DeliverySettings, CityDeliveryInfo, Product, ProductDeliveryConfig } from '../types';
-import { loadDeliverySettings } from '../utils/storage';
+import { loadDeliverySettings, sanitizeAndDeduplicateCities } from '../utils/storage';
+import { calculateCityDeliveryFee, isProductHeavyOrBulky } from '../utils/deliveryFeeCalculator';
+import { parseNumericPrice } from '../utils/pricingUtils';
 
 export interface DeliveryDetailsPayload {
   city: string;
@@ -29,12 +31,14 @@ export interface DeliveryDetailsPayload {
 
 interface ProductDeliveryEstimatorProps {
   product: Product;
+  quantity?: number;
   customDeliverySettings?: DeliverySettings;
   onDeliveryDetailsChange?: (details: DeliveryDetailsPayload) => void;
 }
 
 export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> = ({ 
   product, 
+  quantity = 1,
   customDeliverySettings,
   onDeliveryDetailsChange
 }) => {
@@ -44,9 +48,10 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
 
   // Active cities from settings
   const activeCities = useMemo(() => {
-    return (deliverySettings.cities || [])
+    const list = (deliverySettings.cities || [])
       .filter(c => c && c.isEnabled !== false)
       .sort((a, b) => (a.displayOrder || 99) - (b.displayOrder || 99));
+    return sanitizeAndDeduplicateCities(list);
   }, [deliverySettings.cities]);
 
   // Product Delivery Override
@@ -149,13 +154,39 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
       }
     }
 
-    // Default for ALL existing & future products:
-    // Heading: "Contact for Delivery"
-    // Subtitle: "Delivery depends on quantity, item type and location."
-    // Note: "Contact for further details."
-    const customHeading = prodConfig?.deliveryFeeLabel?.trim() || 'Contact for Delivery';
-    const customSub = prodConfig?.deliveryFeeCustomText?.trim() || 'Delivery depends on quantity, item type and location.';
-    const customNote = prodConfig?.deliveryNote?.trim() || 'Contact for further details.';
+    // Predefined City Dynamic Calculation
+    if (selectedCity && !isCustomMode) {
+      const isHeavy = isProductHeavyOrBulky(product);
+      const calc = calculateCityDeliveryFee(
+        selectedCity,
+        parseNumericPrice(product.price) || 1000,
+        deliverySettings.globalDeliveryFeeAmount || 250,
+        undefined,
+        deliverySettings.minDeliveryFee,
+        deliverySettings.maxDeliveryFee,
+        product.weightKg || (isHeavy ? 12 : 1),
+        isHeavy ? 'heavy' : 'light',
+        1,
+        isHeavy ? 1 : 0,
+        [{ product, quantity: 1 }]
+      );
+
+      const feeAmt = calc.isFree ? 0 : Math.max(200, calc.deliveryFee);
+
+      return { 
+        amount: feeAmt, 
+        type: calc.isFree ? ('free' as const) : ('fixed' as const), 
+        display: calc.isFree ? 'Free Delivery' : `Rs. ${feeAmt.toLocaleString('en-PK')}`,
+        heading: calc.isFree ? 'Free Delivery' : `${selectedCity.cityName} Delivery: Rs. ${feeAmt.toLocaleString('en-PK')}`,
+        subtitle: `Calculated delivery to ${selectedCity.cityName} (${calc.weightClass === 'heavy' ? 'Heavy / Bulky Cargo' : 'Standard Parcel'})`,
+        note: `Estimated timeline: ${estimatedDays}. Direct showroom logistics.`
+      };
+    }
+
+    // Default for Custom / Unselected City
+    const customHeading = prodConfig?.deliveryFeeLabel?.trim() || 'Calculated at Checkout';
+    const customSub = prodConfig?.deliveryFeeCustomText?.trim() || 'Delivery charges apply based on city, distance, quantity and weight. Minimum Rs. 200.';
+    const customNote = prodConfig?.deliveryNote?.trim() || 'Contact our support team for specialized delivery assistance.';
 
     return { 
       amount: 0, 
@@ -165,7 +196,7 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
       subtitle: customSub,
       note: customNote
     };
-  }, [prodConfig, isCustomMode, selectedCity]);
+  }, [prodConfig, isCustomMode, selectedCity, product, deliverySettings, estimatedDays]);
 
   // Current active city name
   const currentCityName = isCustomMode ? customCityName.trim() : (selectedCity?.cityName || '');
@@ -222,8 +253,8 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
             <h4 className="text-xs font-bold text-white uppercase tracking-wider">
               Delivery Information
             </h4>
-            <p className="text-[11px] text-slate-400">
-              Nationwide delivery with direct freight & cargo handling
+            <p className="text-[11px] text-amber-300/90 font-medium">
+              Delivery depends on city, location and quantity.
             </p>
           </div>
         </div>
@@ -414,13 +445,13 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
             {/* City List Scroll Area */}
             <div className="p-3 space-y-1.5 overflow-y-auto flex-1 max-h-[50vh]">
               {filteredCities.length > 0 ? (
-                filteredCities.map((city) => {
+                filteredCities.map((city, cIdx) => {
                   const isSelected = !isCustomMode && selectedCityId === city.id;
                   const isFree = city.freeDelivery || city.deliveryFeeType === 'free' || city.deliveryFee === 0;
 
                   return (
                     <button
-                      key={city.id}
+                      key={city.id ? `${city.id}-${cIdx}` : `est-city-${city.cityName}-${cIdx}`}
                       type="button"
                       onClick={() => handleSelectCity(city)}
                       className={`w-full text-left p-3 rounded-2xl transition-all border flex items-center justify-between group ${

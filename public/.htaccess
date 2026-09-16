@@ -1,0 +1,32 @@
+# Hostinger SPA Fallback & Rewrite Rules for Zafar Sarwar Traders
+# Preserves /api/*, /uploads/*, real assets, robots.txt, sitemap.xml
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # 1. Do not rewrite real files, directories, or symlinks
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d [OR]
+  RewriteCond %{REQUEST_FILENAME} -l
+  RewriteRule ^ - [L]
+
+  # 2. Pass backend API and file upload routes directly
+  RewriteCond %{REQUEST_URI} ^/(api|uploads|assets)/ [NC]
+  RewriteRule ^ - [L]
+
+  # 3. Direct robots.txt and sitemap.xml
+  RewriteRule ^robots\.txt$ robots.txt [L]
+  RewriteRule ^sitemap\.xml$ sitemap.xml [L]
+
+  # 4. Route all other requests to index.html for client-side SPA routing
+  RewriteRule ^index\.html$ - [L]
+  RewriteRule . /index.html [L]
+</IfModule>
+
+# Security and caching headers
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>

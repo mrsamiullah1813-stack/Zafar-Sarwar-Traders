@@ -1,41 +1,42 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowRight, 
-  Sparkles, 
   ChevronLeft, 
   ChevronRight, 
-  Play, 
-  Pause,
-  ShoppingBag,
-  Eye,
-  CheckCircle2,
-  Tag,
-  ShieldCheck,
+  ShoppingBag, 
+  ShieldCheck, 
+  Truck, 
   Award,
-  MessageCircle,
-  Truck,
-  RotateCcw,
-  Sparkle,
-  SlidersHorizontal,
-  Volume2,
-  VolumeX,
-  Zap
+  Layers,
+  Sparkles,
+  CheckCircle2
 } from 'lucide-react';
 import { Product, ProductCategory, ProductBrand, HeroSettings } from '../types';
-import { ProductSaleBadge } from './ProductSaleBadge';
-import { getProductPricingDetails, buildProductWhatsAppOrderUrl } from '../utils/pricingUtils';
-import { loadStoredConfig } from '../utils/storage';
+import { getProductPricingDetails } from '../utils/pricingUtils';
+import { getProductSlug } from '../utils/slugUtils';
 
 interface HeroSectionProps {
   products: Product[];
   categories: ProductCategory[];
   brands: ProductBrand[];
-  heroSettings: HeroSettings;
+  heroSettings?: HeroSettings;
   onSelectProduct: (product: Product) => void;
   onAddToCart?: (product: Product, quantity?: number) => void;
   onBuyNow?: (product: Product, quantity?: number) => void;
-  onOpenAiConsultant: () => void;
+  onOpenAiConsultant?: () => void;
+  onNavigateToStore?: () => void;
+  onNavigateToCategories?: () => void;
+}
+
+interface CuratedSlide {
+  id: string;
+  badge: string;
+  title: string;
+  subtitle: string;
+  categoryTag: string;
+  defaultImage: string;
+  product?: Product;
 }
 
 export const HeroSection: React.FC<HeroSectionProps> = ({
@@ -45,823 +46,423 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   heroSettings,
   onSelectProduct,
   onAddToCart,
-  onBuyNow,
-  onOpenAiConsultant,
+  onNavigateToStore,
+  onNavigateToCategories
 }) => {
-  // Filter and order products for the Hero Section based on settings and database
-  const getHeroProducts = (): Product[] => {
-    const safeProducts = Array.isArray(products) ? products : [];
-    const activeProducts = safeProducts.filter(p => !p.isHidden);
+  // 1. Resolve real active products from database
+  const safeProducts = Array.isArray(products) ? products.filter(p => !p.isHidden) : [];
 
-    let selected: Product[] = [];
-
-    // 1. If admin manually specified product IDs, pick those in order
-    if (heroSettings?.heroProductIds && heroSettings.heroProductIds.length > 0) {
-      const mapped = heroSettings.heroProductIds
-        .map(id => activeProducts.find(p => p.id === id))
-        .filter((p): p is Product => p !== undefined);
-      if (mapped.length > 0) selected = mapped;
+  // Build curated slides with real products
+  const curatedSlides: CuratedSlide[] = [
+    {
+      id: 'slide-sanitary',
+      badge: 'PREMIUM SANITARYWARE & BATHROOMS',
+      title: 'Luxury Bathroom Suites & Sanitary Fittings',
+      subtitle: 'Official distributor of Master, Porta, and Sonex. Transform your home with modern commodes, vanity basins, and luxury fixtures.',
+      categoryTag: 'Sanitaryware & Basins',
+      defaultImage: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1000&q=80',
+      product: safeProducts.find(p => 
+        p.category?.toLowerCase().includes('sanitary') || 
+        p.name?.toLowerCase().includes('basin') || 
+        p.name?.toLowerCase().includes('commode')
+      ) || safeProducts[0]
+    },
+    {
+      id: 'slide-faucets',
+      badge: 'ENGINEERED BRASS FAUCETS',
+      title: 'Architectural Faucets, Mixers & Rain Showers',
+      subtitle: 'Forged brass precision by Faisal, Sonex, and Master. Heavy chrome plating, drip-free ceramic cartridges, and lifetime durability.',
+      categoryTag: 'Faucets & Showers',
+      defaultImage: 'https://images.unsplash.com/photo-1585412727339-54e4bae3bbf9?auto=format&fit=crop&w=1000&q=80',
+      product: safeProducts.find(p => 
+        p.category?.toLowerCase().includes('faucet') || 
+        p.name?.toLowerCase().includes('mixer') || 
+        p.name?.toLowerCase().includes('shower')
+      ) || safeProducts[1]
+    },
+    {
+      id: 'slide-pipes-materials',
+      badge: 'STRUCTURAL BUILDING MATERIALS',
+      title: 'Certified Plumbing Pipes, Water Tanks & Cement',
+      subtitle: 'Standardized IIL G.I. pipes, food-grade multi-layer water tanks, PVC drainage, and genuine Portland cement for enduring strength.',
+      categoryTag: 'Pipes & Building Materials',
+      defaultImage: 'https://images.unsplash.com/photo-1541888946425-d0fbb186156f?auto=format&fit=crop&w=1000&q=80',
+      product: safeProducts.find(p => 
+        p.category?.toLowerCase().includes('pipe') || 
+        p.category?.toLowerCase().includes('tank') || 
+        p.name?.toLowerCase().includes('tank')
+      ) || safeProducts[2]
+    },
+    {
+      id: 'slide-paints',
+      badge: 'ARCHITECTURAL FINISHES',
+      title: 'Weatherproof Emulsions & Decorative Paints',
+      subtitle: 'Authorized dealer of Berger and Diamond paints. Authentic shade cards, computer color mixing, and exterior protective coatings.',
+      categoryTag: 'Paints & Wall Finishes',
+      defaultImage: 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?auto=format&fit=crop&w=1000&q=80',
+      product: safeProducts.find(p => 
+        p.category?.toLowerCase().includes('paint') || 
+        p.name?.toLowerCase().includes('paint') || 
+        p.name?.toLowerCase().includes('emulsion')
+      ) || safeProducts[3]
     }
-
-    // 2. If no explicit array, look for products marked as isHeroFeatured or isFeatured
-    if (selected.length === 0) {
-      const heroFeatured = activeProducts.filter(p => p.isHeroFeatured || p.isFeatured);
-      if (heroFeatured.length > 0) selected = heroFeatured;
-    }
-
-    // 3. Fallback: latest available active products (up to 6)
-    if (selected.length === 0) {
-      selected = activeProducts.slice(0, 6);
-    }
-
-    // Apply custom order if defined
-    if (heroSettings?.customProductOrder && heroSettings.customProductOrder.length > 0) {
-      const orderMap = new Map<string, number>(heroSettings.customProductOrder.map((id, index) => [id, index]));
-      selected.sort((a, b) => {
-        const orderA = orderMap.get(a.id) ?? 999;
-        const orderB = orderMap.get(b.id) ?? 999;
-        return orderA - orderB;
-      });
-    }
-
-    return selected;
-  };
-
-  const heroProducts = getHeroProducts();
+  ];
 
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(heroSettings?.autoPlay ?? true);
-  const [direction, setDirection] = useState<1 | -1>(1);
-  const [isHovered, setIsHovered] = useState(false);
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-  const [addedToastProduct, setAddedToastProduct] = useState<string | null>(null);
+  const [isPaused, setIsPaused] = useState(false);
+  const [addedToast, setAddedToast] = useState<string | null>(null);
 
-  const containerRef = useRef<HTMLDivElement>(null);
+  const durationSec = heroSettings?.rotationDurationSeconds || 6;
 
-  // Ensure currentIndex stays within bounds when products change
+  // Auto-play timer
   useEffect(() => {
-    if (heroProducts.length > 0 && currentIndex >= heroProducts.length) {
-      setCurrentIndex(0);
-    }
-  }, [heroProducts.length, currentIndex]);
-
-  const durationSec = heroSettings?.rotationDurationSeconds || 5;
-  const pauseOnHover = heroSettings?.pauseOnHover ?? true;
-
-  // Auto Rotation Timer
-  useEffect(() => {
-    if (!isPlaying || heroProducts.length <= 1) return;
-    if (pauseOnHover && isHovered) return;
-
+    if (isPaused) return;
     const timer = setInterval(() => {
-      setDirection(1);
-      setCurrentIndex((prev) => (prev + 1) % heroProducts.length);
+      setCurrentIndex((prev) => (prev + 1) % curatedSlides.length);
     }, durationSec * 1000);
 
     return () => clearInterval(timer);
-  }, [isPlaying, heroProducts.length, durationSec, pauseOnHover, isHovered]);
+  }, [isPaused, durationSec, curatedSlides.length]);
 
-  // Keyboard navigation listener (Arrow Left / Right)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') {
-        handlePrev();
-      } else if (e.key === 'ArrowRight') {
-        handleNext();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [heroProducts.length]);
+  const currentSlide = curatedSlides[currentIndex];
+  const slideProduct = currentSlide.product;
 
   const handleNext = () => {
-    if (heroProducts.length <= 1) return;
-    setDirection(1);
-    setCurrentIndex((prev) => (prev + 1) % heroProducts.length);
+    setCurrentIndex((prev) => (prev + 1) % curatedSlides.length);
   };
 
   const handlePrev = () => {
-    if (heroProducts.length <= 1) return;
-    setDirection(-1);
-    setCurrentIndex((prev) => (prev - 1 + heroProducts.length) % heroProducts.length);
+    setCurrentIndex((prev) => (prev - 1 + curatedSlides.length) % curatedSlides.length);
   };
 
-  const currentProduct = heroProducts[currentIndex];
-
-  // Mouse Parallax movement calculator
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!heroSettings?.enableParallax && heroSettings?.enableParallax !== undefined) return;
-    if (!containerRef.current) return;
-
-    const rect = containerRef.current.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    
-    const strength = (heroSettings?.parallaxStrength || 15) / 100;
-    const moveX = (e.clientX - centerX) * strength * 0.1;
-    const moveY = (e.clientY - centerY) * strength * 0.1;
-
-    setMousePosition({ x: moveX, y: moveY });
-  };
-
-  const handleMouseLeave = () => {
-    setIsHovered(false);
-    setMousePosition({ x: 0, y: 0 });
-  };
-
-  // Helper to format category or brand name
-  const getCategoryName = (catId?: string) => {
-    if (!catId) return 'Luxury Sanitaryware';
-    const found = (categories || []).find(c => c && c.id === catId);
-    return found ? found.name : 'Sanitaryware';
-  };
-
-  const getBrandName = (brandId?: string, fallbackBrand?: string) => {
-    if (fallbackBrand) return fallbackBrand;
-    if (!brandId) return 'Zafar Sarwar Traders';
-    const found = (brands || []).find(b => b && b.id === brandId);
-    return found ? found.name : 'Zafar Sarwar Traders';
-  };
-
-  // Get effective product image (supports custom hero image override and reliable fallback)
-  const getProductImage = (prod: Product) => {
-    const override = heroSettings?.productImageOverrides?.[prod.id];
-    if (override && override.trim() !== '') {
-      return override;
-    }
-    return prod.image || prod.images?.[0] || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1000&q=80';
-  };
-
-  const handleQuickAddToCart = (e: React.MouseEvent, prod: Product) => {
+  const handleQuickAdd = (e: React.MouseEvent, prod: Product) => {
     e.stopPropagation();
     if (onAddToCart) {
       onAddToCart(prod, 1);
-      setAddedToastProduct(prod.name);
-      setTimeout(() => setAddedToastProduct(null), 3000);
+      setAddedToast(prod.name);
+      setTimeout(() => setAddedToast(null), 2500);
     } else {
       onSelectProduct(prod);
     }
   };
 
-  const handleWhatsAppOrder = (e: React.MouseEvent, prod: Product) => {
-    e.stopPropagation();
-    const currentConfig = loadStoredConfig();
-    const rawPhone = currentConfig?.whatsapp || currentConfig?.phone || '923108002863';
-    const phone = rawPhone.replace(/[^0-9]/g, '');
-    const result = buildProductWhatsAppOrderUrl({
-      businessName: currentConfig?.name || 'Zafar Sarwar Traders',
-      whatsappNumber: phone,
-      product: prod,
-      quantity: 1
-    });
-    window.open(result.url, '_blank');
-  };
-
-  // Dynamic animation variants based on transition style
-  const transitionStyle = heroSettings?.transitionStyle || 'cinematic-depth';
-  const transitionSpeed = heroSettings?.transitionSpeedSeconds || 0.8;
-
-  const getAnimationVariants = () => {
-    switch (transitionStyle) {
-      case 'depth-zoom':
-        return {
-          initial: { opacity: 0, scale: 0.75, z: -200, filter: 'blur(12px)' },
-          animate: { opacity: 1, scale: 1, z: 0, filter: 'blur(0px)' },
-          exit: { opacity: 0, scale: 1.25, z: 200, filter: 'blur(12px)' }
-        };
-      case '3d-slide':
-        return {
-          initial: { opacity: 0, x: direction * 120, rotateY: direction * 25, scale: 0.85, filter: 'blur(8px)' },
-          animate: { opacity: 1, x: 0, rotateY: 0, scale: 1, filter: 'blur(0px)' },
-          exit: { opacity: 0, x: -direction * 120, rotateY: -direction * 25, scale: 0.85, filter: 'blur(8px)' }
-        };
-      case 'smooth-reveal':
-        return {
-          initial: { opacity: 0, y: 30, filter: 'blur(6px)' },
-          animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
-          exit: { opacity: 0, y: -30, filter: 'blur(6px)' }
-        };
-      case 'scale-reveal':
-        return {
-          initial: { opacity: 0, scale: 0.88, filter: 'blur(10px)' },
-          animate: { opacity: 1, scale: 1, filter: 'blur(0px)' },
-          exit: { opacity: 0, scale: 0.88, filter: 'blur(10px)' }
-        };
-      case 'perspective-slide':
-        return {
-          initial: { opacity: 0, x: direction * 80, rotateY: direction * 15, scale: 0.9 },
-          animate: { opacity: 1, x: 0, rotateY: 0, scale: 1 },
-          exit: { opacity: 0, x: -direction * 80, rotateY: -direction * 15, scale: 0.9 }
-        };
-      case 'cinematic-depth':
-      default:
-        return {
-          initial: { 
-            opacity: 0, 
-            x: direction * 60, 
-            scale: 0.92,
-            rotateY: direction * 12,
-            filter: 'blur(10px)'
-          },
-          animate: { 
-            opacity: 1, 
-            x: 0, 
-            scale: 1, 
-            rotateY: 0,
-            filter: 'blur(0px)'
-          },
-          exit: { 
-            opacity: 0, 
-            x: -direction * 60, 
-            scale: 0.92,
-            rotateY: -direction * 12,
-            filter: 'blur(10px)'
-          }
-        };
-    }
-  };
-
-  const variants = getAnimationVariants();
-
-  if (!heroSettings?.isEnabled) {
-    return null;
-  }
+  // Pricing calculation
+  const pricing = slideProduct ? getProductPricingDetails(slideProduct) : null;
+  const brandName = slideProduct?.brand || (brands.find(b => b.id === slideProduct?.brandId)?.name) || 'Zafar Sarwar Traders';
+  const productImage = slideProduct?.image || slideProduct?.images?.[0] || currentSlide.defaultImage;
 
   return (
     <section 
-      id="hero" 
-      ref={containerRef}
-      onMouseMove={handleMouseMove}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={handleMouseLeave}
-      className="relative min-h-[88vh] lg:min-h-[94vh] flex flex-col justify-between bg-[#030712] text-white overflow-hidden select-none"
+      id="hero-slider"
+      className="relative bg-slate-950 text-white overflow-hidden border-b border-slate-800/80"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+      aria-label="Featured Store Showcase"
     >
-      {/* 1. CINEMATIC BACKGROUND LAYER */}
-      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+      {/* Background Architectural Canvas with subtle noise & warm gradients */}
+      <div className="absolute inset-0 pointer-events-none">
+        {/* Deep Slate Architectural Gradient */}
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-[#0a1120] to-slate-950" />
         
-        {/* Video or Image Background */}
-        {heroSettings?.bgType === 'custom-video' && heroSettings?.bgVideoUrl ? (
-          <video
-            autoPlay
-            loop
-            muted
-            playsInline
-            className="absolute inset-0 w-full h-full object-cover filter brightness-[0.22] contrast-[1.25]"
-            src={heroSettings.bgVideoUrl}
-          />
-        ) : (
-          <div 
-            className="absolute inset-0 bg-cover bg-center filter brightness-[0.18] contrast-[1.3] scale-105 transition-all duration-1000"
-            style={{
-              backgroundImage: `url('${heroSettings?.bgMediaUrl || 'https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&w=2000&q=80'}')`,
-              transform: `translate3d(${mousePosition.x * 0.3}px, ${mousePosition.y * 0.3}px, 0) scale(1.05)`
-            }}
-          />
-        )}
-
-        {/* Cinematic Vignette & Deep Contrast Overlays */}
-        <div className="absolute inset-0 bg-gradient-to-r from-[#030712] via-[#030712]/90 to-[#030712]/75" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#030712] via-transparent to-[#030712]/80" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(3,7,18,0.7)_100%)]" />
-
-        {/* Anamorphic Blue & Cyan Lens Flare Streak across upper stage */}
-        <div className="absolute top-1/4 -left-1/4 w-[150%] h-[1px] bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent blur-[1px] transform -rotate-1 pointer-events-none" />
-        <div className="absolute top-1/4 left-1/3 w-96 h-12 bg-cyan-400/10 blur-3xl rounded-full transform -rotate-2 pointer-events-none" />
-
-        {/* Ambient Glowing Showroom Orbs */}
-        <motion.div 
-          animate={{
-            scale: [1, 1.15, 1],
-            opacity: [0.15, 0.28, 0.15],
+        {/* Soft Warm Neutral & Blue Accents - deliberate & professional */}
+        <div className="absolute -top-40 -left-40 w-[600px] h-[600px] bg-blue-900/15 rounded-full blur-[140px]" />
+        <div className="absolute -bottom-40 -right-40 w-[600px] h-[600px] bg-amber-600/10 rounded-full blur-[160px]" />
+        
+        {/* Subtle architectural grid pattern */}
+        <div 
+          className="absolute inset-0 opacity-[0.035]"
+          style={{
+            backgroundImage: `radial-gradient(#ffffff 1px, transparent 1px)`,
+            backgroundSize: '32px 32px'
           }}
-          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-          className="absolute top-1/4 right-1/4 w-[650px] h-[650px] bg-blue-600/20 rounded-full blur-[170px] pointer-events-none" 
         />
-        <motion.div 
-          animate={{
-            scale: [1, 1.2, 1],
-            opacity: [0.12, 0.22, 0.12],
-          }}
-          transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-          className="absolute bottom-1/4 right-10 w-[500px] h-[500px] bg-cyan-500/15 rounded-full blur-[150px] pointer-events-none" 
-        />
-        <div className="absolute top-1/3 left-10 w-[400px] h-[400px] bg-indigo-600/10 rounded-full blur-[140px] pointer-events-none" />
-
-        {/* Subtle Architectural Showcase Grid */}
-        <div className="absolute inset-0 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:40px_40px] opacity-[0.07]" />
       </div>
 
-      {/* 2. MAIN HERO COMPOSITION CONTAINER */}
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full my-auto py-10 lg:py-16">
+      {/* Main Container */}
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
         
-        {/* Quick Added to Cart Toast Notification */}
+        {/* Toast Notification for Quick Add */}
         <AnimatePresence>
-          {addedToastProduct && (
+          {addedToast && (
             <motion.div
-              initial={{ opacity: 0, y: -20, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.9 }}
-              className="fixed top-20 right-6 z-50 px-5 py-3 rounded-2xl bg-emerald-950/95 border border-emerald-500/40 text-emerald-200 text-xs font-bold shadow-2xl backdrop-blur-xl flex items-center gap-3"
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="fixed top-24 right-6 z-50 px-4 py-3 bg-emerald-900/95 border border-emerald-500/50 text-white text-xs font-semibold rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-2"
             >
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-              <span>Added <strong className="text-white">{addedToastProduct}</strong> to your Cart!</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Added <strong>{addedToast}</strong> to Cart!</span>
             </motion.div>
           )}
         </AnimatePresence>
 
-        <div className="flex flex-col-reverse lg:flex-row items-center justify-between gap-10 lg:gap-16">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
           
-          {/* LEFT SIDE: INFORMATION & ACTION CALLS */}
-          <div className="w-full lg:w-1/2 space-y-6 lg:space-y-7 text-left">
+          {/* LEFT COLUMN: HERO HEADLINE, BADGES, DESCRIPTION, CTAS */}
+          <div className="lg:col-span-7 space-y-6 text-left">
             
-            {/* Small Premium Badge Header */}
-            <motion.div
-              initial={{ opacity: 0, y: -15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-              className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-gradient-to-r from-blue-600/25 via-cyan-500/15 to-blue-600/25 border border-blue-400/30 text-blue-300 text-xs font-bold uppercase tracking-widest backdrop-blur-md shadow-xl"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-spin-slow" />
-              <span>{heroSettings.badgeText || 'ZAFAR SARWAR TRADERS'}</span>
-            </motion.div>
+            {/* Small Trust Badge */}
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-slate-700/70 text-slate-300 text-xs font-semibold tracking-wider uppercase backdrop-blur-sm">
+              <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+              <span>{heroSettings?.badgeText || 'EST. 1990 • AUTHORIZED DEALER & DISTRIBUTOR'}</span>
+            </div>
 
-            {/* Dynamic Product Category Label */}
-            <AnimatePresence mode="wait">
-              {currentProduct && (
-                <motion.div
-                  key={currentProduct.id + '-cat'}
-                  initial={{ opacity: 0, x: -15 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 15 }}
-                  transition={{ duration: 0.4 }}
-                  className="flex items-center gap-2 text-cyan-400 text-xs sm:text-sm font-bold uppercase tracking-wider"
-                >
-                  <Tag className="w-3.5 h-3.5" />
-                  <span>{getCategoryName(currentProduct.categoryId)}</span>
-                  <span className="text-slate-600">•</span>
-                  <span className="text-slate-300">{getBrandName(currentProduct.brandId, currentProduct.brand)}</span>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Main Headline / Dynamic Product Name */}
+            {/* Dynamic Slide Headline & Subtitle */}
             <AnimatePresence mode="wait">
               <motion.div
-                key={currentProduct ? currentProduct.id + '-title' : 'static-title'}
-                initial={{ opacity: 0, y: 20 }}
+                key={currentSlide.id}
+                initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.5, ease: 'easeOut' }}
+                exit={{ opacity: 0, y: -16 }}
+                transition={{ duration: 0.45, ease: 'easeOut' }}
+                className="space-y-4"
               >
-                {currentProduct ? (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black font-serif text-white tracking-tight leading-[1.15]">
-                    {currentProduct.name}
-                  </h1>
-                ) : (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black font-serif text-white tracking-tight leading-[1.15]">
-                    {(heroSettings.heading || 'Premium Sanitaryware\n& Bathroom Solutions').split('\n').map((line, idx) => (
-                      <React.Fragment key={idx}>
-                        {idx > 0 && <br />}
-                        <span className={idx === 1 ? 'text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-cyan-200 to-white' : ''}>
-                          {line}
-                        </span>
-                      </React.Fragment>
-                    ))}
-                  </h1>
-                )}
+                <div className="inline-block text-xs font-bold uppercase tracking-widest text-blue-400">
+                  {currentSlide.categoryTag}
+                </div>
+
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight leading-[1.15]">
+                  {currentSlide.title}
+                </h1>
+
+                <p className="text-sm sm:text-base text-slate-300 font-normal leading-relaxed max-w-xl">
+                  {currentSlide.subtitle}
+                </p>
               </motion.div>
             </AnimatePresence>
 
-            {/* Product Description */}
-            <AnimatePresence mode="wait">
-              <motion.p
-                key={currentProduct ? currentProduct.id + '-desc' : 'static-desc'}
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.5, delay: 0.1 }}
-                className="text-sm sm:text-base text-slate-300 font-normal leading-relaxed max-w-xl line-clamp-3"
+            {/* Action Buttons: Primary "Shop Now", Secondary "Explore Categories" */}
+            <div className="pt-2 flex flex-wrap items-center gap-3.5">
+              <button
+                type="button"
+                id="hero-shop-now-btn"
+                onClick={() => {
+                  if (onNavigateToStore) {
+                    onNavigateToStore();
+                  } else {
+                    window.history.pushState(null, '', '/store');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }
+                }}
+                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-sm font-bold shadow-lg shadow-blue-600/30 transition-all transform hover:-translate-y-0.5 cursor-pointer"
               >
-                {currentProduct?.description || heroSettings.subheading || 'Explore premium sanitaryware, bathroom fittings, showers, basins, tiles, paints and complete bathroom solutions.'}
-              </motion.p>
-            </AnimatePresence>
+                <ShoppingBag className="w-4 h-4" />
+                <span>Shop Online Store</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
 
-            {/* Price & Availability Tag Box */}
-            {currentProduct && (
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={currentProduct.id + '-price'}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.4 }}
-                  className="inline-flex flex-wrap items-center gap-4 p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800/90 backdrop-blur-md shadow-lg"
-                >
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Showroom Price</span>
-                    {(() => {
-                      const pricing = getProductPricingDetails(currentProduct);
-                      if (pricing.isSaleActive) {
-                        return (
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-xl sm:text-2xl font-black text-rose-400 font-mono">
-                              {pricing.formattedSalePrice}
-                            </span>
-                            {pricing.showRegularPriceStrike && (
-                              <span className="text-xs text-slate-500 line-through font-mono">
-                                {pricing.formattedRegularPrice}
-                              </span>
-                            )}
-                            {pricing.showDiscountPercentage && pricing.discountPercentage > 0 && (
-                              <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold text-[10px] font-mono border border-rose-500/40">
-                                {pricing.discountPercentage}% OFF
-                              </span>
-                            )}
-                          </div>
-                        );
-                      }
-                      return currentProduct.price ? (
-                        <span className="text-xl sm:text-2xl font-black text-cyan-300 font-mono product-price-typography">
-                          Rs. {!isNaN(Number(currentProduct.price)) && Number(currentProduct.price) > 0 ? Number(currentProduct.price).toLocaleString() : currentProduct.price}
-                        </span>
-                      ) : (
-                        <span className="text-sm font-semibold text-slate-300">Contact for Wholesale Price</span>
-                      );
-                    })()}
-                  </div>
+              <button
+                type="button"
+                id="hero-explore-categories-btn"
+                onClick={() => {
+                  if (onNavigateToCategories) {
+                    onNavigateToCategories();
+                  } else {
+                    window.history.pushState(null, '', '/categories');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }
+                }}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-slate-200 text-sm font-semibold transition-all hover:text-white cursor-pointer"
+              >
+                <Layers className="w-4 h-4 text-slate-400" />
+                <span>Browse Categories</span>
+              </button>
+            </div>
 
-                  <div className="h-8 w-px bg-slate-800 hidden sm:block" />
-
-                  <div className="flex items-center gap-2">
-                    {currentProduct.stockStatus !== 'Out of Stock' ? (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 text-xs font-bold">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                        In Stock & Ready
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-950/90 border border-amber-500/40 text-amber-300 text-xs font-bold">
-                        Available on Order
-                      </span>
-                    )}
-                  </div>
-                </motion.div>
-              </AnimatePresence>
-            )}
-
-            {/* Action Buttons (View Product, Add to Cart, Buy Now / Order on WhatsApp) */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.2 }}
-              className="flex flex-wrap items-center gap-3 pt-2"
-            >
-              {currentProduct ? (
-                <>
-                  {/* Button 1: View Product */}
-                  <button
-                    onClick={() => onSelectProduct(currentProduct)}
-                    className="px-6 py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-bold text-xs sm:text-sm shadow-xl shadow-blue-600/30 flex items-center gap-2 transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] border border-blue-400/30 cursor-pointer"
-                  >
-                    <Eye className="w-4 h-4 text-cyan-200" />
-                    <span>View Product</span>
-                    <ArrowRight className="w-4 h-4 ml-0.5" />
-                  </button>
-
-                  {/* Button 2: Add to Cart */}
-                  <button
-                    onClick={(e) => handleQuickAddToCart(e, currentProduct)}
-                    className="px-6 py-3.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-100 font-bold text-xs sm:text-sm border border-slate-700/80 backdrop-blur-md transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] flex items-center gap-2 shadow-lg hover:border-blue-500/50 cursor-pointer"
-                  >
-                    <ShoppingBag className="w-4 h-4 text-cyan-400" />
-                    <span>Add to Cart</span>
-                  </button>
-
-                  {/* Button 3: Buy Now */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (onBuyNow) {
-                        onBuyNow(currentProduct, 1);
-                      } else if (onAddToCart) {
-                        onAddToCart(currentProduct, 1);
-                      }
-                    }}
-                    className="px-6 py-3.5 rounded-xl bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:from-blue-700 active:to-blue-800 text-white font-semibold text-xs sm:text-sm border border-blue-500/50 transition-all duration-200 shadow-sm hover:shadow-md hover:shadow-blue-600/20 active:scale-[0.98] flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed tracking-wide"
-                  >
-                    <Zap className="w-4 h-4 text-blue-200 stroke-[2.2]" />
-                    <span>Buy Now</span>
-                  </button>
-                </>
-              ) : (
-                <>
-                  <a
-                    href={heroSettings.primaryBtnLink || '#products'}
-                    className="px-8 py-4 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-bold text-sm shadow-xl shadow-blue-600/30 flex items-center gap-2.5 transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] border border-blue-400/30"
-                  >
-                    <ShoppingBag className="w-4 h-4 text-cyan-200" />
-                    <span>{heroSettings.primaryBtnText || 'Shop Catalog'}</span>
-                    <ArrowRight className="w-4 h-4 ml-1" />
-                  </a>
-
-                  <button
-                    onClick={onOpenAiConsultant}
-                    className="px-6 py-4 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-cyan-300 font-bold text-sm border border-cyan-500/30 backdrop-blur-md transition-all flex items-center gap-2 shadow-lg cursor-pointer"
-                  >
-                    <Sparkles className="w-4 h-4 text-cyan-400" />
-                    <span>AI Bathroom Planner</span>
-                  </button>
-                </>
-              )}
-            </motion.div>
-
-            {/* Quick Trust Bar */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.8, delay: 0.4 }}
-              className="pt-4 border-t border-slate-800/80 flex flex-wrap items-center gap-6 text-xs text-slate-400"
-            >
+            {/* Trust Micro-Badges */}
+            <div className="pt-4 border-t border-slate-800/90 grid grid-cols-3 gap-3 sm:gap-4 max-w-lg">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>Authorized Brand Distributor</span>
+                <div className="w-7 h-7 rounded-lg bg-blue-950/80 border border-blue-800/50 flex items-center justify-center shrink-0">
+                  <Award className="w-3.5 h-3.5 text-blue-400" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white leading-tight">100% Genuine</div>
+                  <div className="text-[10px] text-slate-400">Direct from factory</div>
+                </div>
               </div>
+
               <div className="flex items-center gap-2">
-                <Award className="w-4 h-4 text-cyan-400" />
-                <span>European Standards</span>
+                <div className="w-7 h-7 rounded-lg bg-emerald-950/80 border border-emerald-800/50 flex items-center justify-center shrink-0">
+                  <Truck className="w-3.5 h-3.5 text-emerald-400" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white leading-tight">Fast Delivery</div>
+                  <div className="text-[10px] text-slate-400">Across Pakistan</div>
+                </div>
               </div>
+
               <div className="flex items-center gap-2">
-                <Truck className="w-4 h-4 text-blue-400" />
-                <span>Nationwide Express Logistics</span>
+                <div className="w-7 h-7 rounded-lg bg-amber-950/80 border border-amber-800/50 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white leading-tight">Wholesale Rates</div>
+                  <div className="text-[10px] text-slate-400">Bulk & Retail</div>
+                </div>
               </div>
-            </motion.div>
+            </div>
 
           </div>
 
-          {/* RIGHT SIDE: CINEMATIC 3D FLOATING PRODUCT SHOWCASE */}
-          <div className="w-full lg:w-1/2 flex flex-col items-center justify-center relative">
-            
-            {/* Ambient Podium Reflection Floor Glow */}
-            <div className="absolute inset-0 bg-gradient-to-tr from-blue-600/25 via-cyan-400/15 to-transparent rounded-full blur-3xl transform scale-95 pointer-events-none" />
-
-            {currentProduct ? (
-              <div className="w-full max-w-lg relative group">
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={currentProduct.id}
-                    variants={variants}
-                    initial="initial"
-                    animate="animate"
-                    exit="exit"
-                    transition={{ 
-                      duration: transitionSpeed, 
-                      ease: [0.16, 1, 0.3, 1] 
+          {/* RIGHT COLUMN: PREMIUM ARCHITECTURAL PRODUCT SHOWCASE */}
+          <div className="lg:col-span-5 flex justify-center">
+            <div className="w-full max-w-md">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={currentSlide.id + (slideProduct?.id || '')}
+                  initial={{ opacity: 0, scale: 0.96, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.96, y: -10 }}
+                  transition={{ duration: 0.45, ease: 'easeOut' }}
+                  className="bg-slate-900/90 rounded-2xl border border-slate-800/90 shadow-2xl shadow-black/60 overflow-hidden hover:border-slate-700 transition-all group relative"
+                >
+                  {/* Real Product Image Stage */}
+                  <div 
+                    className="relative w-full h-64 sm:h-72 bg-gradient-to-b from-slate-900 to-slate-950 p-6 flex items-center justify-center cursor-pointer overflow-hidden"
+                    onClick={() => {
+                      if (slideProduct) onSelectProduct(slideProduct);
                     }}
-                    style={{
-                      transform: `perspective(1000px) rotateX(${-mousePosition.y * 0.8}deg) rotateY(${mousePosition.x * 0.8}deg)`
-                    }}
-                    onClick={() => onSelectProduct(currentProduct)}
-                    className="cursor-pointer relative z-10 bg-slate-900/60 hover:bg-slate-900/80 border border-slate-800/80 hover:border-cyan-500/50 rounded-3xl p-6 sm:p-8 backdrop-blur-2xl shadow-[0_25px_60px_-15px_rgba(2,6,23,0.9)] transition-all duration-500 overflow-hidden group/showcase"
                   >
-                    {/* Dynamic Specular Sheen that tracks cursor movement */}
-                    <div 
-                      className="absolute inset-0 pointer-events-none transition-opacity duration-300 opacity-60 group-hover/showcase:opacity-100"
-                      style={{
-                        background: `radial-gradient(circle at ${(mousePosition.x + 10) * 5}% ${(mousePosition.y + 10) * 5}%, rgba(56, 189, 248, 0.14), transparent 65%)`
-                      }}
+                    {/* Architectural pedestal glow */}
+                    <div className="absolute inset-x-8 bottom-4 h-12 bg-blue-500/10 rounded-full blur-xl pointer-events-none" />
+
+                    <img
+                      src={productImage}
+                      alt={slideProduct?.name || currentSlide.title}
+                      className="max-h-full max-w-full object-contain filter drop-shadow-2xl transition-transform duration-500 group-hover:scale-105"
+                      loading="eager"
                     />
 
-                    {/* Subtle Shimmer Light Beam Effect */}
-                    <div className="absolute -inset-full top-0 block w-1/2 h-full bg-gradient-to-r from-transparent via-white/10 to-transparent transform -skew-x-12 -translate-x-full group-hover/showcase:animate-shimmer pointer-events-none" />
-
-                    {/* Floating Quality Spec Badges */}
-                    <div className="absolute top-4 left-4 z-20 flex items-center gap-1.5">
-                      <ProductSaleBadge product={currentProduct} />
-                      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-950/80 border border-slate-700/80 text-[11px] font-bold text-slate-200 backdrop-blur-md shadow-md">
-                        <Sparkle className="w-3 h-3 text-cyan-400" />
-                        <span>Featured Product</span>
-                      </div>
+                    {/* Brand Pill */}
+                    <div className="absolute top-4 left-4 px-2.5 py-1 rounded-md bg-slate-950/90 border border-slate-800 text-[11px] font-bold tracking-wider text-slate-300 uppercase backdrop-blur-sm">
+                      {brandName}
                     </div>
 
-                    <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-950/80 border border-blue-500/40 text-[11px] font-bold text-cyan-300 backdrop-blur-md shadow-md">
-                      <Award className="w-3 h-3 text-cyan-400" />
-                      <span>{getBrandName(currentProduct.brandId, currentProduct.brand)}</span>
+                    {/* Sale or Authenticity Tag */}
+                    {pricing?.isOnSale ? (
+                      <div className="absolute top-4 right-4 px-2.5 py-1 rounded-md bg-red-600 text-white text-[11px] font-extrabold uppercase shadow-md">
+                        {pricing.discountPercent ? `SAVE ${pricing.discountPercent}%` : 'SPECIAL OFFER'}
+                      </div>
+                    ) : (
+                      <div className="absolute top-4 right-4 px-2.5 py-1 rounded-md bg-blue-950/90 border border-blue-700/60 text-blue-300 text-[10px] font-bold uppercase backdrop-blur-sm">
+                        GENUINE SPEC
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card Details & Quick Purchase Bar */}
+                  <div className="p-5 space-y-3 bg-slate-900 border-t border-slate-800/80">
+                    <div>
+                      <div className="text-xs text-slate-400 font-medium">
+                        {slideProduct?.category || currentSlide.categoryTag}
+                      </div>
+                      <h3 
+                        className="text-base sm:text-lg font-bold text-white line-clamp-1 group-hover:text-blue-400 transition-colors cursor-pointer"
+                        onClick={() => {
+                          if (slideProduct) onSelectProduct(slideProduct);
+                        }}
+                      >
+                        {slideProduct?.name || currentSlide.title}
+                      </h3>
                     </div>
 
-                    {/* Main Dominant Product Image Container */}
-                    <div className="relative w-full h-72 sm:h-80 my-4 flex items-center justify-center p-6 bg-slate-950/70 rounded-2xl border border-slate-800/80 overflow-hidden group-hover/showcase:border-cyan-500/30 transition-all duration-500 shadow-inner">
-                      
-                      {/* Radial Spot Light Highlight behind Product */}
-                      <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/10 via-transparent to-blue-600/10 pointer-events-none" />
-
-                      {/* Main Image with Smooth Floating Bob Effect & Fallback Protection */}
-                      <motion.img
-                        animate={{
-                          y: [0, -8, 0],
-                        }}
-                        transition={{
-                          duration: 4,
-                          repeat: Infinity,
-                          ease: "easeInOut"
-                        }}
-                        src={getProductImage(currentProduct)}
-                        alt={`${currentProduct.name} - Premium Sanitaryware & Luxury Bathroom Fitting | Zafar Sarwar Traders Pakistan`}
-                        referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          const target = e.currentTarget;
-                          if (!target.dataset.fallbackApplied) {
-                            target.dataset.fallbackApplied = 'true';
-                            target.src = 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1000&q=80';
-                          }
-                        }}
-                        className="max-h-full max-w-full object-contain filter drop-shadow-[0_20px_35px_rgba(0,0,0,0.85)] transform group-hover/showcase:scale-105 transition-transform duration-700 ease-out z-10 relative"
-                      />
-
-                      {/* Product Floor Reflection Effect */}
-                      <div className="absolute bottom-1 w-3/4 h-8 bg-gradient-to-t from-cyan-400/20 to-transparent rounded-full blur-lg pointer-events-none transform scale-y-50 opacity-60 group-hover/showcase:opacity-90 transition-opacity" />
-
-                      {/* Quick Hover Hint Badge */}
-                      <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover/showcase:opacity-100 transition-opacity flex items-center justify-center z-20 backdrop-blur-xs">
-                        <span className="px-5 py-2.5 rounded-2xl bg-blue-600/90 text-white font-bold text-xs shadow-2xl flex items-center gap-2 backdrop-blur-md transform translate-y-2 group-hover/showcase:translate-y-0 transition-transform">
-                          <Eye className="w-4 h-4" />
-                          <span>Click to Inspect Specifications</span>
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Product Footer Quick Info Bar */}
-                    <div className="flex items-center justify-between pt-2 z-10 relative">
-                      <div className="min-w-0 pr-4">
-                        <h3 className="text-base sm:text-lg font-bold text-white truncate group-hover/showcase:text-cyan-200 transition-colors">
-                          {currentProduct.name}
-                        </h3>
-                        <p className="text-xs text-slate-400 font-mono">
-                          SKU: {currentProduct.sku || currentProduct.id}
-                        </p>
-                      </div>
-
-                      <div className="shrink-0 text-right">
-                        {(() => {
-                          const pricing = getProductPricingDetails(currentProduct);
-                          if (pricing.isSaleActive) {
-                            return (
-                              <div className="flex flex-col items-end">
-                                <span className="text-base sm:text-lg font-black text-rose-400 font-mono">
-                                  {pricing.formattedSalePrice}
-                                </span>
-                                <div className="flex items-center gap-1.5">
-                                  {pricing.showRegularPriceStrike && (
-                                    <span className="text-xs text-slate-400 line-through font-mono">
-                                      {pricing.formattedRegularPrice}
-                                    </span>
-                                  )}
-                                  {pricing.showDiscountPercentage && pricing.discountPercentage > 0 && (
-                                    <span className="px-1.5 py-0.2 rounded bg-rose-500/30 text-rose-300 font-bold text-[10px] font-mono border border-rose-500/40">
-                                      {pricing.discountPercentage}% OFF
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          }
-                          return currentProduct.price ? (
-                            <span className="text-base sm:text-lg font-black text-cyan-300 font-mono">
-                              Rs. {!isNaN(Number(currentProduct.price)) && Number(currentProduct.price) > 0 ? Number(currentProduct.price).toLocaleString() : currentProduct.price}
-                            </span>
+                    {/* Price & Action Row */}
+                    <div className="flex items-center justify-between pt-1">
+                      <div>
+                        {slideProduct ? (
+                          pricing?.isOnSale ? (
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-lg font-extrabold text-emerald-400">
+                                {pricing.effectivePrice}
+                              </span>
+                              <span className="text-xs text-slate-500 line-through">
+                                {pricing.originalPrice}
+                              </span>
+                            </div>
                           ) : (
-                            <span className="text-xs font-semibold text-slate-300">Contact for Quote</span>
-                          );
-                        })()}
+                            <div className="text-lg font-extrabold text-white">
+                              {pricing?.effectivePrice || slideProduct.price || 'Contact for Price'}
+                            </div>
+                          )
+                        ) : (
+                          <div className="text-sm font-semibold text-slate-400">In Showroom Stock</div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {slideProduct && (
+                          <button
+                            type="button"
+                            onClick={(e) => handleQuickAdd(e, slideProduct)}
+                            className="px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                          >
+                            <ShoppingBag className="w-3.5 h-3.5" />
+                            <span>Add</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (slideProduct) {
+                              onSelectProduct(slideProduct);
+                            } else {
+                              if (onNavigateToStore) onNavigateToStore();
+                            }
+                          }}
+                          className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all cursor-pointer"
+                        >
+                          Details
+                        </button>
                       </div>
                     </div>
+                  </div>
+                </motion.div>
+              </AnimatePresence>
 
-                  </motion.div>
-                </AnimatePresence>
-              </div>
-            ) : (
-              <div className="w-full max-w-lg bg-slate-900/80 border border-slate-800 rounded-3xl p-10 text-center text-slate-400 shadow-2xl">
-                <p className="text-sm">No featured products selected to display in hero.</p>
-              </div>
-            )}
+              {/* Slide Navigation Pagination Dots & Arrows */}
+              <div className="mt-4 flex items-center justify-between px-2">
+                <div className="flex items-center gap-2">
+                  {curatedSlides.map((slide, idx) => (
+                    <button
+                      key={slide.id}
+                      type="button"
+                      aria-label={`Go to slide ${idx + 1}`}
+                      onClick={() => setCurrentIndex(idx)}
+                      className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                        idx === currentIndex
+                          ? 'w-7 bg-blue-500'
+                          : 'w-2 bg-slate-700 hover:bg-slate-500'
+                      }`}
+                    />
+                  ))}
+                </div>
 
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    aria-label="Previous Slide"
+                    onClick={handlePrev}
+                    className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-white transition-all cursor-pointer"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Next Slide"
+                    onClick={handleNext}
+                    className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-white transition-all cursor-pointer"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+            </div>
           </div>
 
         </div>
 
       </div>
-
-      {/* 3. BOTTOM CINEMATIC NAVIGATION BAR & THUMBNAILS WITH SMOOTH PROGRESS */}
-      {heroProducts.length > 0 && (
-        <div className="relative z-10 bg-slate-950/95 border-t border-slate-800/80 backdrop-blur-xl px-4 py-3">
-          
-          {/* Subtle Slide Progress Bar */}
-          {isPlaying && (
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-slate-900 overflow-hidden">
-              <motion.div
-                key={currentIndex}
-                initial={{ width: '0%' }}
-                animate={{ width: '100%' }}
-                transition={{
-                  duration: durationSec,
-                  ease: 'linear'
-                }}
-                className="h-full bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-400"
-              />
-            </div>
-          )}
-
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
-            
-            {/* Active Counter & Thumbnail Jump Strip */}
-            <div className="flex items-center gap-4">
-              <span className="font-mono text-cyan-400 font-bold text-sm tracking-wider">
-                0{currentIndex + 1} <span className="text-slate-600">/</span> 0{heroProducts.length}
-              </span>
-
-              {/* Small Product Thumbnail Buttons */}
-              <div className="flex items-center gap-2 overflow-x-auto max-w-xs sm:max-w-md py-1 no-scrollbar">
-                {heroProducts.map((prod, idx) => {
-                  const isActive = idx === currentIndex;
-                  return (
-                    <button
-                      key={prod.id}
-                      onClick={() => {
-                        setDirection(idx > currentIndex ? 1 : -1);
-                        setCurrentIndex(idx);
-                      }}
-                      className={`relative flex items-center justify-center rounded-lg p-1 border transition-all duration-300 shrink-0 cursor-pointer ${
-                        isActive 
-                          ? 'w-10 h-10 bg-blue-950 border-cyan-400 shadow-lg shadow-cyan-500/20 scale-105' 
-                          : 'w-8 h-8 bg-slate-900 border-slate-800 hover:border-slate-700 opacity-60 hover:opacity-100'
-                      }`}
-                      title={prod.name}
-                    >
-                      <img 
-                        src={getProductImage(prod)} 
-                        alt={prod.name} 
-                        referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          const target = e.currentTarget;
-                          if (!target.dataset.fallbackApplied) {
-                            target.dataset.fallbackApplied = 'true';
-                            target.src = 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=120&q=80';
-                          }
-                        }}
-                        className="w-full h-full object-contain"
-                      />
-                      {isActive && (
-                        <span className="absolute -bottom-1 w-2 h-1 bg-cyan-400 rounded-full" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Current Product Quick Title */}
-            {currentProduct && (
-              <div className="hidden lg:flex items-center gap-2 text-slate-300 font-medium truncate max-w-sm">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                <span className="truncate text-xs font-semibold">{currentProduct.name}</span>
-              </div>
-            )}
-
-            {/* Rotation Controls: Auto-play Toggle & Prev / Next */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsPlaying(!isPlaying)}
-                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-all active:scale-95 flex items-center gap-1.5 px-3 cursor-pointer"
-                title={isPlaying ? 'Pause Rotation' : 'Play Auto Rotation'}
-              >
-                {isPlaying ? <Pause className="w-3.5 h-3.5 text-cyan-400" /> : <Play className="w-3.5 h-3.5 text-slate-400" />}
-                <span className="text-[11px] font-bold">{isPlaying ? 'Auto' : 'Paused'}</span>
-              </button>
-
-              <div className="flex items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-slate-800">
-                <button
-                  onClick={handlePrev}
-                  className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition-colors active:scale-95 cursor-pointer"
-                  title="Previous Product (Left Arrow)"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-
-                <div className="w-px h-4 bg-slate-800" />
-
-                <button
-                  onClick={handleNext}
-                  className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition-colors active:scale-95 cursor-pointer"
-                  title="Next Product (Right Arrow)"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      )}
-
     </section>
   );
 };

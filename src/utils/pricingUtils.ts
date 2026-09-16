@@ -144,11 +144,14 @@ export function isProductOnSale(product?: Partial<Product> | null): boolean {
 
 export interface ProductPricingDetails {
   isSaleActive: boolean;
+  isOnSale?: boolean;
   saleStatus: 'none' | 'active' | 'upcoming' | 'expired';
   regularPriceNumeric: number;
   salePriceNumeric: number;
   currentPriceNumeric: number;
   effectivePriceNumeric: number;
+  effectivePrice?: string;
+  originalPrice?: string;
   formattedRegularPrice: string;
   formattedSalePrice: string;
   formattedCurrentPrice: string;
@@ -271,11 +274,14 @@ export function getProductPricingDetails(product?: Partial<Product> | null): Pro
 
   return {
     isSaleActive,
+    isOnSale: isSaleActive,
     saleStatus,
     regularPriceNumeric: regNum,
     salePriceNumeric: saleNum,
     currentPriceNumeric: effectiveNumeric,
     effectivePriceNumeric: effectiveNumeric,
+    effectivePrice: effectiveString,
+    originalPrice: formattedRegular,
     formattedRegularPrice: formattedRegular,
     formattedSalePrice: formattedSale,
     formattedCurrentPrice: effectiveString,
@@ -328,11 +334,14 @@ export interface VariantPricingDetails {
   variantName: string;
   sku?: string;
   isSaleActive: boolean;
+  isOnSale?: boolean;
   saleStatus: 'none' | 'active' | 'upcoming' | 'expired';
   regularPriceNumeric: number;
   salePriceNumeric: number;
   currentPriceNumeric: number;
   effectivePriceNumeric: number;
+  effectivePrice?: string;
+  originalPrice?: string;
   formattedRegularPrice: string;
   formattedSalePrice: string;
   formattedCurrentPrice: string;
@@ -464,11 +473,14 @@ export function getVariantPricingDetails(
     variantName: variant.name,
     sku: variant.sku || parentProduct?.sku,
     isSaleActive: isSale,
+    isOnSale: isSale,
     saleStatus: isSale ? 'active' : 'none',
     regularPriceNumeric: regNum,
     salePriceNumeric: saleNum,
     currentPriceNumeric: effectiveNumeric,
     effectivePriceNumeric: effectiveNumeric,
+    effectivePrice: formattedCurrent,
+    originalPrice: formattedRegular,
     formattedRegularPrice: formattedRegular,
     formattedSalePrice: formattedSale,
     formattedCurrentPrice: formattedCurrent,
@@ -682,7 +694,13 @@ export function getProductQuantityConfig(product?: Partial<Product> | null) {
     max,
     defaultQty,
     step,
-    unit
+    unit,
+    // Aliases for compatibility
+    defaultQuantity: defaultQty,
+    minQuantity: min,
+    maxQuantity: max,
+    quantityStep: step,
+    unitLabel: unit
   };
 }
 
@@ -715,6 +733,7 @@ export interface BuildWhatsAppOrderParams {
   selectedSize?: string;
   selectedMaterial?: string;
   selectedShade?: { name: string; code?: string } | null;
+  selectedShadeName?: string;
   quantity?: number;
   unitPricing?: ActivePricingResult;
   customerNote?: string;

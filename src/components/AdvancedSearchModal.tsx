@@ -5,6 +5,7 @@ import { filterProducts, parseNaturalLanguageQuery, getNumericPrice, getInstantS
 import { ProductSaleBadge } from './ProductSaleBadge';
 import { getProductPricingDetails } from '../utils/pricingUtils';
 import { trackSearchQuery } from '../utils/analyticsStorage';
+import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
 
 interface AdvancedSearchModalProps {
   isOpen: boolean;
@@ -455,8 +456,9 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
                       {/* IMAGE */}
                       <div className="relative aspect-square bg-slate-50 overflow-hidden cursor-pointer" onClick={() => { onSelectProduct(product); onClose(); }}>
                         <img
-                          src={product.image}
+                          src={normalizeProductImage(product.image, product.category, product.name)}
                           alt={product.name}
+                          onError={(e) => handleImageError(e, product.category, product.name)}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         />
                         <div className="absolute top-2.5 left-2.5 flex flex-col gap-1 z-10">

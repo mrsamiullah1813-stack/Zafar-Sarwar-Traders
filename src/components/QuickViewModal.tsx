@@ -27,9 +27,14 @@ import {
   Boxes,
   AlertCircle,
   Play,
-  Zap
+  Zap,
+  Truck,
+  ArrowLeft,
+  ExternalLink
 } from 'lucide-react';
 import { Product, BusinessConfig, ProductVariant, PaintShade, AppliedCouponState } from '../types';
+import { getProductSlug } from '../utils/slugUtils';
+import { normalizeProductImage, normalizeProductImages, handleImageError } from '../utils/imageUtils';
 import { VideoPlayer } from './VideoPlayer';
 import { ProductDeliveryEstimator, DeliveryDetailsPayload } from './ProductDeliveryEstimator';
 import { ProductSaleBadge } from './ProductSaleBadge';
@@ -80,6 +85,7 @@ interface QuickViewModalProps {
     selectedVariantObj?: ProductVariant
   ) => void;
   onClose: () => void;
+  onNavigate?: (path: string) => void;
 }
 
 export const QuickViewModal: React.FC<QuickViewModalProps> = ({
@@ -92,7 +98,8 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
   onSelectProduct,
   onAddToCart,
   onBuyNow,
-  onClose
+  onClose,
+  onNavigate
 }) => {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [selectedVideoIndex, setSelectedVideoIndex] = useState(0);
@@ -101,6 +108,19 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
   const [customActiveImage, setCustomActiveImage] = useState<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Close modal smoothly on pressing Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [onClose]);
+
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [selectedQuality, setSelectedQuality] = useState<string>('');
@@ -108,6 +128,20 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
   const [selectedVariantObj, setSelectedVariantObj] = useState<ProductVariant | null>(null);
   const [selectedShade, setSelectedShade] = useState<PaintShade | null>(null);
   const [quantity, setQuantity] = useState<number>(1);
+
+  // Delivery details state synced from ProductDeliveryEstimator
+  const [deliveryDetails, setDeliveryDetails] = useState<DeliveryDetailsPayload>({
+    city: '',
+    isCustomCity: false,
+    address: '',
+    deliveryFeeAmount: 0,
+    deliveryFeeType: 'contact',
+    deliveryFeeDisplay: 'Contact for Delivery',
+    estimatedDays: '1–2 Days',
+    isValid: false
+  });
+  const [orderValidationError, setOrderValidationError] = useState<string | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCouponState | null>(null);
 
   useEffect(() => {
     if (product) {
@@ -206,32 +240,20 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
     .filter(s => Boolean((s.referenceImage || s.image) && (s.referenceImage || s.image)!.trim() !== ''))
     .map(s => ({ url: (s.referenceImage || s.image)!, label: `Shade ${s.code}` }));
 
-  const galleryImages: string[] = [
+  const rawList: string[] = [
     product.image,
     ...(product.images && Array.isArray(product.images) ? product.images.filter(img => img && img !== product.image) : []),
     ...variantImages.map(v => v.url).filter(u => u !== product.image && !(product.images || []).includes(u)),
     ...shadeImages.map(s => s.url).filter(u => u !== product.image && !(product.images || []).includes(u))
-  ].filter(Boolean);
+  ];
+  const galleryImages: string[] = normalizeProductImages(rawList, product.image, product.category, product.name);
 
-  const currentImage = customActiveImage || galleryImages[selectedImageIndex] || product.image;
+  const rawActive = customActiveImage || galleryImages[selectedImageIndex] || product.image;
+  const currentImage = normalizeProductImage(rawActive, product.category, product.name);
 
   const rawPhone = config?.whatsapp || config?.phone || '923108002863';
   const targetWhatsAppNumber = rawPhone.replace(/[^0-9]/g, '');
   const displayPhone = config?.whatsapp || config?.phone || '+92 310 8002863';
-
-  // Delivery details state synced from ProductDeliveryEstimator
-  const [deliveryDetails, setDeliveryDetails] = useState<DeliveryDetailsPayload>({
-    city: '',
-    isCustomCity: false,
-    address: '',
-    deliveryFeeAmount: 0,
-    deliveryFeeType: 'contact',
-    deliveryFeeDisplay: 'Contact for Delivery',
-    estimatedDays: '1–2 Days',
-    isValid: false
-  });
-  const [orderValidationError, setOrderValidationError] = useState<string | null>(null);
-  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCouponState | null>(null);
 
   // Recalculate coupon discount if line total changes
   const couponDiscountAmount = appliedCoupon ? Math.round((lineTotalNumeric * appliedCoupon.discountPercentage) / 100) : 0;
@@ -345,12 +367,30 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-2 sm:p-4 md:p-6 animate-fadeIn overflow-y-auto">
+    <div 
+      className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-2 sm:p-4 md:p-6 animate-fadeIn overflow-y-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div className="bg-slate-900/90 border border-slate-800/90 rounded-3xl max-w-5xl w-full overflow-hidden shadow-2xl relative my-auto max-h-[92vh] flex flex-col glow-blue-ambient">
         
         {/* Top Sticky Bar */}
         <div className="flex items-center justify-between p-4 px-6 bg-slate-950/90 border-b border-slate-800/80 z-20 backdrop-blur-md">
           <div className="flex items-center gap-2.5 flex-wrap">
+            {/* BACK BUTTON */}
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold border border-slate-700/80 transition-all shadow-sm cursor-pointer group active:scale-95"
+              title="Back to products (or press Esc)"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-slate-400 group-hover:text-white group-hover:-translate-x-0.5 transition-transform" />
+              <span>Back</span>
+            </button>
+
             {/* SALE BADGE */}
             <ProductSaleBadge product={product} />
 
@@ -378,6 +418,20 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {onNavigate && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onNavigate(`/product/${getProductSlug(product)}`);
+                }}
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-blue-300 hover:text-white text-xs font-semibold border border-slate-700/80 transition-all shadow-xs cursor-pointer"
+                title="Open dedicated product page"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Full Page</span>
+              </button>
+            )}
             {isAdmin && onEditProduct && (
               <button
                 onClick={() => onEditProduct(product)}
@@ -433,6 +487,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                   src={currentImage}
                   alt={`${product.name} - Detailed Specification | Zafar Sarwar Traders Luxury Sanitaryware Pakistan`}
                   referrerPolicy="no-referrer"
+                  onError={(e) => handleImageError(e, product.category, product.name)}
                   className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-50 pointer-events-none" />
@@ -524,7 +579,13 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                             : 'border-slate-800 opacity-60 hover:opacity-100'
                         }`}
                       >
-                        <img src={img} alt="" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                        <img 
+                          src={normalizeProductImage(img, product.category, product.name)} 
+                          alt="" 
+                          referrerPolicy="no-referrer" 
+                          onError={(e) => handleImageError(e, product.category, product.name)}
+                          className="w-full h-full object-cover" 
+                        />
                         {matchedVariant && (
                           <span className="absolute bottom-0 inset-x-0 bg-indigo-600/90 text-white text-[8px] font-bold text-center truncate px-0.5">
                             {matchedVariant.label}
@@ -1010,6 +1071,14 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                 </div>
               )}
 
+              {/* PERMANENT DELIVERY INFORMATION LINE */}
+              <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-950/60 border border-slate-800 text-xs text-slate-300">
+                <Truck className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-slate-300 font-medium">
+                  Delivery depends on city, location and quantity.
+                </span>
+              </div>
+
               {/* DYNAMIC SMART DELIVERY ESTIMATION SYSTEM */}
               <ProductDeliveryEstimator 
                 product={product} 
@@ -1292,6 +1361,12 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                 <ArrowRight className="w-4 h-4 ml-0.5 text-blue-200" />
               </button>
             </div>
+
+            {/* Permanent Delivery Reassurance Line */}
+            <div className="flex items-center justify-center gap-1.5 text-xs text-slate-400 font-medium py-1">
+              <Truck className="w-3.5 h-3.5 text-amber-400/90 shrink-0" />
+              <span>Delivery depends on city, location and quantity.</span>
+            </div>
           </div>
 
           {/* YOU MAY ALSO LIKE (SIMILAR PRODUCTS) */}
@@ -1314,9 +1389,10 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                   >
                     <div className="relative h-28 w-full rounded-xl overflow-hidden bg-slate-950 mb-2">
                       <img
-                        src={item.image}
+                        src={normalizeProductImage(item.image, item.category, item.name)}
                         alt={item.name}
                         referrerPolicy="no-referrer"
+                        onError={(e) => handleImageError(e, item.category, item.name)}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                       />
                     </div>
@@ -1339,6 +1415,33 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
             </div>
           )}
 
+        </div>
+
+        {/* Bottom Sticky Action Bar */}
+        <div className="p-3.5 px-6 bg-slate-950/90 border-t border-slate-800/80 flex items-center justify-between gap-3 z-20 backdrop-blur-md">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold transition-all cursor-pointer group active:scale-95"
+            title="Back to products list"
+          >
+            <ArrowLeft className="w-4 h-4 text-slate-400 group-hover:text-white group-hover:-translate-x-0.5 transition-transform" />
+            <span>Back to Products</span>
+          </button>
+
+          {onNavigate && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onNavigate(`/product/${getProductSlug(product)}`);
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600/90 hover:bg-blue-600 text-white text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-md"
+            >
+              <span>View Full Details Page</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
       </div>

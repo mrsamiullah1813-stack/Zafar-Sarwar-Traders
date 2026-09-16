@@ -3,7 +3,7 @@ import {
   Palette, Search, Check, X, Sparkles, ChevronRight, Layers,
   SlidersHorizontal, CheckCircle2, Image as ImageIcon, Filter, AlertCircle
 } from 'lucide-react';
-import { PaintShade } from '../types';
+import { PaintShade, Product } from '../types';
 import { searchPaintShades, formatPaintShadeLabel, getColorFamily } from '../utils/paintShadeUtils';
 
 // Safe Error Boundary to guarantee Paint Shade selector never breaks the host page
@@ -39,7 +39,8 @@ class SafePaintShadeBoundary extends Component<ErrorBoundaryProps, ErrorBoundary
 }
 
 interface PaintShadeSelectorProps {
-  shades: PaintShade[];
+  shades?: PaintShade[];
+  product?: Product;
   selectedShade?: PaintShade | null;
   onSelectShade: (shade: PaintShade) => void;
   title?: string;
@@ -47,12 +48,14 @@ interface PaintShadeSelectorProps {
 }
 
 const PaintShadeSelectorInternal: React.FC<PaintShadeSelectorProps> = ({
-  shades,
+  shades: inputShades,
+  product,
   selectedShade,
   onSelectShade,
   title = 'Choose Shade',
   className = ''
 }) => {
+  const shades = inputShades || product?.shadesList || product?.paintShadesConfig?.shades || [];
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFamily, setSelectedFamily] = useState<string>('All');

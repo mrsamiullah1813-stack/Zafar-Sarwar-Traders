@@ -19,7 +19,7 @@ import {
   Info
 } from 'lucide-react';
 import { DeliverySettings, CityDeliveryInfo } from '../types';
-import { loadDeliverySettings } from '../utils/storage';
+import { loadDeliverySettings, sanitizeAndDeduplicateCities } from '../utils/storage';
 
 interface DeliveryCheckerModalProps {
   isOpen: boolean;
@@ -42,7 +42,7 @@ export const DeliveryCheckerModal: React.FC<DeliveryCheckerModalProps> = ({ isOp
 
   // Filtered list
   const filteredCities = useMemo(() => {
-    return activeCities.filter(c => {
+    const matches = activeCities.filter(c => {
       // 1. Search query
       const q = searchQuery.trim().toLowerCase();
       let matchesSearch = true;
@@ -50,10 +50,11 @@ export const DeliveryCheckerModal: React.FC<DeliveryCheckerModalProps> = ({ isOp
         const nameMatch = c.cityName.toLowerCase().includes(q);
         const areaMatch = c.areaTown ? c.areaTown.toLowerCase().includes(q) : false;
         const notesMatch = c.notes ? c.notes.toLowerCase().includes(q) : false;
+        const provinceMatch = c.province ? c.province.toLowerCase().includes(q) : false;
         const coverageMatch = Array.isArray(c.coverageAreas) 
           ? c.coverageAreas.some(area => area.toLowerCase().includes(q))
           : false;
-        matchesSearch = nameMatch || areaMatch || notesMatch || coverageMatch;
+        matchesSearch = nameMatch || areaMatch || notesMatch || coverageMatch || provinceMatch;
       }
 
       // 2. Tab filter
@@ -63,12 +64,16 @@ export const DeliveryCheckerModal: React.FC<DeliveryCheckerModalProps> = ({ isOp
       } else if (activeFilter === 'same_day') {
         matchesTab = Boolean(c.isSameDayAvailable);
       } else if (activeFilter === 'punjab') {
-        const punjabKeywords = ['chiniot', 'lahore', 'faisalabad', 'islamabad', 'rawalpindi', 'multan', 'sargodha', 'sialkot', 'gujranwala', 'jhang', 'lalian', 'bhowana', 'chenab nagar'];
-        matchesTab = punjabKeywords.some(kw => c.cityName.toLowerCase().includes(kw));
+        matchesTab = (c.province === 'Punjab' || !c.province || c.province === '') && 
+                     c.province !== 'Sindh' && 
+                     c.province !== 'KPK' && 
+                     c.province !== 'Balochistan' && 
+                     c.province !== 'Federal Capital';
       }
 
       return matchesSearch && matchesTab;
     });
+    return sanitizeAndDeduplicateCities(matches);
   }, [activeCities, searchQuery, activeFilter]);
 
   if (!isOpen) return null;
@@ -189,19 +194,19 @@ export const DeliveryCheckerModal: React.FC<DeliveryCheckerModalProps> = ({ isOp
                   : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
               }`}
             >
-              📍 Punjab Hubs
+              📍 Punjab Cities
             </button>
           </div>
 
           {/* City Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
-            {filteredCities.map((city) => {
+            {filteredCities.map((city, cIdx) => {
               const isAvailable = city.status !== 'unavailable' && city.isEnabled !== false;
               const isContact = city.status === 'contact_to_confirm';
 
               return (
                 <div
-                  key={city.id}
+                  key={city.id ? `${city.id}-${cIdx}` : `check-city-${city.cityName}-${cIdx}`}
                   onClick={() => setSelectedCity(city)}
                   className={`p-4 rounded-2xl border transition-all cursor-pointer text-left ${
                     selectedCity?.id === city.id
@@ -250,8 +255,14 @@ export const DeliveryCheckerModal: React.FC<DeliveryCheckerModalProps> = ({ isOp
                       <Clock className="w-3.5 h-3.5" />
                       {city.estimatedDays}
                     </span>
-                    <span className="font-bold text-emerald-400 font-mono">
-                      {city.deliveryFee === 0 ? 'FREE DELIVERY' : `PKR ${(city.deliveryFee ?? 0).toLocaleString()}`}
+                    <span className="font-bold text-amber-300 font-mono">
+                      {isContact
+                        ? 'Contact to Confirm'
+                        : city.deliveryTiers && city.deliveryTiers.length > 0
+                        ? `From PKR ${Math.max(200, city.deliveryTiers[0]?.fee || city.deliveryFee || 200).toLocaleString()}`
+                        : typeof city.deliveryFee === 'number' && city.deliveryFee > 0
+                        ? `PKR ${Math.max(200, city.deliveryFee).toLocaleString()}`
+                        : 'From PKR 200'}
                     </span>
                   </div>
                 </div>

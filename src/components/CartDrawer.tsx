@@ -1,7 +1,10 @@
-import React, { useEffect } from 'react';
-import { X, Trash2, ShoppingBag, Plus, Minus, ArrowRight, ShieldCheck, Boxes, Sparkles, Check } from 'lucide-react';
-import { BusinessConfig, CartItem, CheckoutSettings } from '../types';
+import React, { useEffect, useState, useMemo } from 'react';
+import { X, Trash2, ShoppingBag, Plus, Minus, ArrowRight, ShieldCheck, Boxes, Sparkles, Check, Truck } from 'lucide-react';
+import { BusinessConfig, CartItem, CheckoutSettings, DeliverySettings } from '../types';
 import { getActiveProductPrice } from '../utils/pricingUtils';
+import { loadDeliverySettings } from '../utils/storage';
+import { calculateCityDeliveryFee } from '../utils/deliveryFeeCalculator';
+import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -66,24 +69,57 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
   const subtotal = calculateSubtotal();
 
-  const isFreeDelivery = checkoutSettings?.freeDeliveryThreshold 
-    ? subtotal >= checkoutSettings.freeDeliveryThreshold 
-    : false;
+  const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>(() => loadDeliverySettings());
 
-  const deliveryFee = subtotal > 0 ? (isFreeDelivery ? 0 : (checkoutSettings?.deliveryFee || 250)) : 0;
+  useEffect(() => {
+    const handleSettingsUpdate = (e: any) => {
+      if (e.detail) {
+        setDeliverySettings(e.detail);
+      } else {
+        setDeliverySettings(loadDeliverySettings());
+      }
+    };
+    window.addEventListener('zst_delivery_settings_updated', handleSettingsUpdate);
+    return () => window.removeEventListener('zst_delivery_settings_updated', handleSettingsUpdate);
+  }, []);
+
+  const defaultCity = useMemo(() => {
+    const defaultCityId = deliverySettings.defaultSelectedCityId || 'city-chiniot';
+    return deliverySettings.cities?.find(c => c.id === defaultCityId) || deliverySettings.cities?.[0];
+  }, [deliverySettings]);
+
+  const totalCartWeightKg = useMemo(() => {
+    return items.reduce((acc, item) => {
+      const p = item?.product;
+      if (!p) return acc;
+      const weight = p.weightKg || (p.weightClass === 'heavy' ? 10 : 1);
+      return acc + (weight * (item.quantity || 1));
+    }, 0);
+  }, [items]);
+
+  const deliveryCalculation = useMemo(() => {
+    return calculateCityDeliveryFee(
+      defaultCity,
+      subtotal,
+      deliverySettings.globalDeliveryFeeAmount || checkoutSettings?.deliveryFee || 250,
+      undefined,
+      deliverySettings.minDeliveryFee,
+      deliverySettings.maxDeliveryFee,
+      totalCartWeightKg,
+      undefined,
+      undefined,
+      undefined,
+      items
+    );
+  }, [defaultCity, subtotal, deliverySettings, checkoutSettings, totalCartWeightKg, items]);
+
+  const deliveryFee = subtotal > 0 ? (deliveryCalculation.isFree ? 0 : Math.max(200, deliveryCalculation.deliveryFee)) : 0;
   
   const taxAmount = checkoutSettings?.enableTaxes && checkoutSettings.taxRatePercent > 0
     ? Math.round((subtotal * checkoutSettings.taxRatePercent) / 100)
     : 0;
 
   const grandTotal = subtotal + deliveryFee + taxAmount;
-
-  // Free delivery threshold progress calculation
-  const freeDeliveryThreshold = checkoutSettings?.freeDeliveryThreshold || 0;
-  const freeDeliveryRemaining = freeDeliveryThreshold > 0 ? Math.max(0, freeDeliveryThreshold - subtotal) : 0;
-  const freeDeliveryProgress = freeDeliveryThreshold > 0 
-    ? Math.min(100, Math.round((subtotal / freeDeliveryThreshold) * 100))
-    : 100;
 
   return (
     <div className="fixed inset-0 z-[100] flex justify-end">
@@ -126,28 +162,18 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
           </button>
         </div>
 
-        {/* Free Delivery Threshold Progress Bar */}
-        {freeDeliveryThreshold > 0 && items.length > 0 && (
-          <div className="px-5 py-3 bg-blue-50/80 border-b border-blue-100/60 text-xs">
-            {isFreeDelivery ? (
-              <div className="flex items-center gap-1.5 text-emerald-700 font-bold">
-                <Check className="w-4 h-4 text-emerald-600" />
-                <span>Congratulations! You qualify for Free Delivery across Pakistan.</span>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-slate-700 font-medium">
-                  <span>Add <strong className="text-blue-700 font-mono">Rs. {freeDeliveryRemaining.toLocaleString('en-PK')}</strong> more for Free Delivery</span>
-                  <span className="font-mono text-[11px] font-bold text-blue-800">{freeDeliveryProgress}%</span>
-                </div>
-                <div className="w-full h-1.5 bg-blue-200/70 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-600 rounded-full transition-all duration-300"
-                    style={{ width: `${freeDeliveryProgress}%` }}
-                  />
-                </div>
-              </div>
-            )}
+        {/* Delivery Info Banner */}
+        {items.length > 0 && (
+          <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-200/80 text-xs flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-slate-700 font-medium">
+              <Truck className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>
+                Delivery to <strong className="text-slate-900">{defaultCity?.cityName || 'Chiniot & Nationwide'}</strong>
+              </span>
+            </div>
+            <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+              {deliveryFee > 0 ? `Rs. ${deliveryFee.toLocaleString('en-PK')}` : 'Min Rs. 200'}
+            </span>
           </div>
         )}
 
@@ -184,12 +210,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               return (
                 <div key={index} className="pt-4 first:pt-0 flex gap-3 items-start group">
                   <img
-                    src={p.images?.[0] || p.image || '/logo.png'}
+                    src={normalizeProductImage(p.images?.[0] || p.image, p.category, p.name)}
                     alt={p.name}
                     className="w-16 h-16 rounded-xl object-cover border border-slate-200 bg-slate-50 shrink-0 mt-0.5"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
+                    onError={(e) => handleImageError(e, p.category, p.name)}
                   />
                   
                   <div className="flex-1 min-w-0 space-y-1">
@@ -315,12 +339,14 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               </div>
 
               <div className="flex justify-between items-center">
-                <span>Estimated Delivery:</span>
+                <span>Estimated Delivery ({defaultCity?.cityName || 'Standard'}):</span>
                 <span className="font-semibold font-mono text-slate-700">
-                  {deliveryFee === 0 ? (
+                  {deliveryFee > 0 ? (
+                    `Rs. ${deliveryFee.toLocaleString('en-PK')}`
+                  ) : deliveryCalculation.isFree ? (
                     <span className="text-emerald-600 uppercase font-bold text-[11px]">Free Delivery</span>
                   ) : (
-                    `Rs. ${deliveryFee.toLocaleString('en-PK')}`
+                    'Calculated at Checkout'
                   )}
                 </span>
               </div>

@@ -759,25 +759,57 @@ export function mapDbHeroSettings(data: any, slideProductIds: string[] = []): He
 }
 
 export function mapDbDeliveryCity(r: any, idx: number): CityDeliveryInfo {
+  const fee = Number(r.fee ?? r.delivery_fee ?? 0);
+  const isEnabled = Boolean(r.active ?? r.enabled ?? true);
+  const rawName = (r.name || r.city_name || "").trim();
+  const nameLower = rawName.toLowerCase();
+  let id = String(r.id || `city-${idx}`);
+
+  // Auto-correct historical database rows where a city was renamed in-place without updating legacy id
+  if (id === 'city-karachi' && !nameLower.includes('karachi')) {
+    id = nameLower.includes('bhowana') ? 'city-bhowana' : `city-${nameLower.replace(/[^a-z0-9]+/g, '-')}`;
+  } else if (id === 'city-peshawar' && !nameLower.includes('peshawar')) {
+    id = nameLower.includes('pindi') ? 'city-pindi-bhatiyan' : `city-${nameLower.replace(/[^a-z0-9]+/g, '-')}`;
+  } else if (id === 'city-quetta' && !nameLower.includes('quetta')) {
+    id = nameLower.includes('lalian') ? 'city-lalian' : `city-${nameLower.replace(/[^a-z0-9]+/g, '-')}`;
+  } else if (id === 'city-hyderabad' && !nameLower.includes('hyderabad')) {
+    id = nameLower.includes('chenab') ? 'city-chenab-nagar' : `city-${nameLower.replace(/[^a-z0-9]+/g, '-')}`;
+  } else if (id === 'city-sukkur' && !nameLower.includes('sukkur')) {
+    id = nameLower.includes('okara') ? 'city-okara' : `city-${nameLower.replace(/[^a-z0-9]+/g, '-')}`;
+  }
+
   return {
-    id: String(r.id),
-    cityName: r.name || r.city_name || '',
+    id,
+    cityName: rawName,
     areaTown: r.area_town || r.areaTown || undefined,
-    status: (r.status === 'available' || r.status === 'unavailable' || r.status === 'contact_to_confirm') ? r.status : (r.enabled === false ? 'unavailable' : 'available'),
-    deliveryFee: Number(r.delivery_fee ?? 0),
-    deliveryFeeType: r.delivery_fee_type || r.deliveryFeeType || (Number(r.delivery_fee ?? 0) === 0 ? 'free' : 'fixed'),
+    status: (r.status === "available" || r.status === "unavailable" || r.status === "contact_to_confirm") ? r.status : (isEnabled ? "available" : "unavailable"),
+    deliveryFee: fee,
+    baseFee: typeof (r.base_fee ?? r.baseFee) === "number" ? Number(r.base_fee ?? r.baseFee) : fee,
+    minFee: typeof (r.min_fee ?? r.minFee) === "number" ? Number(r.min_fee ?? r.minFee) : 0,
+    maxFee: typeof (r.max_fee ?? r.maxFee) === "number" ? Number(r.max_fee ?? r.maxFee) : 5000,
+    deliveryFeeType: r.delivery_fee_type || r.deliveryFeeType || "tiered",
     deliveryFeeCustomText: r.delivery_fee_custom_text || r.deliveryFeeCustomText || undefined,
-    freeDelivery: Boolean(r.free_delivery ?? r.freeDelivery ?? (Number(r.delivery_fee ?? 0) === 0)),
-    minOrderAmount: typeof (r.min_order_amount ?? r.minOrderAmount) === 'number' ? Number(r.min_order_amount ?? r.minOrderAmount) : undefined,
+    freeDelivery: Boolean(r.free_delivery ?? r.freeDelivery ?? false),
+    freeDeliveryThreshold: typeof (r.free_delivery_threshold ?? r.freeDeliveryThreshold) === "number" ? Number(r.free_delivery_threshold ?? r.freeDeliveryThreshold) : undefined,
+    minOrderAmount: typeof (r.min_order_amount ?? r.minOrderAmount) === "number" ? Number(r.min_order_amount ?? r.minOrderAmount) : undefined,
     additionalAddress: r.additional_address || r.additionalAddress || undefined,
-    estimatedDays: r.estimated_days || r.estimatedDays || '2-4 Days',
-    isEnabled: Boolean(r.enabled ?? true),
-    isSameDayAvailable: Boolean(r.same_day_available ?? r.isSameDayAvailable),
-    isNextDayAvailable: Boolean(r.next_day_available ?? r.isNextDayAvailable),
+    estimatedDays: r.estimated_days || r.estimatedDays || "2-4 Days",
+    isEnabled,
+    isOptional: Boolean(r.is_optional ?? r.isOptional ?? false),
+    useCustomRules: r.use_custom_rules !== undefined ? Boolean(r.use_custom_rules) : (r.useCustomRules !== undefined ? Boolean(r.useCustomRules) : true),
+    isSameDayAvailable: Boolean(r.is_same_day_available ?? r.same_day_available ?? r.isSameDayAvailable),
+    isNextDayAvailable: Boolean(r.is_next_day_available ?? r.next_day_available ?? r.isNextDayAvailable),
     displayOrder: Number(r.display_order ?? idx),
     notes: r.notes || undefined,
+    province: r.province || undefined,
+    lightWeightFee: typeof (r.light_weight_fee ?? r.lightWeightFee) === "number" ? Number(r.light_weight_fee ?? r.lightWeightFee) : undefined,
+    heavyWeightFee: typeof (r.heavy_weight_fee ?? r.heavyWeightFee) === "number" ? Number(r.heavy_weight_fee ?? r.heavyWeightFee) : undefined,
     coverageAreas: Array.isArray(r.coverage_areas) ? r.coverage_areas : (Array.isArray(r.coverageAreas) ? r.coverageAreas : undefined),
-    deliveryTiers: Array.isArray(r.delivery_tiers) ? r.delivery_tiers : (Array.isArray(r.deliveryTiers) ? r.deliveryTiers : undefined)
+    deliveryTiers: Array.isArray(r.delivery_tiers) ? r.delivery_tiers : (Array.isArray(r.deliveryTiers) ? r.deliveryTiers : undefined),
+    heavyDeliveryTiers: Array.isArray(r.heavy_delivery_tiers) ? r.heavy_delivery_tiers : (Array.isArray(r.heavyDeliveryTiers) ? r.heavyDeliveryTiers : undefined),
+    enableWeightTiers: Boolean(r.enable_weight_tiers ?? r.enableWeightTiers ?? false),
+    weightPricingMode: r.weight_pricing_mode || r.weightPricingMode || "highest",
+    weightTiers: Array.isArray(r.weight_tiers) ? r.weight_tiers : (Array.isArray(r.weightTiers) ? r.weightTiers : undefined)
   };
 }
 

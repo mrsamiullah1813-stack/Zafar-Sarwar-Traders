@@ -394,7 +394,7 @@ export const featuredProducts: Product[] = [
     price: "PKR 185,000",
     rating: 4.9,
     reviewsCount: 38,
-    image: "/src/assets/images/luxury_showroom_hero_1785655655475.jpg",
+    image: "/assets/images/luxury_showroom_hero_1785655655475.jpg",
     description: "German-engineered overhead rain panel with integrated waterfall jet, concealed thermostatic brass cartridge, and anti-scald micro-sensors.",
     features: ["AirPower Technology", "Thermostatic 38°C Safety Lock", "EasyClean Silicone Nozzles", "12-Year Warranty"],
     specs: {
@@ -431,7 +431,7 @@ export const featuredProducts: Product[] = [
     price: "PKR 42,500",
     rating: 4.8,
     reviewsCount: 24,
-    image: "/src/assets/images/luxury_faucet_shower_1785655667949.jpg",
+    image: "/assets/images/luxury_faucet_shower_1785655667949.jpg",
     description: "Single-lever tall countertop basin faucet featuring an open-channel waterfall stream and precise aerated flow control.",
     features: ["Open Channel Waterfall", "Ceramic Disc Cartridge", "Fingerprint-Resistant PVD Coating"],
     specs: {
@@ -546,7 +546,7 @@ export const featuredProducts: Product[] = [
     price: "Call for Wholesale Rate",
     rating: 4.8,
     reviewsCount: 65,
-    image: "/src/assets/images/building_materials_display_1785655681621.jpg",
+    image: "/assets/images/building_materials_display_1785655681621.jpg",
     description: "High-temperature resistant NSF-certified CPVC pipes & heavy brass fittings engineered for zero scaling and zero corrosion.",
     features: ["Resists Up to 93°C", "NSF-61 Drinking Water Certified", "Solvent-Welded Leak Proof"],
     specs: {
@@ -623,21 +623,21 @@ export const galleryItems: GalleryItem[] = [
     id: "gal-1",
     title: "Minimalist Italian Matte Black Suite",
     category: "sanitary",
-    image: "/src/assets/images/luxury_showroom_hero_1785655655475.jpg",
+    image: "/assets/images/luxury_showroom_hero_1785655655475.jpg",
     description: "Showroom display featuring floating black vanity, concealed thermostatic shower system, and ambient LED wall coves."
   },
   {
     id: "gal-2",
     title: "Brushed Gold Cascading Faucet Display",
     category: "faucets",
-    image: "/src/assets/images/luxury_faucet_shower_1785655667949.jpg",
+    image: "/assets/images/luxury_faucet_shower_1785655667949.jpg",
     description: "Interactive water test bench in our showroom showcasing real water pressure and smooth single-lever mixers."
   },
   {
     id: "gal-3",
     title: "Building Materials & Structural Supplies Hub",
     category: "materials",
-    image: "/src/assets/images/building_materials_display_1785655681621.jpg",
+    image: "/assets/images/building_materials_display_1785655681621.jpg",
     description: "Dedicated warehouse floor stocking grade 53 cement, CPVC pipework, paints, and high tensile steel reinforcement."
   },
   {

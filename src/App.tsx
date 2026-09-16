@@ -104,6 +104,27 @@ import { LuxuryCursorEffect } from './components/LuxuryCursorEffect';
 import { DeliveryCheckerModal } from './components/DeliveryCheckerModal';
 import { DeliveryAreasPage } from './components/DeliveryAreasPage';
 
+// Multi-Page E-commerce Pages
+import { StorePage } from './pages/StorePage';
+import { CategoriesPage } from './pages/CategoriesPage';
+import { CategoryDetailPage } from './pages/CategoryDetailPage';
+import { ProductDetailPage } from './pages/ProductDetailPage';
+import { BrandsPage } from './pages/BrandsPage';
+import { BrandDetailPage } from './pages/BrandDetailPage';
+import { SmartToolsPage } from './pages/SmartToolsPage';
+import { DeliveryPage } from './pages/DeliveryPage';
+import { AboutPage } from './pages/AboutPage';
+import { ContactPage } from './pages/ContactPage';
+import { 
+  findProductBySlug, 
+  findCategoryBySlug, 
+  findBrandBySlug, 
+  generateProductSlug, 
+  generateCategorySlug, 
+  generateBrandSlug 
+} from './utils/slugUtils';
+import { updateSeoMetadata } from './utils/seoUtils';
+
 export default function App() {
   // Showroom Cinematic presentation can be replayed on demand from footer
   const [showIntro, setShowIntro] = useState<boolean>(false);
@@ -212,6 +233,124 @@ export default function App() {
   const [deliveryCheckerOpen, setDeliveryCheckerOpen] = useState(false);
   const [viewDeliveryAreasPage, setViewDeliveryAreasPage] = useState(false);
 
+  // Canonical Multi-Page Routing State
+  const [currentPath, setCurrentPath] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.pathname || '/';
+    }
+    return '/';
+  });
+
+  const navigateTo = (path: string) => {
+    const clean = path || '/';
+    if (typeof window !== 'undefined') {
+      if (window.location.pathname !== clean) {
+        window.history.pushState({ zst_app_state: true, path: clean }, '', clean);
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    setCurrentPath(clean);
+  };
+
+  // Sync browser popstate navigation directly
+  useEffect(() => {
+    const handlePopState = () => {
+      if (typeof window !== 'undefined') {
+        setCurrentPath(window.location.pathname || '/');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Synchronize dynamic SEO metadata across pages and canonical routes
+  useEffect(() => {
+    const path = currentPath;
+    if (path === '/' || path === '') {
+      updateSeoMetadata({
+        title: `${config.name || 'Zafar Sarwar Traders'} | Luxury Sanitaryware & Building Materials Pakistan`,
+        description: 'Pakistan\'s premier destination for luxury sanitaryware, designer faucets, rain showers, Master paints, PVC pipes, cement, and construction materials.',
+        path: '/'
+      });
+    } else if (path === '/store' || path === '/products') {
+      updateSeoMetadata({
+        title: 'Online Store & Building Material Catalog | Zafar Sarwar Traders',
+        description: 'Shop luxury sanitaryware, CPVC pipes, Master paints, bathroom accessories, and construction materials online with delivery across Pakistan.',
+        path: '/store'
+      });
+    } else if (path === '/categories') {
+      updateSeoMetadata({
+        title: 'Product Categories & Departments | Zafar Sarwar Traders',
+        description: 'Browse bathroom fixtures, sanitary fittings, tiles, paints, hardware, and plumbing solutions.',
+        path: '/categories'
+      });
+    } else if (path.startsWith('/category/')) {
+      const slug = path.slice('/category/'.length);
+      const cat = findCategoryBySlug(slug, categories);
+      if (cat) {
+        updateSeoMetadata({
+          title: `${cat.name} | Zafar Sarwar Traders`,
+          description: cat.description || `Browse our verified collection of ${cat.name} at Zafar Sarwar Traders with delivery across Pakistan.`,
+          path: `/category/${slug}`,
+          image: cat.image
+        });
+      }
+    } else if (path.startsWith('/product/')) {
+      const slug = path.slice('/product/'.length);
+      const prod = findProductBySlug(slug, products);
+      if (prod) {
+        updateSeoMetadata({
+          title: `${prod.name} | Buy Online | Zafar Sarwar Traders`,
+          description: prod.description || `Buy ${prod.name} at guaranteed wholesale prices from Zafar Sarwar Traders with fast delivery across Pakistan.`,
+          path: `/product/${slug}`,
+          image: prod.image,
+          type: 'product'
+        });
+      }
+    } else if (path === '/brands') {
+      updateSeoMetadata({
+        title: 'Authorized Brands & Manufacturers | Zafar Sarwar Traders',
+        description: 'Official distributor for Master Sanitary, Porta, Grohe, Sonex, Diamond Pipes, and premier building material brands.',
+        path: '/brands'
+      });
+    } else if (path.startsWith('/brand/')) {
+      const slug = path.slice('/brand/'.length);
+      const brand = findBrandBySlug(slug, brands);
+      if (brand) {
+        updateSeoMetadata({
+          title: `${brand.name} Products & Catalog | Zafar Sarwar Traders`,
+          description: brand.description || `Explore genuine products from ${brand.name} at Zafar Sarwar Traders.`,
+          path: `/brand/${slug}`,
+          image: brand.logo
+        });
+      }
+    } else if (path === '/smart-tools' || path === '/tools') {
+      updateSeoMetadata({
+        title: 'Smart Construction Calculators & Planners | Zafar Sarwar Traders',
+        description: 'Free building material estimator, cement calculator, easy bathroom planner, pipe sizing calculator, and tile quantity tools.',
+        path: '/smart-tools'
+      });
+    } else if (path === '/delivery' || path === '/delivery-areas') {
+      updateSeoMetadata({
+        title: 'Delivery Coverage & Logistics Directory | Zafar Sarwar Traders',
+        description: 'Transparent freight calculation across Chiniot, Faisalabad, Lahore, Rawalpindi, Islamabad, Sargodha, Karachi, and all cities in Pakistan.',
+        path: '/delivery'
+      });
+    } else if (path === '/about') {
+      updateSeoMetadata({
+        title: 'About Zafar Sarwar Traders | Legacy & Showroom',
+        description: 'Established legacy of supplying certified sanitaryware, tiles, CPVC pipes, and architectural building materials across Pakistan.',
+        path: '/about'
+      });
+    } else if (path === '/contact') {
+      updateSeoMetadata({
+        title: 'Contact Showroom & Warehouse | Zafar Sarwar Traders',
+        description: 'Visit our flagship showroom on Main Sargodha Road Chiniot, or contact our sales and logistics team.',
+        path: '/contact'
+      });
+    }
+  }, [currentPath, config.name, categories, products, brands]);
+
   // Real-time synchronization of customer orders and admin settings across the public website
   useEffect(() => {
     const handleOrderStatusUpdated = () => {
@@ -287,6 +426,13 @@ export default function App() {
     }
 
     const unsubscribe = addNavigationListener((state) => {
+      // Synchronize canonical path if present
+      if (state.pathname) {
+        setCurrentPath(state.pathname);
+      } else if (typeof window !== 'undefined') {
+        setCurrentPath(window.location.pathname || '/');
+      }
+
       // Whenever navigation moves away from admin dashboard, ensure it is closed
       if (state.view !== 'admin-dashboard') {
         setAdminDashboardOpen(false);
@@ -979,6 +1125,278 @@ export default function App() {
 
   const totalCartCount = (cartItems || []).reduce((sum, item) => sum + (item?.quantity || 0), 0);
 
+  const renderMainContent = () => {
+    // 1. Delivery Coverage / Logistics Page
+    if (currentPath === '/delivery' || currentPath === '/delivery-areas' || viewDeliveryAreasPage) {
+      return (
+        <DeliveryPage
+          onNavigate={navigateTo}
+        />
+      );
+    }
+
+    // 2. Online Store / Products Catalog
+    if (currentPath === '/store' || currentPath === '/products') {
+      return (
+        <StorePage
+          products={products}
+          categories={categories}
+          brands={brands}
+          config={config}
+          isAdmin={isAdmin}
+          onNavigate={navigateTo}
+          onQuickView={handleQuickViewProduct}
+          onAddToCart={handleAddToCart}
+          onBuyNow={handleBuyNow}
+        />
+      );
+    }
+
+    // 3. Categories Hub
+    if (currentPath === '/categories') {
+      return (
+        <CategoriesPage
+          categories={categories}
+          products={products}
+          onNavigate={navigateTo}
+        />
+      );
+    }
+
+    // 4. Category Detail Page
+    if (currentPath.startsWith('/category/')) {
+      const slug = currentPath.slice('/category/'.length);
+      const category = findCategoryBySlug(slug, categories);
+      if (category) {
+        return (
+          <CategoryDetailPage
+            category={category}
+            allProducts={products}
+            allCategories={categories}
+            brands={brands}
+            config={config}
+            isAdmin={isAdmin}
+            onNavigate={navigateTo}
+            onQuickView={handleQuickViewProduct}
+            onAddToCart={handleAddToCart}
+            onBuyNow={handleBuyNow}
+          />
+        );
+      }
+      return (
+        <CategoriesPage
+          categories={categories}
+          products={products}
+          onNavigate={navigateTo}
+        />
+      );
+    }
+
+    // 5. Product Detail Page
+    if (currentPath.startsWith('/product/')) {
+      const slug = currentPath.slice('/product/'.length);
+      const product = findProductBySlug(slug, products);
+      if (product) {
+        return (
+          <ProductDetailPage
+            product={product}
+            allProducts={products}
+            categories={categories}
+            brands={brands}
+            config={config}
+            isAdmin={isAdmin}
+            onNavigate={navigateTo}
+            onAddToCart={handleAddToCart}
+            onBuyNow={handleBuyNow}
+          />
+        );
+      }
+      return (
+        <StorePage
+          products={products}
+          categories={categories}
+          brands={brands}
+          config={config}
+          isAdmin={isAdmin}
+          onNavigate={navigateTo}
+          onQuickView={handleQuickViewProduct}
+          onAddToCart={handleAddToCart}
+          onBuyNow={handleBuyNow}
+        />
+      );
+    }
+
+    // 6. Brands Directory Hub
+    if (currentPath === '/brands') {
+      return (
+        <BrandsPage
+          brands={brands}
+          products={products}
+          onNavigate={navigateTo}
+        />
+      );
+    }
+
+    // 7. Brand Detail Page
+    if (currentPath.startsWith('/brand/')) {
+      const slug = currentPath.slice('/brand/'.length);
+      const brand = findBrandBySlug(slug, brands);
+      if (brand) {
+        return (
+          <BrandDetailPage
+            brand={brand}
+            allProducts={products}
+            categories={categories}
+            config={config}
+            isAdmin={isAdmin}
+            onNavigate={navigateTo}
+            onQuickView={handleQuickViewProduct}
+            onAddToCart={handleAddToCart}
+            onBuyNow={handleBuyNow}
+          />
+        );
+      }
+      return (
+        <BrandsPage
+          brands={brands}
+          products={products}
+          onNavigate={navigateTo}
+        />
+      );
+    }
+
+    // 8. Smart Construction Tools Hub
+    if (currentPath === '/smart-tools' || currentPath === '/tools') {
+      return (
+        <SmartToolsPage
+          onNavigate={navigateTo}
+          onOpenTool={(toolId) => handleOpenSmartTool(toolId)}
+          onOpenBuilder={handleOpenConstructionBuilder}
+        />
+      );
+    }
+
+    // 9. About Legacy Showroom Page
+    if (currentPath === '/about') {
+      return (
+        <AboutPage
+          config={config}
+          stats={stats}
+          onNavigate={navigateTo}
+        />
+      );
+    }
+
+    // 10. Contact Showroom Page
+    if (currentPath === '/contact') {
+      return (
+        <ContactPage
+          config={config}
+          contacts={contacts}
+          onNavigate={navigateTo}
+        />
+      );
+    }
+
+    // 11. Default: Interactive Homepage
+    return (
+      <main id="main-content" className="relative z-10">
+        <HeroSection
+          products={products}
+          categories={categories}
+          brands={brands}
+          heroSettings={heroSettings}
+          onSelectProduct={(prod) => {
+            const slug = generateProductSlug(prod.name, prod.id);
+            navigateTo(`/product/${slug}`);
+          }}
+          onAddToCart={handleAddToCart}
+          onBuyNow={handleBuyNow}
+          onOpenAiConsultant={handleOpenAiModal}
+          onNavigateToStore={() => navigateTo('/store')}
+          onNavigateToCategories={() => navigateTo('/categories')}
+        />
+
+        {/* Feature Highlights Bar */}
+        <FeatureBar />
+
+        <AboutSection config={config} />
+
+        {/* Categories / Departments Navigation */}
+        <CategoriesSection
+          categories={categories}
+          config={config}
+          onSelectCategory={(catId) => {
+            const cat = categories.find(c => c.id === catId);
+            if (cat) {
+              const slug = generateCategorySlug(cat.name, cat.id);
+              navigateTo(`/category/${slug}`);
+            } else {
+              handleSelectCategory(catId);
+            }
+          }}
+        />
+
+        {/* Authorized Brands */}
+        <BrandsSection
+          brands={brands}
+          products={products}
+          onSelectBrand={(brand) => {
+            const slug = generateBrandSlug(brand.name, brand.id);
+            navigateTo(`/brand/${slug}`);
+          }}
+        />
+
+        {/* Featured Products & Storefront Catalog */}
+        <FeaturedProductsSection
+          products={products}
+          categories={categories}
+          config={config}
+          isAdmin={isAdmin}
+          wishlistIds={wishlistIds}
+          compareIds={compareIds}
+          onQuickView={handleQuickViewProduct}
+          onAddToCart={handleAddToCart}
+          onBuyNow={handleBuyNow}
+          onToggleWishlist={handleToggleWishlist}
+          onToggleCompare={handleToggleCompare}
+          onAddProduct={handleOpenAddProduct}
+          onEditProduct={handleOpenEditProduct}
+          onDeleteProduct={handleDeleteProduct}
+          selectedCategoryFilter={selectedCategoryFilter}
+          onNavigateToStore={() => navigateTo('/store')}
+        />
+
+        {/* 🔧 SMART CONSTRUCTION & FITTING PACKAGE BUILDER (HOMEPAGE ENTRY CARD) */}
+        <SmartConstructionBuilderEntryCard
+          onOpenBuilder={handleOpenConstructionBuilder}
+          config={fittingBuilderConfig}
+        />
+
+        {/* COMPACT SMART TOOLS HUB (Cement Calculator, Bathroom Planner, Material Estimator, Budget Finder, Water Tank & Pump Guide) */}
+        <SmartToolsSection
+          settings={smartToolsSettings}
+          onOpenTool={(toolId) => handleOpenSmartTool(toolId)}
+        />
+
+        <StatsSection stats={stats} />
+
+        <WhyChooseUs />
+
+        <GallerySection items={gallery} />
+
+        <ReviewsSection
+          reviews={reviews}
+          onAddReview={handleAddReview}
+        />
+
+        <FaqSection faqs={faqItems} />
+
+        <ContactSection config={config} contacts={contacts} />
+      </main>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-blue-600 selection:text-white relative overflow-x-hidden">
       
@@ -1020,115 +1438,48 @@ export default function App() {
         cartCount={totalCartCount}
         wishlistCount={wishlistIds.length}
         compareCount={compareIds.length}
+        currentPath={currentPath}
+        onNavigate={navigateTo}
         onOpenCart={handleOpenCart}
         onOpenThemeModal={handleOpenThemeModal}
         onOpenWishlist={() => {
           const el = document.getElementById('products');
           if (el) el.scrollIntoView({ behavior: 'smooth' });
+          else navigateTo('/store');
         }}
         onOpenCompare={() => {
           const el = document.getElementById('products');
           if (el) el.scrollIntoView({ behavior: 'smooth' });
+          else navigateTo('/store');
         }}
         onLogoutAdmin={handleAdminLogout}
         onOpenAdminDashboard={handleOpenAdminDashboard}
         onOpenAiConsultant={handleOpenAiModal}
         onSearchClick={handleOpenSearch}
         onOpenOrderTracking={handleOpenOrderTracking}
-        onSelectCategory={handleSelectCategory}
-        onOpenSmartTool={(toolId) => handleOpenSmartTool(toolId)}
+        onSelectCategory={(catId) => {
+          const cat = categories.find(c => c.id === catId);
+          if (cat) {
+            const slug = generateCategorySlug(cat.name, cat.id);
+            navigateTo(`/category/${slug}`);
+          } else {
+            handleSelectCategory(catId);
+          }
+        }}
+        onOpenSmartTool={(toolId) => {
+          if (toolId === 'hub') {
+            navigateTo('/smart-tools');
+          } else {
+            handleOpenSmartTool(toolId);
+          }
+        }}
         onOpenConstructionBuilder={handleOpenConstructionBuilder}
         onOpenDeliveryChecker={handleOpenDeliveryChecker}
-        onOpenDeliveryAreas={handleOpenDeliveryAreas}
+        onOpenDeliveryAreas={() => navigateTo('/delivery')}
       />
 
-      {/* Main Page Sections OR Delivery Areas Page */}
-      {viewDeliveryAreasPage ? (
-        <DeliveryAreasPage
-          onBackToHome={handleCloseDeliveryAreas}
-          onOpenProductQuickView={(prodId) => {
-            const found = products.find(p => p.id === prodId);
-            if (found) handleQuickViewProduct(found);
-          }}
-        />
-      ) : (
-        <main id="main-content" className="relative z-10">
-          <HeroSection
-            products={products}
-            categories={categories}
-            brands={brands}
-            heroSettings={heroSettings}
-            onSelectProduct={(prod) => handleQuickViewProduct(prod)}
-            onAddToCart={handleAddToCart}
-            onBuyNow={handleBuyNow}
-            onOpenAiConsultant={handleOpenAiModal}
-          />
-
-          {/* Feature Highlights Bar */}
-          <FeatureBar />
-
-          <AboutSection config={config} />
-
-          {/* Categories / Departments Navigation */}
-          <CategoriesSection
-            categories={categories}
-            config={config}
-            onSelectCategory={handleSelectCategory}
-          />
-
-          {/* Authorized Brands */}
-          <BrandsSection
-            brands={brands}
-            products={products}
-          />
-
-          {/* Featured Products & Storefront Catalog */}
-          <FeaturedProductsSection
-            products={products}
-            categories={categories}
-            config={config}
-            isAdmin={isAdmin}
-            wishlistIds={wishlistIds}
-            compareIds={compareIds}
-            onQuickView={handleQuickViewProduct}
-            onAddToCart={handleAddToCart}
-            onBuyNow={handleBuyNow}
-            onToggleWishlist={handleToggleWishlist}
-            onToggleCompare={handleToggleCompare}
-            onAddProduct={handleOpenAddProduct}
-            onEditProduct={handleOpenEditProduct}
-            onDeleteProduct={handleDeleteProduct}
-            selectedCategoryFilter={selectedCategoryFilter}
-          />
-
-          {/* 🔧 SMART CONSTRUCTION & FITTING PACKAGE BUILDER (HOMEPAGE ENTRY CARD) */}
-          <SmartConstructionBuilderEntryCard
-            onOpenBuilder={handleOpenConstructionBuilder}
-            config={fittingBuilderConfig}
-          />
-
-          {/* COMPACT SMART TOOLS HUB (Cement Calculator, Bathroom Planner, Material Estimator, Budget Finder, Water Tank & Pump Guide) */}
-          <SmartToolsSection
-            settings={smartToolsSettings}
-            onOpenTool={(toolId) => handleOpenSmartTool(toolId)}
-          />
-
-          <StatsSection stats={stats} />
-
-          <WhyChooseUs />
-
-          <GallerySection items={gallery} />
-
-          <ReviewsSection
-            reviews={reviews}
-            onAddReview={handleAddReview}
-          />
-
-          <FaqSection faqs={faqItems} />
-
-          <ContactSection config={config} contacts={contacts} />
-        </main>
-      )}
+      {/* Dynamic Multi-Page Router View */}
+      {renderMainContent()}
 
       {/* Sticky Floating WhatsApp */}
       <FloatingWhatsApp config={config} />
@@ -1153,11 +1504,20 @@ export default function App() {
       {/* Footer */}
       <Footer
         config={config}
-        onSelectCategory={handleSelectCategory}
+        onSelectCategory={(catId) => {
+          const cat = categories.find(c => c.id === catId);
+          if (cat) {
+            const slug = generateCategorySlug(cat.name, cat.id);
+            navigateTo(`/category/${slug}`);
+          } else {
+            handleSelectCategory(catId);
+          }
+        }}
         onReplayIntro={() => setShowIntro(true)}
         onOpenThemeModal={handleOpenThemeModal}
         onOpenDeliveryChecker={handleOpenDeliveryChecker}
-        onOpenDeliveryAreas={handleOpenDeliveryAreas}
+        onOpenDeliveryAreas={() => navigateTo('/delivery')}
+        onNavigate={navigateTo}
       />
 
       {/* Floating Cart Counter Badge & Indicator */}
@@ -1239,6 +1599,7 @@ export default function App() {
             handleBuyNow(prod, qty, color, size, quality, variant, shade, variantObj);
           }}
           onClose={handleCloseProductQuickView}
+          onNavigate={navigateTo}
         />
       )}
 

@@ -26,6 +26,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { Product, ProductCategory, BusinessConfig, ProductBrand, AiAssistantConfig, ChatMessage, ChatMessageProduct, ComparisonData } from '../types';
+import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
 
 interface FloatingAiChatProps {
   products: Product[];
@@ -50,8 +51,6 @@ export const FloatingAiChat: React.FC<FloatingAiChatProps> = ({
   onSelectCategory,
   onOpenPlanner
 }) => {
-  if (!aiAssistantConfig.isEnabled) return null;
-
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -471,6 +470,8 @@ export const FloatingAiChat: React.FC<FloatingAiChatProps> = ({
     window.open(waUrl, '_blank');
   };
 
+  if (!aiAssistantConfig.isEnabled) return null;
+
   return (
     <>
       {/* FLOATING AI CHAT BUTTON (Bottom-Right Corner) */}
@@ -631,8 +632,9 @@ export const FloatingAiChat: React.FC<FloatingAiChatProps> = ({
                                       className="p-3 rounded-xl bg-slate-950 border border-slate-800/90 hover:border-cyan-500/40 transition-all flex items-start gap-3"
                                     >
                                       <img
-                                        src={prod.image}
+                                        src={normalizeProductImage(prod.image, prod.category, prod.name)}
                                         alt={prod.name}
+                                        onError={(e) => handleImageError(e, prod.category, prod.name)}
                                         className="w-16 h-16 rounded-lg object-cover bg-slate-900 border border-slate-800 shrink-0"
                                       />
                                       <div className="flex-1 min-w-0">

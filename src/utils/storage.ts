@@ -1,10 +1,13 @@
 import { BusinessConfig, Product, ProductCategory, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, CartItem, CustomerOrder, CheckoutSettings, DeliverySettings, CityDeliveryInfo, ThemeOption, ThemeSettings, AnnouncementBarSettings, AnnouncementItem, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig, PricingTypographySettings, defaultPricingTypography, Coupon, CouponValidationResult, AppliedCouponState, PaymentMethodConfig, HowToOrderConfig, HowToOrderStep } from '../types';
 import { initialBusinessConfig, productCategories, featuredProducts, galleryItems, productBrands, defaultStatCounters } from '../data/storeData';
 import { broadcastNewOrderPlaced } from './orderNotificationUtils';
+import { generateCityTiersForBaseFee, generateHeavyCityTiersForBaseFee } from './deliveryFeeCalculator';
 import { defaultBathroomPlannerConfig } from '../data/defaultPlannerConfig';
 import { defaultBuildMaterialEstimatorConfig } from '../data/defaultEstimatorConfig';
 import { defaultSmartToolsSettings } from '../data/defaultSmartToolsConfig';
 import { defaultFittingBuilderConfig } from '../data/defaultFittingBuilderData';
+import { defaultDeliveryCities } from '../data/defaultDeliveryCities';
+import { normalizeProductImage, normalizeProductImages, getCategoryFallbackImage } from './imageUtils';
 import { isSupabaseConfigured, initializeSupabaseRuntime } from '../lib/supabase';
 import { 
   fetchProductsFromSupabase, 
@@ -328,89 +331,14 @@ export const defaultDeliverySettings: DeliverySettings = {
     '✓ If your delivery is delayed due to weather, courier, holidays, or other operational reasons, you will be informed immediately.',
     '✓ Contact our support team on WhatsApp anytime for live tracking and special delivery arrangements.'
   ],
-  cities: [
-    { 
-      id: 'city-chiniot', 
-      cityName: 'Chiniot', 
-      areaTown: 'Chiniot City & Tehsil', 
-      status: 'available', 
-      estimatedDays: 'Same Day / 1 Day', 
-      deliveryFee: 200, 
-      deliveryFeeType: 'tiered', 
-      deliveryFeeCustomText: 'Tiered Order Delivery', 
-      isSameDayAvailable: true, 
-      isNextDayAvailable: true, 
-      isEnabled: true, 
-      displayOrder: 1, 
-      notes: 'Express direct delivery from our Chiniot showroom.', 
-      coverageAreas: ['Chiniot City', 'Katchery Road', 'Jhang Road', 'Faisalabad Road', 'Chenab Nagar / Rabwah', 'Bhowana', 'Lalian'],
-      deliveryTiers: [
-        { id: 'tier-chiniot-1', minAmount: 0, maxAmount: 4999, fee: 200, isFree: false, label: 'Standard Local Delivery' },
-        { id: 'tier-chiniot-2', minAmount: 5000, maxAmount: 9999, fee: 100, isFree: false, label: 'Order Value Discount' },
-        { id: 'tier-chiniot-3', minAmount: 10000, maxAmount: null, fee: 0, isFree: true, label: 'Free Delivery (PKR 10,000+)' }
-      ]
-    },
-    { 
-      id: 'city-bhowana', 
-      cityName: 'Bhowana', 
-      areaTown: 'Bhowana Tehsil & Surrounding Area', 
-      status: 'available', 
-      estimatedDays: '1 Working Day', 
-      deliveryFee: 250, 
-      deliveryFeeType: 'tiered', 
-      isSameDayAvailable: true, 
-      isNextDayAvailable: true, 
-      isEnabled: true, 
-      displayOrder: 2, 
-      notes: 'Direct showroom vehicle route.',
-      deliveryTiers: [
-        { id: 'tier-bhowana-1', minAmount: 0, maxAmount: 4999, fee: 250, isFree: false, label: 'Standard Delivery' },
-        { id: 'tier-bhowana-2', minAmount: 5000, maxAmount: 9999, fee: 150, isFree: false, label: 'Order Value Discount' },
-        { id: 'tier-bhowana-3', minAmount: 10000, maxAmount: null, fee: 0, isFree: true, label: 'Free Delivery (PKR 10,000+)' }
-      ]
-    },
-    { 
-      id: 'city-lalian', 
-      cityName: 'Lalian', 
-      areaTown: 'Lalian Tehsil & Surrounding Area', 
-      status: 'available', 
-      estimatedDays: '1 Working Day', 
-      deliveryFee: 250, 
-      deliveryFeeType: 'tiered', 
-      isSameDayAvailable: true, 
-      isNextDayAvailable: true, 
-      isEnabled: true, 
-      displayOrder: 3, 
-      notes: 'Direct showroom vehicle route.',
-      deliveryTiers: [
-        { id: 'tier-lalian-1', minAmount: 0, maxAmount: 4999, fee: 250, isFree: false, label: 'Standard Delivery' },
-        { id: 'tier-lalian-2', minAmount: 5000, maxAmount: 9999, fee: 150, isFree: false, label: 'Order Value Discount' },
-        { id: 'tier-lalian-3', minAmount: 10000, maxAmount: null, fee: 0, isFree: true, label: 'Free Delivery (PKR 10,000+)' }
-      ]
-    },
-    { id: 'city-faisalabad', cityName: 'Faisalabad', areaTown: 'All Towns & Industrial Zones', status: 'available', estimatedDays: '1–2 Working Days', deliveryFee: 300, deliveryFeeType: 'fixed', isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 4, notes: 'Daily delivery shuttle available.' },
-    { id: 'city-jhang', cityName: 'Jhang', areaTown: 'Jhang City, Saddar & Shorkot', status: 'available', estimatedDays: '1–2 Working Days', deliveryFee: 250, deliveryFeeType: 'fixed', isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 5, notes: 'Showroom delivery route.' },
-    { id: 'city-sargodha', cityName: 'Sargodha', areaTown: 'Sargodha City, Cantt & Satellite Town', status: 'available', estimatedDays: '1–2 Working Days', deliveryFee: 250, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 6, notes: 'Direct truck delivery route.' },
-    { id: 'city-lahore', cityName: 'Lahore', areaTown: 'All Zones (DHA, Gulberg, Bahria, Johar Town, etc.)', status: 'available', estimatedDays: '1–2 Working Days', deliveryFee: 250, deliveryFeeType: 'fixed', isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 7, notes: 'Daily direct courier & cargo service.' },
-    { id: 'city-islamabad', cityName: 'Islamabad', areaTown: 'Federal Capital (All Sectors & DHA/Bahria)', status: 'available', estimatedDays: '2–3 Working Days', deliveryFee: 350, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 8 },
-    { id: 'city-rawalpindi', cityName: 'Rawalpindi', areaTown: 'Rawalpindi City & Cantt', status: 'available', estimatedDays: '2–3 Working Days', deliveryFee: 350, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 9 },
-    { id: 'city-multan', cityName: 'Multan', areaTown: 'Multan Cantt, Bosan Road & City', status: 'available', estimatedDays: '2–3 Working Days', deliveryFee: 350, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 10 },
-    { id: 'city-gujranwala', cityName: 'Gujranwala', areaTown: 'Gujranwala City & Cantt', status: 'available', estimatedDays: '1–2 Working Days', deliveryFee: 250, deliveryFeeType: 'fixed', isSameDayAvailable: true, isNextDayAvailable: true, isEnabled: true, displayOrder: 11 },
-    { id: 'city-sialkot', cityName: 'Sialkot', areaTown: 'Sialkot City & Cantt', status: 'available', estimatedDays: '1–2 Working Days', deliveryFee: 250, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 12 },
-    { id: 'city-karachi', cityName: 'Karachi', areaTown: 'All Districts & Port Area', status: 'available', estimatedDays: '3–5 Working Days', deliveryFee: 450, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: false, isEnabled: true, displayOrder: 13, notes: 'Express air & overland cargo.' },
-    { id: 'city-bahawalpur', cityName: 'Bahawalpur', areaTown: 'Bahawalpur City & Cantt', status: 'available', estimatedDays: '2–3 Working Days', deliveryFee: 350, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: true, isEnabled: true, displayOrder: 14 },
-    { id: 'city-peshawar', cityName: 'Peshawar', areaTown: 'Peshawar City, Hayatabad & Cantt', status: 'available', estimatedDays: '3–4 Working Days', deliveryFee: 400, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: false, isEnabled: true, displayOrder: 15 },
-    { id: 'city-quetta', cityName: 'Quetta', areaTown: 'Quetta City & Cantt', status: 'contact_to_confirm', estimatedDays: '4–6 Working Days', deliveryFee: 500, deliveryFeeType: 'contact', isSameDayAvailable: false, isNextDayAvailable: false, isEnabled: true, displayOrder: 16, notes: 'Please contact WhatsApp to confirm cargo schedule.' },
-    { id: 'city-hyderabad', cityName: 'Hyderabad', areaTown: 'Hyderabad City, Latifabad & Qasimabad', status: 'available', estimatedDays: '3–5 Working Days', deliveryFee: 450, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: false, isEnabled: true, displayOrder: 17 },
-    { id: 'city-sukkur', cityName: 'Sukkur', areaTown: 'Sukkur City & Rohri', status: 'available', estimatedDays: '3–4 Working Days', deliveryFee: 400, deliveryFeeType: 'fixed', isSameDayAvailable: false, isNextDayAvailable: false, isEnabled: true, displayOrder: 18 }
-  ]
+  cities: defaultDeliveryCities
 };
 
 export const defaultCheckoutSettings: CheckoutSettings = {
   deliveryFee: 250,
   taxRatePercent: 0,
   enableTaxes: false,
-  freeDeliveryThreshold: 50000,
+  freeDeliveryThreshold: 0,
   whatsappNumberOverride: '',
   codAdvanceRequired: false,
   codAdvancePercentage: 30,
@@ -702,6 +630,10 @@ export const saveStoredConfig = async (config: BusinessConfig): Promise<{ succes
 
 const sanitizeProductForLocalStorage = (p: Product): Partial<Product> => {
   const isDataUrl = (str?: string) => Boolean(str && (str.startsWith('data:') || str.startsWith('blob:')));
+  const safeImg = isDataUrl(p.image) ? getCategoryFallbackImage(p.category, p.name) : normalizeProductImage(p.image, p.category, p.name);
+  const safeImages = Array.isArray(p.images)
+    ? p.images.filter(img => !isDataUrl(img)).map(img => normalizeProductImage(img, p.category, p.name)).slice(0, 3)
+    : [safeImg];
   return {
     id: p.id,
     name: p.name,
@@ -721,8 +653,8 @@ const sanitizeProductForLocalStorage = (p: Product): Partial<Product> => {
     showDiscountPercentage: p.showDiscountPercentage,
     showSavingsAmount: p.showSavingsAmount,
     saleConfig: p.saleConfig,
-    image: isDataUrl(p.image) ? '' : p.image,
-    images: Array.isArray(p.images) ? p.images.filter(img => !isDataUrl(img)).slice(0, 3) : undefined,
+    image: safeImg,
+    images: safeImages.length > 0 ? safeImages : [safeImg],
     badge: p.badge,
     isFeatured: p.isFeatured,
     stockStatus: p.stockStatus,
@@ -752,12 +684,22 @@ export const loadStoredProducts = (): Product[] => {
     const saved = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
     if (saved !== null) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((p: Product) => ({
+          ...p,
+          image: normalizeProductImage(p.image, p.category, p.name),
+          images: normalizeProductImages(p.images, p.image, p.category, p.name)
+        }));
+      }
     }
   } catch (e) {
     console.error('Error loading stored products', e);
   }
-  return featuredProducts;
+  return featuredProducts.map(p => ({
+    ...p,
+    image: normalizeProductImage(p.image, p.category, p.name),
+    images: normalizeProductImages(p.images, p.image, p.category, p.name)
+  }));
 };
 
 export const saveStoredProductSingle = async (product: Product): Promise<{ success: boolean; error?: string }> => {
@@ -1557,36 +1499,147 @@ export const saveCheckoutSettings = async (settings: CheckoutSettings): Promise<
   }
 };
 
+/**
+ * Sanitizes and deduplicates an array of delivery cities to strictly guarantee unique React keys and city names.
+ * Also resolves legacy database rows where a city was renamed without updating its original ID.
+ */
+export const sanitizeAndDeduplicateCities = (cities: (CityDeliveryInfo | any)[]): CityDeliveryInfo[] => {
+  if (!Array.isArray(cities)) return [];
+
+  const seenNames = new Map<string, CityDeliveryInfo>();
+  const seenIds = new Set<string>();
+  const result: CityDeliveryInfo[] = [];
+
+  for (let i = 0; i < cities.length; i++) {
+    const rawCity = cities[i];
+    if (!rawCity || typeof rawCity !== 'object') continue;
+
+    const rawName = (rawCity.cityName || rawCity.name || '').trim();
+    if (!rawName) continue;
+
+    const normName = rawName.toLowerCase();
+    const nameSlug = normName.replace(/[^a-z0-9]+/g, '-');
+    let cityId = String(rawCity.id || `city-${nameSlug || i}`).trim();
+
+    // Auto-resolve legacy mismatched IDs from historical database edits
+    if (cityId === 'city-karachi' && !normName.includes('karachi')) {
+      cityId = normName.includes('bhowana') ? 'city-bhowana' : `city-${nameSlug}`;
+    } else if (cityId === 'city-peshawar' && !normName.includes('peshawar')) {
+      cityId = normName.includes('pindi') ? 'city-pindi-bhatiyan' : `city-${nameSlug}`;
+    } else if (cityId === 'city-quetta' && !normName.includes('quetta')) {
+      cityId = normName.includes('lalian') ? 'city-lalian' : `city-${nameSlug}`;
+    } else if (cityId === 'city-hyderabad' && !normName.includes('hyderabad')) {
+      cityId = normName.includes('chenab') ? 'city-chenab-nagar' : `city-${nameSlug}`;
+    } else if (cityId === 'city-sukkur' && !normName.includes('sukkur')) {
+      cityId = normName.includes('okara') ? 'city-okara' : `city-${nameSlug}`;
+    }
+
+    // Deduplicate by normalized city name: if we already have this city, merge missing properties
+    if (seenNames.has(normName)) {
+      const existing = seenNames.get(normName)!;
+      if (!existing.province && rawCity.province) existing.province = rawCity.province;
+      if (!existing.areaTown && rawCity.areaTown) existing.areaTown = rawCity.areaTown;
+      if ((!existing.deliveryTiers || existing.deliveryTiers.length === 0) && rawCity.deliveryTiers?.length) {
+        existing.deliveryTiers = rawCity.deliveryTiers;
+      }
+      if ((!existing.heavyDeliveryTiers || existing.heavyDeliveryTiers.length === 0) && rawCity.heavyDeliveryTiers?.length) {
+        existing.heavyDeliveryTiers = rawCity.heavyDeliveryTiers;
+      }
+      continue;
+    }
+
+    // Guarantee that cityId is strictly unique in the output array
+    if (seenIds.has(cityId)) {
+      cityId = `city-${nameSlug}-${result.length + 1}`;
+    }
+    seenIds.add(cityId);
+
+    const cleanCity: CityDeliveryInfo = {
+      ...rawCity,
+      id: cityId,
+      cityName: rawName
+    };
+
+    seenNames.set(normName, cleanCity);
+    result.push(cleanCity);
+  }
+
+  return result;
+};
+
 export const loadDeliverySettings = (): DeliverySettings => {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.DELIVERY_SETTINGS);
     if (saved !== null) {
       const parsed = JSON.parse(saved);
-      // Merge cities to ensure default order-value tiers are populated if not previously set
-      const mergedCities = (parsed.cities || defaultDeliverySettings.cities).map((savedCity: any) => {
+      const savedCityList = Array.isArray(parsed.cities) ? parsed.cities : defaultDeliverySettings.cities;
+
+      // Cleanse saved cities to remove any duplicate keys or mismatched IDs
+      const sanitizedSaved = sanitizeAndDeduplicateCities(savedCityList);
+
+      // Merge cities to ensure default order-value tiers are preserved or populated
+      const mergedCities = sanitizedSaved.map((savedCity: any) => {
         const defaultMatch = defaultDeliverySettings.cities.find(
-          dc => dc.id === savedCity.id || dc.cityName?.toLowerCase() === savedCity.cityName?.toLowerCase()
+          dc => dc.cityName?.trim().toLowerCase() === savedCity.cityName?.trim().toLowerCase() || dc.id === savedCity.id
         );
-        if ((!savedCity.deliveryTiers || savedCity.deliveryTiers.length === 0) && defaultMatch?.deliveryTiers) {
-          return {
-            ...savedCity,
-            deliveryFeeType: savedCity.deliveryFeeType || 'tiered',
-            deliveryTiers: defaultMatch.deliveryTiers
-          };
+        let updatedCity = { ...savedCity };
+        if (defaultMatch) {
+          if (!updatedCity.province && defaultMatch.province) {
+            updatedCity.province = defaultMatch.province;
+          }
+          // Enforce minimum fee of Rs. 200 and restore authoritative delivery fees if corrupted or 0
+          if ((!updatedCity.deliveryFee || updatedCity.deliveryFee < 200) && defaultMatch.deliveryFee >= 200 && updatedCity.status !== 'contact_to_confirm') {
+            updatedCity.deliveryFee = defaultMatch.deliveryFee;
+            updatedCity.baseFee = defaultMatch.baseFee ?? defaultMatch.deliveryFee;
+            updatedCity.lightWeightFee = defaultMatch.lightWeightFee ?? defaultMatch.deliveryFee;
+            updatedCity.heavyWeightFee = defaultMatch.heavyWeightFee;
+          }
+          if ((!updatedCity.deliveryTiers || updatedCity.deliveryTiers.length === 0 || updatedCity.deliveryTiers.some((t: any) => t.minAmount === 0 && (t.fee < 200 || t.isFree))) && defaultMatch.deliveryTiers) {
+            updatedCity.deliveryTiers = defaultMatch.deliveryTiers;
+          }
+          if ((!updatedCity.heavyDeliveryTiers || updatedCity.heavyDeliveryTiers.length === 0) && defaultMatch.heavyDeliveryTiers) {
+            updatedCity.heavyDeliveryTiers = defaultMatch.heavyDeliveryTiers;
+          }
+          // Remove global freeDelivery flag if city is tiered or has standard fee
+          if (updatedCity.freeDelivery && (updatedCity.deliveryTiers?.length > 0 || updatedCity.deliveryFeeType === 'tiered' || updatedCity.deliveryFee >= 200)) {
+            updatedCity.freeDelivery = false;
+          }
+        } else {
+          if (typeof updatedCity.deliveryFee === 'number' && updatedCity.deliveryFee > 0 && updatedCity.deliveryFee < 200) {
+            updatedCity.deliveryFee = 200;
+            updatedCity.baseFee = 200;
+          }
         }
-        return savedCity;
+        return updatedCity;
       });
 
-      return {
+      // Append any newly added authoritative seed cities that are not yet in the saved list
+      const existingNames = new Set(mergedCities.map((c: any) => c.cityName?.trim().toLowerCase()));
+      const missingSeedCities = defaultDeliverySettings.cities.filter(
+        dc => !existingNames.has(dc.cityName?.trim().toLowerCase())
+      );
+      const finalCities = sanitizeAndDeduplicateCities([...mergedCities, ...missingSeedCities]);
+
+      const cleanedSettings = {
         ...defaultDeliverySettings,
         ...parsed,
-        cities: mergedCities
+        cities: finalCities
       };
+
+      // Auto-heal localStorage if duplicates were repaired
+      if (finalCities.length !== savedCityList.length) {
+        safeSetLocalStorage(STORAGE_KEYS.DELIVERY_SETTINGS, cleanedSettings);
+      }
+
+      return cleanedSettings;
     }
   } catch (e) {
     console.error('Error loading delivery settings', e);
   }
-  return defaultDeliverySettings;
+  return {
+    ...defaultDeliverySettings,
+    cities: sanitizeAndDeduplicateCities(defaultDeliverySettings.cities)
+  };
 };
 
 export const saveDeliverySettings = async (settings: DeliverySettings): Promise<{ success: boolean; error?: string }> => {
@@ -1884,9 +1937,14 @@ export const syncWithServerCMS = async (callbacks: {
 
     // 3. Products
     if (productsResult.status === 'fulfilled' && productsResult.value && Array.isArray(productsResult.value) && productsResult.value.length > 0) {
-      console.log(`[Sync] Products loaded into React state: ${productsResult.value.length}`);
-      if (callbacks.setProducts) callbacks.setProducts(productsResult.value);
-      const sanitized = productsResult.value.map(sanitizeProductForLocalStorage);
+      const normalized = productsResult.value.map((p: Product) => ({
+        ...p,
+        image: normalizeProductImage(p.image, p.category, p.name),
+        images: normalizeProductImages(p.images, p.image, p.category, p.name)
+      }));
+      console.log(`[Sync] Products loaded into React state: ${normalized.length}`);
+      if (callbacks.setProducts) callbacks.setProducts(normalized);
+      const sanitized = normalized.map(sanitizeProductForLocalStorage);
       safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, sanitized);
     } else {
       const stored = loadStoredProducts();
@@ -2049,16 +2107,26 @@ export const syncWithServerCMS = async (callbacks: {
 
     if (citiesResult.status === 'fulfilled' && citiesResult.value && citiesResult.value.length > 0) {
       // Merge cities while preserving city deliveryTiers if present in deliveryResult or current settings
-      const mergedCities = citiesResult.value.map(dbCity => {
-        const existing = updatedDeliverySettings.cities?.find(c => c.id === dbCity.id || c.cityName?.toLowerCase() === dbCity.cityName?.toLowerCase());
+      const sanitizedCloudCities = sanitizeAndDeduplicateCities(citiesResult.value);
+      const mergedCities = sanitizedCloudCities.map(dbCity => {
+        const existing = updatedDeliverySettings.cities?.find(
+          c => c.cityName?.trim().toLowerCase() === dbCity.cityName?.trim().toLowerCase() || c.id === dbCity.id
+        );
         return {
           ...dbCity,
           deliveryTiers: (dbCity.deliveryTiers && dbCity.deliveryTiers.length > 0)
             ? dbCity.deliveryTiers
-            : (existing?.deliveryTiers || undefined)
+            : (existing?.deliveryTiers || undefined),
+          province: dbCity.province || existing?.province
         };
       });
-      updatedDeliverySettings.cities = mergedCities;
+      const combined = sanitizeAndDeduplicateCities([
+        ...mergedCities,
+        ...(updatedDeliverySettings.cities || [])
+      ]);
+      updatedDeliverySettings.cities = combined;
+    } else {
+      updatedDeliverySettings.cities = sanitizeAndDeduplicateCities(updatedDeliverySettings.cities || []);
     }
 
     if (callbacks.setDeliverySettings) callbacks.setDeliverySettings(updatedDeliverySettings);

@@ -23,6 +23,7 @@ import { Product, BusinessConfig, ProductCategory } from '../types';
 import { ProductSaleBadge } from './ProductSaleBadge';
 import { SaleCountdownTimer } from './SaleCountdownTimer';
 import { getProductPricingDetails, getProductVariantDisplaySummary, hasActiveVariants, getActiveProductPrice, buildProductWhatsAppOrderUrl } from '../utils/pricingUtils';
+import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
 
 interface FeaturedProductsProps {
   products: Product[];
@@ -40,6 +41,7 @@ interface FeaturedProductsProps {
   onEditProduct?: (product: Product) => void;
   onDeleteProduct?: (productId: string) => void;
   selectedCategoryFilter?: string;
+  onNavigateToStore?: () => void;
 }
 
 export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
@@ -57,7 +59,8 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
   onAddProduct,
   onEditProduct,
   onDeleteProduct,
-  selectedCategoryFilter
+  selectedCategoryFilter,
+  onNavigateToStore
 }) => {
   const [filter, setFilter] = useState<string>(selectedCategoryFilter || 'all');
 
@@ -283,16 +286,11 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                   {/* Image Box */}
                   <div className="relative h-60 w-full bg-gradient-to-b from-slate-50 to-slate-100/60 overflow-hidden flex items-center justify-center p-3">
                     <img
-                      src={product.image || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80'}
+                      src={normalizeProductImage(product.image, product.category, product.name)}
                       alt={`${product.name} - Luxury Sanitaryware & Bathroom Fittings Pakistan | Zafar Sarwar Traders`}
                       loading="lazy"
                       decoding="async"
-                      onError={(e) => {
-                        const target = e.currentTarget;
-                        if (!target.src.includes('unsplash.com/photo-1584622650111')) {
-                          target.src = 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80';
-                        }
-                      }}
+                      onError={(e) => handleImageError(e, product.category, product.name)}
                       className="w-full h-full object-contain mix-blend-multiply group-hover:scale-105 transition-transform duration-500"
                     />
 
@@ -504,6 +502,20 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
             })}
           </AnimatePresence>
         </div>
+
+        {/* View All Products in Online Store CTA */}
+        {onNavigateToStore && (
+          <div className="mt-12 text-center">
+            <button
+              type="button"
+              onClick={onNavigateToStore}
+              className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl bg-slate-900 hover:bg-blue-600 text-white font-bold text-sm shadow-md transition-all active:scale-98 cursor-pointer"
+            >
+              <ShoppingBag className="w-4 h-4" />
+              <span>Explore Complete Store Catalog ({products.length} Products)</span>
+            </button>
+          </div>
+        )}
 
       </div>
     </section>
