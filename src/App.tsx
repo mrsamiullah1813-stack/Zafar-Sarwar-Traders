@@ -421,7 +421,7 @@ export default function App() {
     } else if (initialState.view === 'brand' && initialState.brandId) {
       const b = brands.find(brand => brand.id === initialState.brandId);
       if (b) setSelectedBrand(b);
-    } else if (initialState.view === 'tools' && initialState.toolId) {
+    } else if ((initialState.view === 'tools' || initialState.view === 'smart-tools') && initialState.toolId) {
       setActiveToolId(initialState.toolId as SmartToolId | 'hub');
     }
 
@@ -538,6 +538,7 @@ export default function App() {
           break;
 
         case 'tools':
+        case 'smart-tools':
           if (state.toolId) {
             setActiveToolId(state.toolId as SmartToolId | 'hub');
           }
@@ -1008,7 +1009,7 @@ export default function App() {
   };
 
   const handleCloseSmartTool = () => {
-    navigateBackSafe(() => setActiveToolId(null));
+    navigateBackSafe(() => setActiveToolId(null), { tool: null });
   };
 
   const handleOpenConstructionBuilder = () => {
@@ -1271,7 +1272,11 @@ export default function App() {
         <SmartToolsPage
           onNavigate={navigateTo}
           onOpenTool={(toolId) => handleOpenSmartTool(toolId)}
+          onOpenSmartTool={(toolId) => handleOpenSmartTool(toolId)}
           onOpenBuilder={handleOpenConstructionBuilder}
+          onOpenConstructionBuilder={handleOpenConstructionBuilder}
+          onOpenDeliveryChecker={handleOpenDeliveryChecker}
+          settings={smartToolsSettings}
         />
       );
     }
@@ -1467,11 +1472,7 @@ export default function App() {
           }
         }}
         onOpenSmartTool={(toolId) => {
-          if (toolId === 'hub') {
-            navigateTo('/smart-tools');
-          } else {
-            handleOpenSmartTool(toolId);
-          }
+          handleOpenSmartTool(toolId);
         }}
         onOpenConstructionBuilder={handleOpenConstructionBuilder}
         onOpenDeliveryChecker={handleOpenDeliveryChecker}
@@ -1772,11 +1773,24 @@ export default function App() {
         smartToolsSettings={smartToolsSettings}
         fittingBuilderConfig={fittingBuilderConfig}
         onClose={handleCloseSmartTool}
+        onSelectTool={(id) => setActiveToolId(id)}
         onOpenQuickView={(prod) => handleQuickViewProduct(prod)}
         onAddToCart={handleAddToCart}
         onBuyNow={(prod, qty, color) => {
           handleCloseSmartTool();
           handleBuyNow(prod, qty, color);
+        }}
+        onAddPackageToCart={(items) => {
+          items.forEach(item => {
+            handleAddToCart(
+              item.product,
+              item.quantity,
+              undefined,
+              undefined,
+              undefined,
+              item.selectedVariantName
+            );
+          });
         }}
       />
       {/* Delivery Checker Modal Across Pakistan */}

@@ -92,6 +92,7 @@ export function normalizeSmartToolId(id: string | null | undefined): SmartToolId
     case 'water-tank-pump-guide':
       return 'water-tank';
 
+    case 'builder':
     case 'construction-builder':
     case 'fitting-builder':
     case 'fitting':

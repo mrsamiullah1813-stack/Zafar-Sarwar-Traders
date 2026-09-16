@@ -2322,7 +2322,8 @@
       "rating": 4,
       "reviewsCount": 2,
       "displayOrder": 0,
-      "description": "\nAn ultra-durable, high-grade stainless steel floor drain engineered for modern bathrooms, kitchens, and commercial wash areas. Designed with precision-cut drainage slots, it ensures rapid water flow "
+      "description": "\nAn ultra-durable, high-grade stainless steel floor drain engineered for modern bathrooms, kitchens, and commercial wash areas. Designed with precision-cut drainage slots, it ensures rapid water flow ",
+      "isHeroFeatured": true
     },
     {
       "id": "prod-1788242262486",
@@ -2376,8 +2377,7 @@
       "rating": 4.3,
       "reviewsCount": 0,
       "displayOrder": 0,
-      "description": "AVA Flush Tank is a durable and practical bathroom fitting designed for efficient and reliable toilet flushing. Its quality construction and smooth flushing mechanism provide dependable everyday perfo",
-      "isHeroFeatured": true
+      "description": "AVA Flush Tank is a durable and practical bathroom fitting designed for efficient and reliable toilet flushing. Its quality construction and smooth flushing mechanism provide dependable everyday perfo"
     },
     {
       "id": "prod-1788171167641",
@@ -2591,8 +2591,7 @@
       "rating": 4.9,
       "reviewsCount": 2,
       "displayOrder": 0,
-      "description": "Faisal Jet Shower is a high-quality bathroom fitting designed to provide a smooth and refreshing shower experience. Its practical design, durable construction, and reliable water flow make it suitable",
-      "isHeroFeatured": true
+      "description": "Faisal Jet Shower is a high-quality bathroom fitting designed to provide a smooth and refreshing shower experience. Its practical design, durable construction, and reliable water flow make it suitable"
     },
     {
       "id": "prod-1788087384483",
@@ -3115,8 +3114,7 @@
       "rating": 4.6,
       "reviewsCount": 2,
       "displayOrder": 0,
-      "description": "Splash F2 Floor Waste is a durable and practical bathroom drainage fitting designed for efficient removal of wastewater from floors. Its functional design helps maintain proper drainage while adding a",
-      "isHeroFeatured": true
+      "description": "Splash F2 Floor Waste is a durable and practical bathroom drainage fitting designed for efficient removal of wastewater from floors. Its functional design helps maintain proper drainage while adding a"
     },
     {
       "id": "prod-1787828372604",
