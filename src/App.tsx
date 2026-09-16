@@ -115,10 +115,12 @@ import { SmartToolsPage } from './pages/SmartToolsPage';
 import { DeliveryPage } from './pages/DeliveryPage';
 import { AboutPage } from './pages/AboutPage';
 import { ContactPage } from './pages/ContactPage';
+import { NotFoundPage } from './pages/NotFoundPage';
 import { 
   findProductBySlug, 
   findCategoryBySlug, 
   findBrandBySlug, 
+  getProductSlug,
   generateProductSlug, 
   generateCategorySlug, 
   generateBrandSlug 
@@ -249,7 +251,29 @@ export default function App() {
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+    // Ensure all modal overlays are cleanly closed on page navigation
+    setSelectedProduct(null);
+    setSelectedBrand(null);
+    setCartOpen(false);
+    setCheckoutModalOpen(false);
+    setSearchModalOpen(false);
     setCurrentPath(clean);
+  };
+
+  // Dedicated transition handler from QuickView modal to full product details page
+  const handleViewProductDetailsPage = (prod: Product) => {
+    const slug = getProductSlug(prod);
+    const path = `/product/${slug}`;
+    if (typeof window !== 'undefined') {
+      window.history.replaceState({ zst_app_state: true, path }, '', path);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    setSelectedProduct(null);
+    setSelectedBrand(null);
+    setCartOpen(false);
+    setCheckoutModalOpen(false);
+    setSearchModalOpen(false);
+    setCurrentPath(path);
   };
 
   // Sync browser popstate navigation directly
@@ -408,8 +432,11 @@ export default function App() {
     if (initialState.view === 'delivery-areas') {
       setViewDeliveryAreasPage(true);
     } else if (initialState.view === 'product' && initialState.productId) {
-      const prod = products.find(p => p.id === initialState.productId);
-      if (prod) setSelectedProduct(prod);
+      const isDedicatedProductPage = typeof window !== 'undefined' && window.location.pathname.startsWith('/product/');
+      if (!isDedicatedProductPage) {
+        const prod = products.find(p => p.id === initialState.productId);
+        if (prod) setSelectedProduct(prod);
+      }
     } else if (initialState.view === 'category' && initialState.categoryId && initialState.categoryId !== 'all') {
       setSelectedCategoryFilter(initialState.categoryId);
     } else if (initialState.view === 'cart') {
@@ -487,7 +514,9 @@ export default function App() {
           setCheckoutModalOpen(false);
           setViewDeliveryAreasPage(false);
           setSearchModalOpen(false);
-          if (state.productId) {
+          if (state.pathname?.startsWith('/product/') || (typeof window !== 'undefined' && window.location.pathname.startsWith('/product/'))) {
+            setSelectedProduct(null);
+          } else if (state.productId) {
             const prod = products.find(p => p.id === state.productId);
             if (prod) setSelectedProduct(prod);
           }
@@ -1185,9 +1214,9 @@ export default function App() {
         );
       }
       return (
-        <CategoriesPage
-          categories={categories}
-          products={products}
+        <NotFoundPage
+          attemptedPath={currentPath}
+          customMessage="The product category you requested could not be found."
           onNavigate={navigateTo}
         />
       );
@@ -1213,16 +1242,10 @@ export default function App() {
         );
       }
       return (
-        <StorePage
-          products={products}
-          categories={categories}
-          brands={brands}
-          config={config}
-          isAdmin={isAdmin}
+        <NotFoundPage
+          attemptedPath={currentPath}
+          customMessage="The product you requested could not be found or is unavailable."
           onNavigate={navigateTo}
-          onQuickView={handleQuickViewProduct}
-          onAddToCart={handleAddToCart}
-          onBuyNow={handleBuyNow}
         />
       );
     }
@@ -1258,9 +1281,9 @@ export default function App() {
         );
       }
       return (
-        <BrandsPage
-          brands={brands}
-          products={products}
+        <NotFoundPage
+          attemptedPath={currentPath}
+          customMessage="The brand you requested could not be found."
           onNavigate={navigateTo}
         />
       );
@@ -1303,7 +1326,17 @@ export default function App() {
       );
     }
 
-    // 11. Default: Interactive Homepage
+    // 11. Check if unknown path
+    if (currentPath !== '/' && currentPath !== '') {
+      return (
+        <NotFoundPage
+          attemptedPath={currentPath}
+          onNavigate={navigateTo}
+        />
+      );
+    }
+
+    // 12. Default: Interactive Homepage
     return (
       <main id="main-content" className="relative z-10">
         <HeroSection
@@ -1601,6 +1634,7 @@ export default function App() {
           }}
           onClose={handleCloseProductQuickView}
           onNavigate={navigateTo}
+          onViewFullDetails={handleViewProductDetailsPage}
         />
       )}
 

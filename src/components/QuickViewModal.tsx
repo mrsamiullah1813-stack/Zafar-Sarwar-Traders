@@ -86,6 +86,7 @@ interface QuickViewModalProps {
   ) => void;
   onClose: () => void;
   onNavigate?: (path: string) => void;
+  onViewFullDetails?: (product: Product) => void;
 }
 
 export const QuickViewModal: React.FC<QuickViewModalProps> = ({
@@ -99,7 +100,8 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
   onAddToCart,
   onBuyNow,
   onClose,
-  onNavigate
+  onNavigate,
+  onViewFullDetails
 }) => {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [selectedVideoIndex, setSelectedVideoIndex] = useState(0);
@@ -107,6 +109,16 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
   const [mediaViewerInitialIndex, setMediaViewerInitialIndex] = useState(0);
   const [customActiveImage, setCustomActiveImage] = useState<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Safely navigate to dedicated product details page without triggering popstate/history cancellation
+  const handleOpenFullDetails = () => {
+    if (!product) return;
+    if (onViewFullDetails) {
+      onViewFullDetails(product);
+    } else if (onNavigate) {
+      onNavigate(`/product/${getProductSlug(product)}`);
+    }
+  };
 
   // Close modal smoothly on pressing Escape key
   useEffect(() => {
@@ -418,13 +430,10 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {onNavigate && (
+            {(onViewFullDetails || onNavigate) && (
               <button
                 type="button"
-                onClick={() => {
-                  onClose();
-                  onNavigate(`/product/${getProductSlug(product)}`);
-                }}
+                onClick={handleOpenFullDetails}
                 className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-blue-300 hover:text-white text-xs font-semibold border border-slate-700/80 transition-all shadow-xs cursor-pointer"
                 title="Open dedicated product page"
               >
@@ -1429,13 +1438,10 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
             <span>Back to Products</span>
           </button>
 
-          {onNavigate && (
+          {(onViewFullDetails || onNavigate) && (
             <button
               type="button"
-              onClick={() => {
-                onClose();
-                onNavigate(`/product/${getProductSlug(product)}`);
-              }}
+              onClick={handleOpenFullDetails}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600/90 hover:bg-blue-600 text-white text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-md"
             >
               <span>View Full Details Page</span>

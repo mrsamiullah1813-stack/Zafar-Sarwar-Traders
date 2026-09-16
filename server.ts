@@ -260,7 +260,7 @@ async function startServer() {
   };
 
   // Production Sitemap Endpoint for Google Search Console & Search Engines
-  app.get("/sitemap.xml", (req, res) => {
+  app.get("/sitemap.xml", async (req, res) => {
     const rawHost = (req.headers["x-forwarded-host"] as string) || req.headers.host || "zafarsarwartraders.shop";
     const host = rawHost.split(",")[0].trim().split(":")[0].toLowerCase();
     const isLocalOrPreview = host === "localhost" || host === "127.0.0.1" || host.endsWith(".run.app") || host.endsWith(".aistudio.google");
@@ -268,17 +268,149 @@ async function startServer() {
       ? `${(req.headers["x-forwarded-proto"] as string) || "http"}://${host}`
       : "https://zafarsarwartraders.shop";
 
+    const today = new Date().toISOString().split("T")[0];
+
+    const escapeXml = (str: string) =>
+      str.replace(/[<>&'"]/g, (c) => {
+        switch (c) {
+          case '<': return '&lt;';
+          case '>': return '&gt;';
+          case '&': return '&amp;';
+          case '\'': return '&apos;';
+          case '"': return '&quot;';
+          default: return c;
+        }
+      });
+
+    const slugify = (text: string): string => {
+      if (!text) return '';
+      return text
+        .toString()
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/[^\w\u0600-\u06FF\-]+/g, '')
+        .replace(/\-\-+/g, '-')
+        .replace(/^-+/, '')
+        .replace(/-+$/, '');
+    };
+
+    // Base canonical routes
+    const staticUrls = [
+      { path: '/', priority: '1.0', changefreq: 'daily' },
+      { path: '/store', priority: '0.95', changefreq: 'daily' },
+      { path: '/products', priority: '0.9', changefreq: 'daily' },
+      { path: '/categories', priority: '0.9', changefreq: 'weekly' },
+      { path: '/brands', priority: '0.85', changefreq: 'weekly' },
+      { path: '/smart-tools', priority: '0.8', changefreq: 'monthly' },
+      { path: '/delivery', priority: '0.8', changefreq: 'monthly' },
+      { path: '/about', priority: '0.75', changefreq: 'monthly' },
+      { path: '/contact', priority: '0.75', changefreq: 'monthly' },
+    ];
+
+    let products: any[] = [];
+    let categories: any[] = [];
+    let brands: any[] = [];
+
+    if (dbClient) {
+      try {
+        const [prodRes, catRes, brandRes] = await Promise.all([
+          dbClient.from("products").select("id, name, slug, hidden, is_hidden, updated_at"),
+          dbClient.from("categories").select("id, name, slug, is_active, updated_at"),
+          dbClient.from("brands").select("id, name, slug, is_active, updated_at")
+        ]);
+        if (prodRes.data) products = prodRes.data;
+        if (catRes.data) categories = catRes.data;
+        if (brandRes.data) brands = brandRes.data;
+      } catch (err) {
+        console.warn("[Sitemap] Error querying Supabase, using CMS store fallback:", err);
+      }
+    }
+
+    // Fallback to cmsDataStore if dbClient returned empty or was unavailable
+    if (products.length === 0 && cmsDataStore.zst_products_v1) {
+      products = cmsDataStore.zst_products_v1;
+    }
+    if (categories.length === 0 && cmsDataStore.zst_categories_v1) {
+      categories = cmsDataStore.zst_categories_v1;
+    }
+    if (brands.length === 0 && cmsDataStore.zst_brands_v1) {
+      brands = cmsDataStore.zst_brands_v1;
+    }
+
+    const urls: { loc: string; lastmod: string; changefreq: string; priority: string }[] = [];
+
+    // 1. Static Canonical Pages
+    for (const s of staticUrls) {
+      urls.push({
+        loc: `${canonicalOrigin}${s.path}`,
+        lastmod: today,
+        changefreq: s.changefreq,
+        priority: s.priority
+      });
+    }
+
+    // 2. Dynamic Categories
+    const seenCatSlugs = new Set<string>();
+    for (const cat of categories) {
+      if (cat.isActive === false || cat.is_active === false) continue;
+      const slug = cat.slug || slugify(cat.name) || slugify(cat.id);
+      if (slug && !seenCatSlugs.has(slug)) {
+        seenCatSlugs.add(slug);
+        const modDate = (cat.updated_at || cat.updatedAt) ? new Date(cat.updated_at || cat.updatedAt).toISOString().split('T')[0] : today;
+        urls.push({
+          loc: `${canonicalOrigin}/category/${encodeURIComponent(slug)}`,
+          lastmod: modDate,
+          changefreq: 'weekly',
+          priority: '0.85'
+        });
+      }
+    }
+
+    // 3. Dynamic Brands
+    const seenBrandSlugs = new Set<string>();
+    for (const brand of brands) {
+      if (brand.isActive === false || brand.is_active === false) continue;
+      const slug = brand.slug || slugify(brand.name) || slugify(brand.id);
+      if (slug && !seenBrandSlugs.has(slug)) {
+        seenBrandSlugs.add(slug);
+        const modDate = (brand.updated_at || brand.updatedAt) ? new Date(brand.updated_at || brand.updatedAt).toISOString().split('T')[0] : today;
+        urls.push({
+          loc: `${canonicalOrigin}/brand/${encodeURIComponent(slug)}`,
+          lastmod: modDate,
+          changefreq: 'weekly',
+          priority: '0.80'
+        });
+      }
+    }
+
+    // 4. Dynamic Products
+    const seenProductSlugs = new Set<string>();
+    for (const prod of products) {
+      if (prod.isHidden || prod.hidden || prod.is_hidden) continue;
+      const slug = prod.slug || slugify(prod.name) || slugify(prod.id);
+      if (slug && !seenProductSlugs.has(slug)) {
+        seenProductSlugs.add(slug);
+        const modDate = (prod.updated_at || prod.updatedAt) ? new Date(prod.updated_at || prod.updatedAt).toISOString().split('T')[0] : today;
+        urls.push({
+          loc: `${canonicalOrigin}/product/${encodeURIComponent(slug)}`,
+          lastmod: modDate,
+          changefreq: 'daily',
+          priority: '0.80'
+        });
+      }
+    }
+
     const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
-  <!-- Primary Homepage & Luxury Showroom -->
-  <url>
-    <loc>${canonicalOrigin}/</loc>
-    <lastmod>${new Date().toISOString().split("T")[0]}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>1.0</priority>
-  </url>
+${urls.map(u => `  <url>
+    <loc>${escapeXml(u.loc)}</loc>
+    <lastmod>${u.lastmod}</lastmod>
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority}</priority>
+  </url>`).join('\n')}
 </urlset>`;
 
     res.header("Content-Type", "application/xml; charset=utf-8");
