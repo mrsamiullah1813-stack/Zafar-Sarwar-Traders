@@ -128,8 +128,8 @@ import {
 import { updateSeoMetadata } from './utils/seoUtils';
 
 export default function App() {
-  // Showroom Cinematic presentation can be replayed on demand from footer
-  const [showIntro, setShowIntro] = useState<boolean>(false);
+  // Showroom Cinematic opening presentation (plays once on page load, can be replayed from footer)
+  const [showIntro, setShowIntro] = useState<boolean>(true);
 
   const handleIntroComplete = () => {
     try {
