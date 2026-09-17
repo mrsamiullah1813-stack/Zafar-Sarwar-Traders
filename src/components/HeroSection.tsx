@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowRight, 
@@ -10,11 +10,13 @@ import {
   Award,
   Layers,
   Sparkles,
-  CheckCircle2
+  CheckCircle2,
+  MessageCircle,
+  Eye,
+  Check
 } from 'lucide-react';
 import { Product, ProductCategory, ProductBrand, HeroSettings } from '../types';
 import { getProductPricingDetails } from '../utils/pricingUtils';
-import { getProductSlug } from '../utils/slugUtils';
 
 interface HeroSectionProps {
   products: Product[];
@@ -29,15 +31,38 @@ interface HeroSectionProps {
   onNavigateToCategories?: () => void;
 }
 
-interface CuratedSlide {
+interface HeroSlide {
   id: string;
   badge: string;
   title: string;
   subtitle: string;
   categoryTag: string;
-  defaultImage: string;
+  image: string;
   product?: Product;
 }
+
+// Fallback high-resolution images for key departments
+const FALLBACK_CATEGORY_IMAGES = {
+  sanitary: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1000&q=80',
+  faucets: 'https://images.unsplash.com/photo-1585412727339-54e4bae3bbf9?auto=format&fit=crop&w=1000&q=80',
+  pipes: 'https://images.unsplash.com/photo-1541888946425-d0fbb186156f?auto=format&fit=crop&w=1000&q=80',
+  paints: 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?auto=format&fit=crop&w=1000&q=80'
+};
+
+const slideVariants = {
+  enter: (direction: number) => ({
+    x: direction > 0 ? '100%' : '-100%',
+    opacity: 0
+  }),
+  center: {
+    x: '0%',
+    opacity: 1
+  },
+  exit: (direction: number) => ({
+    x: direction > 0 ? '-100%' : '100%',
+    opacity: 0
+  })
+};
 
 export const HeroSection: React.FC<HeroSectionProps> = ({
   products,
@@ -46,95 +71,180 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   heroSettings,
   onSelectProduct,
   onAddToCart,
+  onBuyNow,
   onNavigateToStore,
   onNavigateToCategories
 }) => {
-  // 1. Resolve real active products from database
+  // Respect master on/off toggle from AdminHeroManager
+  if (heroSettings && heroSettings.isEnabled === false) {
+    return null;
+  }
+
+  // 1. Resolve safe, visible products
   const safeProducts = Array.isArray(products) ? products.filter(p => !p.isHidden) : [];
 
-  // Build curated slides with real products
-  const curatedSlides: CuratedSlide[] = [
+  // 2. Build slides dynamically based on Admin configuration or curated database products
+  const slides: HeroSlide[] = React.useMemo(() => {
+    const customIds = heroSettings?.heroProductIds || [];
+    const customOrder = heroSettings?.customProductOrder || [];
+    const imageOverrides = heroSettings?.productImageOverrides || {};
+
+    let selectedProducts: Product[] = [];
+
+    if (customIds.length > 0) {
+      // Find products selected by Admin
+      const matched = safeProducts.filter(p => customIds.includes(p.id));
+      if (customOrder.length > 0) {
+        const orderMap = new Map<string, number>(customOrder.map((id, index) => [id, index]));
+        matched.sort((a, b) => {
+          const orderA = orderMap.get(a.id) ?? 999;
+          const orderB = orderMap.get(b.id) ?? 999;
+          return orderA - orderB;
+        });
+      }
+      selectedProducts = matched;
+    }
+
+    // If no custom products chosen, fallback to featured or top category products
+    if (selectedProducts.length === 0) {
+      const featured = safeProducts.filter(p => p.isFeatured || p.isHeroFeatured);
+      if (featured.length >= 3) {
+        selectedProducts = featured.slice(0, 5);
+      } else {
+        // Diverse selection across categories
+        const sanitary = safeProducts.find(p => p.category?.toLowerCase().includes('sanitary') || p.name?.toLowerCase().includes('commode') || p.name?.toLowerCase().includes('basin'));
+        const faucets = safeProducts.find(p => p.category?.toLowerCase().includes('faucet') || p.name?.toLowerCase().includes('mixer') || p.name?.toLowerCase().includes('shower'));
+        const pipes = safeProducts.find(p => p.category?.toLowerCase().includes('pipe') || p.category?.toLowerCase().includes('tank') || p.name?.toLowerCase().includes('tank'));
+        const paints = safeProducts.find(p => p.category?.toLowerCase().includes('paint') || p.name?.toLowerCase().includes('paint') || p.name?.toLowerCase().includes('emulsion'));
+
+        const pool = [sanitary, faucets, pipes, paints].filter(Boolean) as Product[];
+        safeProducts.forEach(p => {
+          if (!pool.some(item => item.id === p.id) && pool.length < 5) {
+            pool.push(p);
+          }
+        });
+        selectedProducts = pool;
+      }
+    }
+
+    // Map resolved products to clean Hero Slides
+    return selectedProducts.map((prod, index) => {
+      const overrideImg = imageOverrides[prod.id];
+      const productImg = overrideImg || prod.image || prod.images?.[0] || FALLBACK_CATEGORY_IMAGES.sanitary;
+      const catName = prod.category || (categories.find(c => c.id === prod.categoryId)?.name) || 'Premium Quality';
+      const brandName = prod.brand || (brands.find(b => b.id === prod.brandId)?.name) || 'Zafar Sarwar Traders';
+
+      return {
+        id: `hero-slide-${prod.id}-${index}`,
+        badge: `${brandName.toUpperCase()} • ${catName.toUpperCase()}`,
+        title: prod.name,
+        subtitle: prod.description || `High-grade ${catName.toLowerCase()} engineered for durability, premium aesthetic appeal, and long-lasting performance.`,
+        categoryTag: catName,
+        image: productImg,
+        product: prod
+      };
+    });
+  }, [safeProducts, heroSettings, categories, brands]);
+
+  // Fallback if no products exist at all
+  const activeSlides: HeroSlide[] = slides.length > 0 ? slides : [
     {
-      id: 'slide-sanitary',
-      badge: 'PREMIUM SANITARYWARE & BATHROOMS',
-      title: 'Luxury Bathroom Suites & Sanitary Fittings',
-      subtitle: 'Official distributor of Master, Porta, and Sonex. Transform your home with modern commodes, vanity basins, and luxury fixtures.',
-      categoryTag: 'Sanitaryware & Basins',
-      defaultImage: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1000&q=80',
-      product: safeProducts.find(p => 
-        p.category?.toLowerCase().includes('sanitary') || 
-        p.name?.toLowerCase().includes('basin') || 
-        p.name?.toLowerCase().includes('commode')
-      ) || safeProducts[0]
-    },
-    {
-      id: 'slide-faucets',
-      badge: 'ENGINEERED BRASS FAUCETS',
-      title: 'Architectural Faucets, Mixers & Rain Showers',
-      subtitle: 'Forged brass precision by Faisal, Sonex, and Master. Heavy chrome plating, drip-free ceramic cartridges, and lifetime durability.',
-      categoryTag: 'Faucets & Showers',
-      defaultImage: 'https://images.unsplash.com/photo-1585412727339-54e4bae3bbf9?auto=format&fit=crop&w=1000&q=80',
-      product: safeProducts.find(p => 
-        p.category?.toLowerCase().includes('faucet') || 
-        p.name?.toLowerCase().includes('mixer') || 
-        p.name?.toLowerCase().includes('shower')
-      ) || safeProducts[1]
-    },
-    {
-      id: 'slide-pipes-materials',
-      badge: 'STRUCTURAL BUILDING MATERIALS',
-      title: 'Certified Plumbing Pipes, Water Tanks & Cement',
-      subtitle: 'Standardized IIL G.I. pipes, food-grade multi-layer water tanks, PVC drainage, and genuine Portland cement for enduring strength.',
-      categoryTag: 'Pipes & Building Materials',
-      defaultImage: 'https://images.unsplash.com/photo-1541888946425-d0fbb186156f?auto=format&fit=crop&w=1000&q=80',
-      product: safeProducts.find(p => 
-        p.category?.toLowerCase().includes('pipe') || 
-        p.category?.toLowerCase().includes('tank') || 
-        p.name?.toLowerCase().includes('tank')
-      ) || safeProducts[2]
-    },
-    {
-      id: 'slide-paints',
-      badge: 'ARCHITECTURAL FINISHES',
-      title: 'Weatherproof Emulsions & Decorative Paints',
-      subtitle: 'Authorized dealer of Berger and Diamond paints. Authentic shade cards, computer color mixing, and exterior protective coatings.',
-      categoryTag: 'Paints & Wall Finishes',
-      defaultImage: 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?auto=format&fit=crop&w=1000&q=80',
-      product: safeProducts.find(p => 
-        p.category?.toLowerCase().includes('paint') || 
-        p.name?.toLowerCase().includes('paint') || 
-        p.name?.toLowerCase().includes('emulsion')
-      ) || safeProducts[3]
+      id: 'fallback-1',
+      badge: heroSettings?.badgeText || 'ZAFAR SARWAR TRADERS',
+      title: heroSettings?.heading || 'Premium Sanitaryware & Bathroom Solutions',
+      subtitle: heroSettings?.subheading || 'Explore premium sanitaryware, bathroom fittings, showers, basins, tiles, paints and complete bathroom solutions.',
+      categoryTag: 'Authorized Distributor',
+      image: FALLBACK_CATEGORY_IMAGES.sanitary
     }
   ];
 
-  const [currentIndex, setCurrentIndex] = useState(0);
+  // State Management
+  const [[page, direction], setPage] = useState<[number, number]>([0, 0]);
   const [isPaused, setIsPaused] = useState(false);
   const [addedToast, setAddedToast] = useState<string | null>(null);
 
-  const durationSec = heroSettings?.rotationDurationSeconds || 6;
+  // Touch tracking for swipe gestures
+  const touchStartXRef = useRef<number | null>(null);
+  const touchEndXRef = useRef<number | null>(null);
 
-  // Auto-play timer
-  useEffect(() => {
-    if (isPaused) return;
-    const timer = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % curatedSlides.length);
-    }, durationSec * 1000);
+  const durationSec = Math.max(3, heroSettings?.rotationDurationSeconds || 5);
+  const isAutoPlay = heroSettings?.autoPlay !== false;
+  const isPauseOnHover = heroSettings?.pauseOnHover !== false;
 
-    return () => clearInterval(timer);
-  }, [isPaused, durationSec, curatedSlides.length]);
-
-  const currentSlide = curatedSlides[currentIndex];
+  // Safe Index Wrap
+  const currentIndex = ((page % activeSlides.length) + activeSlides.length) % activeSlides.length;
+  const currentSlide = activeSlides[currentIndex];
   const slideProduct = currentSlide.product;
 
-  const handleNext = () => {
-    setCurrentIndex((prev) => (prev + 1) % curatedSlides.length);
+  // Navigation handlers
+  const paginate = useCallback((newDirection: number) => {
+    setPage(([prevPage]) => [prevPage + newDirection, newDirection]);
+  }, []);
+
+  const handleNext = useCallback(() => {
+    paginate(1);
+  }, [paginate]);
+
+  const handlePrev = useCallback(() => {
+    paginate(-1);
+  }, [paginate]);
+
+  const handleGoToSlide = useCallback((index: number) => {
+    const diff = index - currentIndex;
+    if (diff !== 0) {
+      paginate(diff > 0 ? 1 : -1);
+      setPage([index, diff > 0 ? 1 : -1]);
+    }
+  }, [currentIndex, paginate]);
+
+  // Autoplay Timer with Hover Pause & Reset on Navigation
+  useEffect(() => {
+    if (!isAutoPlay || isPaused || activeSlides.length <= 1) return;
+
+    const interval = setInterval(() => {
+      handleNext();
+    }, durationSec * 1000);
+
+    return () => clearInterval(interval);
+  }, [isAutoPlay, isPaused, durationSec, activeSlides.length, handleNext, page]);
+
+  // Preload adjacent slide images for instant responsiveness
+  useEffect(() => {
+    if (activeSlides.length <= 1) return;
+    const nextIdx = (currentIndex + 1) % activeSlides.length;
+    const prevIdx = (currentIndex - 1 + activeSlides.length) % activeSlides.length;
+    [activeSlides[nextIdx]?.image, activeSlides[prevIdx]?.image].forEach(src => {
+      if (src) {
+        const img = new Image();
+        img.src = src;
+      }
+    });
+  }, [currentIndex, activeSlides]);
+
+  // Touch handlers for mobile swipe
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartXRef.current = e.touches[0].clientX;
   };
 
-  const handlePrev = () => {
-    setCurrentIndex((prev) => (prev - 1 + curatedSlides.length) % curatedSlides.length);
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndXRef.current = e.touches[0].clientX;
   };
 
+  const handleTouchEnd = () => {
+    if (touchStartXRef.current !== null && touchEndXRef.current !== null) {
+      const deltaX = touchStartXRef.current - touchEndXRef.current;
+      const swipeThreshold = 45; // Minimum px for swipe
+      if (deltaX > swipeThreshold) {
+        handleNext();
+      } else if (deltaX < -swipeThreshold) {
+        handlePrev();
+      }
+    }
+    touchStartXRef.current = null;
+    touchEndXRef.current = null;
+  };
+
+  // Quick Add to Cart with Toast
   const handleQuickAdd = (e: React.MouseEvent, prod: Product) => {
     e.stopPropagation();
     if (onAddToCart) {
@@ -146,42 +256,58 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
     }
   };
 
-  // Pricing calculation
+  // Pricing & metadata calculations
   const pricing = slideProduct ? getProductPricingDetails(slideProduct) : null;
   const brandName = slideProduct?.brand || (brands.find(b => b.id === slideProduct?.brandId)?.name) || 'Zafar Sarwar Traders';
-  const productImage = slideProduct?.image || slideProduct?.images?.[0] || currentSlide.defaultImage;
+  const productImage = currentSlide.image;
+
+  // WhatsApp link generator
+  const getWhatsAppLink = (prod?: Product) => {
+    const phone = '923108002863';
+    const text = prod 
+      ? `Hello Zafar Sarwar Traders! I am interested in purchasing: "${prod.name}" (SKU: ${prod.sku || prod.id}). Please share price and delivery details.`
+      : `Hello Zafar Sarwar Traders! I would like to inquire about your sanitaryware, faucets, and construction materials catalog.`;
+    return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+  };
+
+  // CTAs config
+  const showPrimaryBtn = heroSettings?.enablePrimaryBtn !== false;
+  const showSecondaryBtn = heroSettings?.enableSecondaryBtn !== false;
+  const showTertiaryBtn = heroSettings?.enableTertiaryBtn !== false;
+
+  const primaryBtnText = heroSettings?.primaryBtnText || 'View Full Details';
+  const secondaryBtnText = heroSettings?.secondaryBtnText || 'Add to Cart';
+  const tertiaryBtnText = heroSettings?.tertiaryBtnText || 'Order on WhatsApp';
 
   return (
     <section 
-      id="hero-slider"
-      className="relative bg-slate-950 text-white overflow-hidden border-b border-slate-800/80"
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
-      aria-label="Featured Store Showcase"
+      id="hero-slider-section"
+      className="relative bg-slate-950 text-white overflow-hidden border-b border-slate-800/80 select-none"
+      onMouseEnter={() => { if (isPauseOnHover) setIsPaused(true); }}
+      onMouseLeave={() => { if (isPauseOnHover) setIsPaused(false); }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      aria-label="Featured Products Slider"
     >
-      {/* Background Architectural Canvas with subtle noise & warm gradients */}
+      {/* Background Architectural Canvas */}
       <div className="absolute inset-0 pointer-events-none">
-        {/* Deep Slate Architectural Gradient */}
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-[#0a1120] to-slate-950" />
-        
-        {/* Soft Warm Neutral & Blue Accents - deliberate & professional */}
-        <div className="absolute -top-40 -left-40 w-[600px] h-[600px] bg-blue-900/15 rounded-full blur-[140px]" />
-        <div className="absolute -bottom-40 -right-40 w-[600px] h-[600px] bg-amber-600/10 rounded-full blur-[160px]" />
-        
-        {/* Subtle architectural grid pattern */}
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-[#0b1324] to-slate-950" />
+        <div className="absolute -top-32 -left-32 w-[500px] h-[500px] bg-blue-900/15 rounded-full blur-[130px]" />
+        <div className="absolute -bottom-32 -right-32 w-[500px] h-[500px] bg-amber-600/10 rounded-full blur-[140px]" />
         <div 
-          className="absolute inset-0 opacity-[0.035]"
+          className="absolute inset-0 opacity-[0.03]"
           style={{
             backgroundImage: `radial-gradient(#ffffff 1px, transparent 1px)`,
-            backgroundSize: '32px 32px'
+            backgroundSize: '28px 28px'
           }}
         />
       </div>
 
       {/* Main Container */}
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16">
         
-        {/* Toast Notification for Quick Add */}
+        {/* Toast Notification for Quick Cart Add */}
         <AnimatePresence>
           {addedToast && (
             <motion.div
@@ -196,271 +322,288 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           )}
         </AnimatePresence>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
-          
-          {/* LEFT COLUMN: HERO HEADLINE, BADGES, DESCRIPTION, CTAS */}
-          <div className="lg:col-span-7 space-y-6 text-left">
-            
-            {/* Small Trust Badge */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-slate-700/70 text-slate-300 text-xs font-semibold tracking-wider uppercase backdrop-blur-sm">
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
-              <span>{heroSettings?.badgeText || 'EST. 1990 • AUTHORIZED DEALER & DISTRIBUTOR'}</span>
-            </div>
-
-            {/* Dynamic Slide Headline & Subtitle */}
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={currentSlide.id}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -16 }}
-                transition={{ duration: 0.45, ease: 'easeOut' }}
-                className="space-y-4"
-              >
-                <div className="inline-block text-xs font-bold uppercase tracking-widest text-blue-400">
-                  {currentSlide.categoryTag}
+        {/* Carousel Slider Stage with Horizontal Slide Animation */}
+        <div className="relative overflow-hidden min-h-[480px] sm:min-h-[500px] lg:min-h-[460px] flex items-center">
+          <AnimatePresence initial={false} custom={direction} mode="wait">
+            <motion.div
+              key={page}
+              custom={direction}
+              variants={slideVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{
+                x: { type: "tween", ease: [0.25, 1, 0.5, 1], duration: 0.55 },
+                opacity: { duration: 0.35 }
+              }}
+              className="w-full grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center"
+            >
+              
+              {/* LEFT COLUMN: HERO INFORMATION, BADGES, DESCRIPTION, CTAS */}
+              <div className="lg:col-span-7 space-y-5 text-left">
+                
+                {/* Department & Brand Badge */}
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-slate-700/80 text-slate-300 text-xs font-bold tracking-wider uppercase backdrop-blur-sm">
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                  <span className="truncate">{currentSlide.badge}</span>
                 </div>
 
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight leading-[1.15]">
-                  {currentSlide.title}
-                </h1>
+                {/* Product / Category Headline */}
+                <div className="space-y-3">
+                  <div className="text-xs font-bold uppercase tracking-widest text-blue-400">
+                    {currentSlide.categoryTag}
+                  </div>
 
-                <p className="text-sm sm:text-base text-slate-300 font-normal leading-relaxed max-w-xl">
-                  {currentSlide.subtitle}
-                </p>
-              </motion.div>
-            </AnimatePresence>
-
-            {/* Action Buttons: Primary "Shop Now", Secondary "Explore Categories" */}
-            <div className="pt-2 flex flex-wrap items-center gap-3.5">
-              <button
-                type="button"
-                id="hero-shop-now-btn"
-                onClick={() => {
-                  if (onNavigateToStore) {
-                    onNavigateToStore();
-                  } else {
-                    window.history.pushState(null, '', '/store');
-                    window.dispatchEvent(new PopStateEvent('popstate'));
-                  }
-                }}
-                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-sm font-bold shadow-lg shadow-blue-600/30 transition-all transform hover:-translate-y-0.5 cursor-pointer"
-              >
-                <ShoppingBag className="w-4 h-4" />
-                <span>Shop Online Store</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-
-              <button
-                type="button"
-                id="hero-explore-categories-btn"
-                onClick={() => {
-                  if (onNavigateToCategories) {
-                    onNavigateToCategories();
-                  } else {
-                    window.history.pushState(null, '', '/categories');
-                    window.dispatchEvent(new PopStateEvent('popstate'));
-                  }
-                }}
-                className="inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-slate-200 text-sm font-semibold transition-all hover:text-white cursor-pointer"
-              >
-                <Layers className="w-4 h-4 text-slate-400" />
-                <span>Browse Categories</span>
-              </button>
-            </div>
-
-            {/* Trust Micro-Badges */}
-            <div className="pt-4 border-t border-slate-800/90 grid grid-cols-3 gap-3 sm:gap-4 max-w-lg">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-blue-950/80 border border-blue-800/50 flex items-center justify-center shrink-0">
-                  <Award className="w-3.5 h-3.5 text-blue-400" />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-white leading-tight">100% Genuine</div>
-                  <div className="text-[10px] text-slate-400">Direct from factory</div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-emerald-950/80 border border-emerald-800/50 flex items-center justify-center shrink-0">
-                  <Truck className="w-3.5 h-3.5 text-emerald-400" />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-white leading-tight">Fast Delivery</div>
-                  <div className="text-[10px] text-slate-400">Across Pakistan</div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-amber-950/80 border border-amber-800/50 flex items-center justify-center shrink-0">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-white leading-tight">Wholesale Rates</div>
-                  <div className="text-[10px] text-slate-400">Bulk & Retail</div>
-                </div>
-              </div>
-            </div>
-
-          </div>
-
-          {/* RIGHT COLUMN: PREMIUM ARCHITECTURAL PRODUCT SHOWCASE */}
-          <div className="lg:col-span-5 flex justify-center">
-            <div className="w-full max-w-md">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={currentSlide.id + (slideProduct?.id || '')}
-                  initial={{ opacity: 0, scale: 0.96, y: 10 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.96, y: -10 }}
-                  transition={{ duration: 0.45, ease: 'easeOut' }}
-                  className="bg-slate-900/90 rounded-2xl border border-slate-800/90 shadow-2xl shadow-black/60 overflow-hidden hover:border-slate-700 transition-all group relative"
-                >
-                  {/* Real Product Image Stage */}
-                  <div 
-                    className="relative w-full h-64 sm:h-72 bg-gradient-to-b from-slate-900 to-slate-950 p-6 flex items-center justify-center cursor-pointer overflow-hidden"
+                  <h1 
                     onClick={() => {
                       if (slideProduct) onSelectProduct(slideProduct);
                     }}
+                    className="text-2xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight leading-[1.15] cursor-pointer hover:text-blue-300 transition-colors line-clamp-2"
                   >
-                    {/* Architectural pedestal glow */}
-                    <div className="absolute inset-x-8 bottom-4 h-12 bg-blue-500/10 rounded-full blur-xl pointer-events-none" />
+                    {currentSlide.title}
+                  </h1>
 
-                    <img
-                      src={productImage}
-                      alt={slideProduct?.name || currentSlide.title}
-                      className="max-h-full max-w-full object-contain filter drop-shadow-2xl transition-transform duration-500 group-hover:scale-105"
-                      loading="eager"
-                    />
-
-                    {/* Brand Pill */}
-                    <div className="absolute top-4 left-4 px-2.5 py-1 rounded-md bg-slate-950/90 border border-slate-800 text-[11px] font-bold tracking-wider text-slate-300 uppercase backdrop-blur-sm">
-                      {brandName}
-                    </div>
-
-                    {/* Sale or Authenticity Tag */}
-                    {pricing?.isOnSale ? (
-                      <div className="absolute top-4 right-4 px-2.5 py-1 rounded-md bg-red-600 text-white text-[11px] font-extrabold uppercase shadow-md">
-                        {pricing.discountPercent ? `SAVE ${pricing.discountPercent}%` : 'SPECIAL OFFER'}
-                      </div>
-                    ) : (
-                      <div className="absolute top-4 right-4 px-2.5 py-1 rounded-md bg-blue-950/90 border border-blue-700/60 text-blue-300 text-[10px] font-bold uppercase backdrop-blur-sm">
-                        GENUINE SPEC
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Card Details & Quick Purchase Bar */}
-                  <div className="p-5 space-y-3 bg-slate-900 border-t border-slate-800/80">
-                    <div>
-                      <div className="text-xs text-slate-400 font-medium">
-                        {slideProduct?.category || currentSlide.categoryTag}
-                      </div>
-                      <h3 
-                        className="text-base sm:text-lg font-bold text-white line-clamp-1 group-hover:text-blue-400 transition-colors cursor-pointer"
-                        onClick={() => {
-                          if (slideProduct) onSelectProduct(slideProduct);
-                        }}
-                      >
-                        {slideProduct?.name || currentSlide.title}
-                      </h3>
-                    </div>
-
-                    {/* Price & Action Row */}
-                    <div className="flex items-center justify-between pt-1">
-                      <div>
-                        {slideProduct ? (
-                          pricing?.isOnSale ? (
-                            <div className="flex items-baseline gap-2">
-                              <span className="text-lg font-extrabold text-emerald-400">
-                                {pricing.effectivePrice}
-                              </span>
-                              <span className="text-xs text-slate-500 line-through">
-                                {pricing.originalPrice}
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="text-lg font-extrabold text-white">
-                              {pricing?.effectivePrice || slideProduct.price || 'Contact for Price'}
-                            </div>
-                          )
-                        ) : (
-                          <div className="text-sm font-semibold text-slate-400">In Showroom Stock</div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {slideProduct && (
-                          <button
-                            type="button"
-                            onClick={(e) => handleQuickAdd(e, slideProduct)}
-                            className="px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-                          >
-                            <ShoppingBag className="w-3.5 h-3.5" />
-                            <span>Add</span>
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (slideProduct) {
-                              onSelectProduct(slideProduct);
-                            } else {
-                              if (onNavigateToStore) onNavigateToStore();
-                            }
-                          }}
-                          className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all cursor-pointer"
-                        >
-                          Details
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              </AnimatePresence>
-
-              {/* Slide Navigation Pagination Dots & Arrows */}
-              <div className="mt-4 flex items-center justify-between px-2">
-                <div className="flex items-center gap-2">
-                  {curatedSlides.map((slide, idx) => (
-                    <button
-                      key={slide.id}
-                      type="button"
-                      aria-label={`Go to slide ${idx + 1}`}
-                      onClick={() => setCurrentIndex(idx)}
-                      className={`h-1.5 rounded-full transition-all cursor-pointer ${
-                        idx === currentIndex
-                          ? 'w-7 bg-blue-500'
-                          : 'w-2 bg-slate-700 hover:bg-slate-500'
-                      }`}
-                    />
-                  ))}
+                  <p className="text-sm sm:text-base text-slate-300 font-normal leading-relaxed max-w-xl line-clamp-3">
+                    {currentSlide.subtitle}
+                  </p>
                 </div>
 
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    aria-label="Previous Slide"
-                    onClick={handlePrev}
-                    className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-white transition-all cursor-pointer"
+                {/* Price Display */}
+                {slideProduct && (
+                  <div className="flex items-center gap-3 pt-1">
+                    {pricing?.isOnSale ? (
+                      <div className="flex items-baseline gap-2.5">
+                        <span className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono">
+                          {pricing.effectivePrice}
+                        </span>
+                        <span className="text-sm text-slate-500 line-through font-mono">
+                          {pricing.originalPrice}
+                        </span>
+                        {pricing.discountPercent && (
+                          <span className="px-2 py-0.5 rounded bg-red-950/80 border border-red-500/40 text-red-400 text-xs font-bold">
+                            Save {pricing.discountPercent}%
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-2xl sm:text-3xl font-black text-white font-mono">
+                        {pricing?.effectivePrice || slideProduct.price || 'Rs. Contact for Price'}
+                      </div>
+                    )}
+                    <span className="text-xs text-slate-400 font-medium px-2.5 py-1 rounded bg-slate-900 border border-slate-800">
+                      ✓ In Stock
+                    </span>
+                  </div>
+                )}
+
+                {/* Interactive Action Buttons */}
+                <div className="pt-2 flex flex-wrap items-center gap-3">
+                  {/* Button 1: View Product Details */}
+                  {showPrimaryBtn && (
+                    <button
+                      type="button"
+                      id="hero-view-details-btn"
+                      onClick={() => {
+                        if (slideProduct) {
+                          onSelectProduct(slideProduct);
+                        } else if (onNavigateToStore) {
+                          onNavigateToStore();
+                        }
+                      }}
+                      className="inline-flex items-center justify-center gap-2 px-5 sm:px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs sm:text-sm font-bold shadow-lg shadow-blue-600/30 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                    >
+                      <Eye className="w-4 h-4 shrink-0" />
+                      <span>{primaryBtnText}</span>
+                      <ArrowRight className="w-4 h-4 shrink-0" />
+                    </button>
+                  )}
+
+                  {/* Button 2: Quick Add to Cart */}
+                  {showSecondaryBtn && slideProduct && (
+                    <button
+                      type="button"
+                      id="hero-add-to-cart-btn"
+                      onClick={(e) => handleQuickAdd(e, slideProduct)}
+                      className="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-3 rounded-xl bg-slate-800/90 hover:bg-slate-700 active:bg-slate-800 border border-slate-700 text-slate-200 hover:text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                    >
+                      <ShoppingBag className="w-4 h-4 text-cyan-400 shrink-0" />
+                      <span>{secondaryBtnText}</span>
+                    </button>
+                  )}
+
+                  {/* Button 3: WhatsApp Quick Order */}
+                  {showTertiaryBtn && (
+                    <a
+                      href={getWhatsAppLink(slideProduct)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                    >
+                      <MessageCircle className="w-4 h-4 text-emerald-400 hover:text-white shrink-0" />
+                      <span>{tertiaryBtnText}</span>
+                    </a>
+                  )}
+
+                  {/* Secondary Explore Store Link */}
+                  {onNavigateToStore && (
+                    <button
+                      type="button"
+                      onClick={onNavigateToStore}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-3 rounded-xl text-slate-400 hover:text-white text-xs font-semibold transition-colors cursor-pointer"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>All Products</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Trust Highlights */}
+                <div className="pt-3 border-t border-slate-800/80 grid grid-cols-3 gap-2 sm:gap-4 max-w-lg">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-md bg-blue-950/80 border border-blue-800/50 flex items-center justify-center shrink-0">
+                      <Award className="w-3 h-3 text-blue-400" />
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-bold text-white leading-tight">100% Genuine</div>
+                      <div className="text-[9px] text-slate-400">Authorized Stock</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-md bg-emerald-950/80 border border-emerald-800/50 flex items-center justify-center shrink-0">
+                      <Truck className="w-3 h-3 text-emerald-400" />
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-bold text-white leading-tight">Fast Delivery</div>
+                      <div className="text-[9px] text-slate-400">All Pakistan</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-md bg-amber-950/80 border border-amber-800/50 flex items-center justify-center shrink-0">
+                      <Sparkles className="w-3 h-3 text-amber-400" />
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-bold text-white leading-tight">Wholesale Rates</div>
+                      <div className="text-[9px] text-slate-400">Direct Dealer</div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* RIGHT COLUMN: HIGH-DEFINITION PRODUCT SHOWCASE STAGE */}
+              <div className="lg:col-span-5 flex justify-center">
+                <div className="w-full max-w-md">
+                  <div 
+                    onClick={() => {
+                      if (slideProduct) onSelectProduct(slideProduct);
+                    }}
+                    className="bg-slate-900/90 rounded-2xl border border-slate-800/90 shadow-2xl shadow-black/60 overflow-hidden hover:border-slate-700 transition-all group relative cursor-pointer"
                   >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Next Slide"
-                    onClick={handleNext}
-                    className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-white transition-all cursor-pointer"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
+                    {/* Product Image Stage */}
+                    <div className="relative w-full h-64 sm:h-72 bg-gradient-to-b from-slate-900 to-slate-950 p-6 flex items-center justify-center overflow-hidden">
+                      {/* Ambient Glow behind image */}
+                      <div className="absolute inset-x-8 bottom-3 h-14 bg-blue-500/10 rounded-full blur-xl pointer-events-none" />
+
+                      <img
+                        src={productImage}
+                        alt={currentSlide.title}
+                        className="max-h-full max-w-full object-contain filter drop-shadow-2xl transition-transform duration-500 group-hover:scale-105"
+                        loading="eager"
+                      />
+
+                      {/* Brand Tag Pill */}
+                      <div className="absolute top-4 left-4 px-2.5 py-1 rounded-md bg-slate-950/90 border border-slate-800 text-[11px] font-bold tracking-wider text-slate-300 uppercase backdrop-blur-sm">
+                        {brandName}
+                      </div>
+
+                      {/* Discount or Authenticity Badge */}
+                      {pricing?.isOnSale ? (
+                        <div className="absolute top-4 right-4 px-2.5 py-1 rounded-md bg-red-600 text-white text-[10px] font-extrabold uppercase shadow-md">
+                          {pricing.discountPercent ? `SAVE ${pricing.discountPercent}%` : 'SPECIAL OFFER'}
+                        </div>
+                      ) : (
+                        <div className="absolute top-4 right-4 px-2.5 py-1 rounded-md bg-blue-950/90 border border-blue-700/60 text-blue-300 text-[10px] font-bold uppercase backdrop-blur-sm">
+                          ORIGINAL
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Footer Info Strip */}
+                    <div className="p-4 bg-slate-900 border-t border-slate-800/80 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] text-slate-400 truncate">{currentSlide.categoryTag}</p>
+                        <h3 className="text-sm font-bold text-white truncate group-hover:text-blue-400 transition-colors">
+                          {currentSlide.title}
+                        </h3>
+                      </div>
+
+                      {slideProduct && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleQuickAdd(e, slideProduct)}
+                          className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shrink-0 flex items-center gap-1 shadow"
+                        >
+                          <ShoppingBag className="w-3.5 h-3.5" />
+                          <span>Add</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* CONTROLS BAR: PAGINATION DOTS, SLIDE COUNTER & PREV/NEXT BUTTONS */}
+        {activeSlides.length > 1 && (
+          <div className="mt-6 pt-4 border-t border-slate-800/60 flex items-center justify-between">
+            {/* Pagination Pill Dots */}
+            <div className="flex items-center gap-2">
+              {activeSlides.map((slide, idx) => (
+                <button
+                  key={slide.id}
+                  type="button"
+                  aria-label={`Go to slide ${idx + 1}`}
+                  onClick={() => handleGoToSlide(idx)}
+                  className={`h-2 rounded-full transition-all cursor-pointer ${
+                    idx === currentIndex
+                      ? 'w-8 bg-blue-500 shadow-md shadow-blue-500/40'
+                      : 'w-2 bg-slate-700 hover:bg-slate-500'
+                  }`}
+                />
+              ))}
+            </div>
+
+            {/* Slide Index Counter */}
+            <div className="text-xs font-mono font-bold text-slate-400">
+              <span className="text-white">0{currentIndex + 1}</span> / 0{activeSlides.length}
+            </div>
+
+            {/* Navigation Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="Previous Slide"
+                onClick={handlePrev}
+                className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 active:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer hover:scale-105 active:scale-95"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                aria-label="Next Slide"
+                onClick={handleNext}
+                className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 active:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer hover:scale-105 active:scale-95"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
-
-        </div>
+        )}
 
       </div>
     </section>
