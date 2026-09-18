@@ -50,16 +50,16 @@ const FALLBACK_CATEGORY_IMAGES = {
 };
 
 const slideVariants = {
-  enter: (direction: number) => ({
-    x: direction > 0 ? '100%' : '-100%',
+  enter: ({ direction, isMobile }: { direction: number; isMobile: boolean }) => ({
+    x: direction > 0 ? (isMobile ? '22%' : '100%') : (isMobile ? '-22%' : '-100%'),
     opacity: 0
   }),
   center: {
     x: '0%',
     opacity: 1
   },
-  exit: (direction: number) => ({
-    x: direction > 0 ? '-100%' : '100%',
+  exit: ({ direction, isMobile }: { direction: number; isMobile: boolean }) => ({
+    x: direction > 0 ? (isMobile ? '-22%' : '-100%') : (isMobile ? '22%' : '100%'),
     opacity: 0
   })
 };
@@ -79,6 +79,52 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   if (heroSettings && heroSettings.isEnabled === false) {
     return null;
   }
+
+  // Mobile viewport detection for performance scaling
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 768;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize, { passive: true });
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Root ref and visibility observer to pause autoplay when offscreen or tab inactive
+  const heroRef = useRef<HTMLElement>(null);
+  const [isVisible, setIsVisible] = useState(true);
+
+  useEffect(() => {
+    if (!('IntersectionObserver' in window) || !heroRef.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsVisible(entry.isIntersecting);
+      },
+      { threshold: 0.05 }
+    );
+    observer.observe(heroRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        setIsVisible(false);
+      } else if (heroRef.current) {
+        const rect = heroRef.current.getBoundingClientRect();
+        const inView = rect.top < window.innerHeight && rect.bottom > 0;
+        setIsVisible(inView);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
 
   // 1. Resolve safe, visible products
   const safeProducts = Array.isArray(products) ? products.filter(p => !p.isHidden) : [];
@@ -167,6 +213,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   const touchStartXRef = useRef<number | null>(null);
   const touchStartYRef = useRef<number | null>(null);
   const touchEndXRef = useRef<number | null>(null);
+  const touchEndYRef = useRef<number | null>(null);
 
   const durationSec = Math.max(3, heroSettings?.rotationDurationSeconds || 5);
   const isAutoPlay = heroSettings?.autoPlay !== false;
@@ -203,54 +250,71 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
     handleNextRef.current = handleNext;
   }, [handleNext]);
 
-  // Autoplay Timer with Hover Pause
+  // Autoplay Timer with Hover Pause and Visibility Awareness
   useEffect(() => {
-    if (!isAutoPlay || isPaused || activeSlides.length <= 1) return;
+    if (!isAutoPlay || isPaused || !isVisible || activeSlides.length <= 1) return;
 
     const interval = setInterval(() => {
       handleNextRef.current();
     }, durationSec * 1000);
 
     return () => clearInterval(interval);
-  }, [isAutoPlay, isPaused, durationSec, activeSlides.length, page]);
+  }, [isAutoPlay, isPaused, isVisible, durationSec, activeSlides.length, page]);
+
+  // Track preloaded images to avoid redundant downloads
+  const preloadedUrls = useRef<Set<string>>(new Set());
 
   // Preload next slide image smoothly in background without blocking main thread
   useEffect(() => {
     if (activeSlides.length <= 1) return;
     const nextIdx = (currentIndex + 1) % activeSlides.length;
     const nextSrc = activeSlides[nextIdx]?.image;
-    if (nextSrc) {
+    if (nextSrc && !preloadedUrls.current.has(nextSrc)) {
+      preloadedUrls.current.add(nextSrc);
       const timer = setTimeout(() => {
         const img = new Image();
         img.src = nextSrc;
-      }, 150);
+      }, isMobile ? 250 : 150);
       return () => clearTimeout(timer);
     }
-  }, [currentIndex, activeSlides]);
+  }, [currentIndex, activeSlides, isMobile]);
 
   // Touch handlers for mobile swipe with vertical scroll preservation
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartXRef.current = e.touches[0].clientX;
     touchStartYRef.current = e.touches[0].clientY;
+    touchEndXRef.current = e.touches[0].clientX;
+    touchEndYRef.current = e.touches[0].clientY;
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
     touchEndXRef.current = e.touches[0].clientX;
+    touchEndYRef.current = e.touches[0].clientY;
   };
 
   const handleTouchEnd = () => {
-    if (touchStartXRef.current !== null && touchEndXRef.current !== null) {
+    if (
+      touchStartXRef.current !== null && 
+      touchEndXRef.current !== null &&
+      touchStartYRef.current !== null &&
+      touchEndYRef.current !== null
+    ) {
       const deltaX = touchStartXRef.current - touchEndXRef.current;
-      const swipeThreshold = 40; // Minimum px for swipe
-      if (deltaX > swipeThreshold) {
-        handleNext();
-      } else if (deltaX < -swipeThreshold) {
-        handlePrev();
+      const deltaY = touchStartYRef.current - touchEndYRef.current;
+      const swipeThreshold = 35; // Minimum px for swipe
+      // Only register horizontal swipe if horizontal movement is greater than vertical movement
+      if (Math.abs(deltaX) > swipeThreshold && Math.abs(deltaX) > Math.abs(deltaY) * 1.3) {
+        if (deltaX > 0) {
+          handleNext();
+        } else {
+          handlePrev();
+        }
       }
     }
     touchStartXRef.current = null;
     touchStartYRef.current = null;
     touchEndXRef.current = null;
+    touchEndYRef.current = null;
   };
 
   // Quick Add to Cart with Toast
@@ -290,8 +354,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
   return (
     <section 
+      ref={heroRef}
       id="hero-slider-section"
-      className="relative bg-slate-950 text-white overflow-hidden border-b border-slate-800/80 select-none"
+      className="relative bg-slate-950 text-white overflow-hidden border-b border-slate-800/80 select-none touch-pan-y"
       onMouseEnter={() => { if (isPauseOnHover) setIsPaused(true); }}
       onMouseLeave={() => { if (isPauseOnHover) setIsPaused(false); }}
       onTouchStart={handleTouchStart}
@@ -299,13 +364,16 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
       onTouchEnd={handleTouchEnd}
       aria-label="Featured Products Slider"
     >
-      {/* Background Architectural Canvas */}
+      {/* Background Architectural Canvas - Optimized for low mobile GPU fillrate */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-[#0b1324] to-slate-950" />
-        <div className="absolute -top-32 -left-32 w-[500px] h-[500px] bg-blue-900/15 rounded-full blur-[130px]" />
-        <div className="absolute -bottom-32 -right-32 w-[500px] h-[500px] bg-amber-600/10 rounded-full blur-[140px]" />
+        {/* Desktop ambient blur spheres - hidden on mobile to eliminate Gaussian blur GPU overhead */}
+        <div className="hidden sm:block absolute -top-32 -left-32 w-[500px] h-[500px] bg-blue-900/15 rounded-full blur-[130px]" />
+        <div className="hidden sm:block absolute -bottom-32 -right-32 w-[500px] h-[500px] bg-amber-600/10 rounded-full blur-[140px]" />
+        {/* Lightweight mobile ambient gradient - single render pass without blur kernels */}
+        <div className="sm:hidden absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-950/25 via-transparent to-transparent" />
         <div 
-          className="absolute inset-0 opacity-[0.03]"
+          className="absolute inset-0 opacity-[0.02] sm:opacity-[0.03]"
           style={{
             backgroundImage: `radial-gradient(#ffffff 1px, transparent 1px)`,
             backgroundSize: '28px 28px'
@@ -323,7 +391,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="fixed top-24 right-6 z-50 px-4 py-3 bg-emerald-900/95 border border-emerald-500/50 text-white text-xs font-semibold rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-2"
+              className="fixed top-24 right-6 z-50 px-4 py-3 bg-emerald-900/95 border border-emerald-500/50 text-white text-xs font-semibold rounded-xl shadow-2xl sm:backdrop-blur-md flex items-center gap-2"
             >
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>Added <strong>{addedToast}</strong> to Cart!</span>
@@ -333,18 +401,23 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
         {/* Carousel Slider Stage with Horizontal Slide Animation */}
         <div className="relative overflow-hidden min-h-[480px] sm:min-h-[500px] lg:min-h-[460px] flex items-center touch-pan-y">
-          <AnimatePresence initial={false} custom={direction} mode="wait">
+          <AnimatePresence initial={false} custom={{ direction, isMobile }} mode="wait">
             <motion.div
               key={page}
-              custom={direction}
+              custom={{ direction, isMobile }}
               variants={slideVariants}
               initial="enter"
               animate="center"
               exit="exit"
               transition={{
-                x: { type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.42 },
-                opacity: { duration: 0.28 }
+                x: { 
+                  type: "tween", 
+                  ease: isMobile ? [0.25, 1, 0.5, 1] : [0.22, 1, 0.36, 1], 
+                  duration: isMobile ? 0.22 : 0.40 
+                },
+                opacity: { duration: isMobile ? 0.16 : 0.26 }
               }}
+              style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
               className="w-full grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center transform-gpu will-change-transform"
             >
               
@@ -352,7 +425,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               <div className="lg:col-span-7 space-y-5 text-left">
                 
                 {/* Department & Brand Badge */}
-                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-slate-700/80 text-slate-300 text-xs font-bold tracking-wider uppercase backdrop-blur-sm">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-slate-700/80 text-slate-300 text-xs font-bold tracking-wider uppercase sm:backdrop-blur-sm">
                   <ShieldCheck className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                   <span className="truncate">{currentSlide.badge}</span>
                 </div>
@@ -419,7 +492,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                           onNavigateToStore();
                         }
                       }}
-                      className="inline-flex items-center justify-center gap-2 px-5 sm:px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs sm:text-sm font-bold shadow-lg shadow-blue-600/30 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                      className="inline-flex items-center justify-center gap-2 px-5 sm:px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs sm:text-sm font-bold shadow-lg shadow-blue-600/30 transition-all cursor-pointer sm:hover:scale-[1.02] active:scale-[0.98]"
                     >
                       <Eye className="w-4 h-4 shrink-0" />
                       <span>{primaryBtnText}</span>
@@ -433,7 +506,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                       type="button"
                       id="hero-add-to-cart-btn"
                       onClick={(e) => handleQuickAdd(e, slideProduct)}
-                      className="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-3 rounded-xl bg-slate-800/90 hover:bg-slate-700 active:bg-slate-800 border border-slate-700 text-slate-200 hover:text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                      className="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-3 rounded-xl bg-slate-800/90 hover:bg-slate-700 active:bg-slate-800 border border-slate-700 text-slate-200 hover:text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer sm:hover:scale-[1.02] active:scale-[0.98]"
                     >
                       <ShoppingBag className="w-4 h-4 text-cyan-400 shrink-0" />
                       <span>{secondaryBtnText}</span>
@@ -446,7 +519,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                       href={getWhatsAppLink(slideProduct)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                      className="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer sm:hover:scale-[1.02] active:scale-[0.98]"
                     >
                       <MessageCircle className="w-4 h-4 text-emerald-400 hover:text-white shrink-0" />
                       <span>{tertiaryBtnText}</span>
@@ -512,20 +585,20 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                   >
                     {/* Product Image Stage */}
                     <div className="relative w-full h-64 sm:h-72 bg-gradient-to-b from-slate-900 to-slate-950 p-6 flex items-center justify-center overflow-hidden">
-                      {/* Ambient Glow behind image */}
-                      <div className="absolute inset-x-8 bottom-3 h-14 bg-blue-500/10 rounded-full blur-xl pointer-events-none" />
+                      {/* Ambient Glow behind image - hidden on mobile to avoid offscreen filter blur */}
+                      <div className="absolute inset-x-8 bottom-3 h-14 bg-blue-500/10 rounded-full hidden sm:block blur-xl pointer-events-none" />
 
                       <img
                         src={productImage}
                         alt={currentSlide.title}
-                        className="max-h-full max-w-full object-contain filter drop-shadow-2xl transition-transform duration-300 group-hover:scale-105 will-change-transform"
+                        className="max-h-full max-w-full object-contain filter drop-shadow-md sm:drop-shadow-2xl transition-transform duration-300 sm:group-hover:scale-105 transform-gpu will-change-transform"
                         loading={currentIndex === 0 ? "eager" : "lazy"}
                         decoding="async"
                         fetchPriority={currentIndex === 0 ? "high" : "auto"}
                       />
 
                       {/* Brand Tag Pill */}
-                      <div className="absolute top-4 left-4 px-2.5 py-1 rounded-md bg-slate-950/90 border border-slate-800 text-[11px] font-bold tracking-wider text-slate-300 uppercase backdrop-blur-sm">
+                      <div className="absolute top-4 left-4 px-2.5 py-1 rounded-md bg-slate-950/90 border border-slate-800 text-[11px] font-bold tracking-wider text-slate-300 uppercase sm:backdrop-blur-sm">
                         {brandName}
                       </div>
 
@@ -535,7 +608,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                           {pricing.discountPercent ? `SAVE ${pricing.discountPercent}%` : 'SPECIAL OFFER'}
                         </div>
                       ) : (
-                        <div className="absolute top-4 right-4 px-2.5 py-1 rounded-md bg-blue-950/90 border border-blue-700/60 text-blue-300 text-[10px] font-bold uppercase backdrop-blur-sm">
+                        <div className="absolute top-4 right-4 px-2.5 py-1 rounded-md bg-blue-950/90 border border-blue-700/60 text-blue-300 text-[10px] font-bold uppercase sm:backdrop-blur-sm">
                           ORIGINAL
                         </div>
                       )}
@@ -600,7 +673,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 type="button"
                 aria-label="Previous Slide"
                 onClick={handlePrev}
-                className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 active:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer hover:scale-105 active:scale-95"
+                className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 active:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer sm:hover:scale-105 active:scale-95"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -608,7 +681,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 type="button"
                 aria-label="Next Slide"
                 onClick={handleNext}
-                className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 active:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer hover:scale-105 active:scale-95"
+                className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 active:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer sm:hover:scale-105 active:scale-95"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
