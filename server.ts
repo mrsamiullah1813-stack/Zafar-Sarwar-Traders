@@ -86,6 +86,9 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Enable trust proxy for accurate X-Forwarded-* header parsing behind reverse proxies (Cloud Run, Nginx, Cloudflare)
+  app.set("trust proxy", true);
+
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
@@ -99,38 +102,40 @@ async function startServer() {
   // - https://www.zafarsarwartraders.com/* -> 301 https://zafarsarwartraders.shop/*
   // - http://www.zafarsarwartraders.com/*  -> 301 https://zafarsarwartraders.shop/*
   // - https://www.zafarsarwartraders.shop/* -> 301 https://zafarsarwartraders.shop/*
-  // - http://zafarsarwartraders.shop/*  -> 301 https://zafarsarwartraders.shop/*
   //
   // Guarantees:
-  // - Single 301 hop directly to the canonical production URL
+  // - Immediately serves canonical domain (zafarsarwartraders.shop) with 200 OK
+  // - Prevents self-redirect loops behind reverse proxies / SSL terminators
+  // - Single 301 hop directly to the canonical production URL for secondary domains
   // - Preserves pathname, search query parameters, and hashes
-  // - Eliminates redirect chains and redirect loops
+  // - Eliminates redirect chains and redirect loops for Googlebot & SEO indexing
   // - Transparently passes local development and container preview URLs
   // =========================================================
   app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
     const rawHost = (req.headers["x-forwarded-host"] as string) || req.headers.host || "";
     const host = rawHost.split(",")[0].trim().split(":")[0].toLowerCase();
-    const proto = ((req.headers["x-forwarded-proto"] as string) || req.protocol || "http").toLowerCase();
 
-    // Preserve preview containers and local test servers without redirection
+    // 1. Immediately pass all requests on the canonical domain without any redirect (eliminates self-redirect loops)
+    if (host === "zafarsarwartraders.shop") {
+      return next();
+    }
+
+    // 2. Preserve preview containers and local test servers without redirection
     const isDevOrPreview = !host ||
       host === "localhost" ||
       host === "127.0.0.1" ||
       host.endsWith(".run.app") ||
       host.endsWith(".aistudio.google");
 
-    if (!isDevOrPreview) {
-      const isExactCanonical = host === "zafarsarwartraders.shop";
-      const isHttps = proto === "https";
+    if (isDevOrPreview) {
+      return next();
+    }
 
-      // Match any domain variation of zafarsarwartraders (such as .com, www.zafarsarwartraders.shop, etc.)
-      const isAlternateDomain = host.includes("zafarsarwartraders") && !isExactCanonical;
-
-      if (isAlternateDomain || (isExactCanonical && !isHttps)) {
-        const canonicalUrl = `https://zafarsarwartraders.shop${req.originalUrl || "/"}`;
-        res.setHeader("Cache-Control", "public, max-age=86400");
-        return res.redirect(301, canonicalUrl);
-      }
+    // 3. Single-hop 301 redirect for secondary domain variations (e.g. www.zafarsarwartraders.shop, zafarsarwartraders.com)
+    if (host.includes("zafarsarwartraders")) {
+      const canonicalUrl = `https://zafarsarwartraders.shop${req.originalUrl || "/"}`;
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      return res.redirect(301, canonicalUrl);
     }
 
     next();
