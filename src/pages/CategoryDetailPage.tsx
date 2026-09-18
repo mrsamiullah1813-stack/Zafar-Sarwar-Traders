@@ -235,7 +235,7 @@ export const CategoryDetailPage: React.FC<CategoryDetailPageProps> = ({
                   >
                     <img
                       src={normalizeProductImage(product.image || product.images?.[0], product.category, product.name)}
-                      alt={product.name}
+                      alt={`${product.name} - ${category.name} in Chiniot`}
                       onError={(e) => handleImageError(e, product.category, product.name)}
                       className="max-h-full max-w-full object-contain filter group-hover:scale-105 transition-transform duration-300"
                       loading="lazy"

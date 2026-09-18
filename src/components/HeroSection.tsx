@@ -165,6 +165,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
   // Touch tracking for swipe gestures
   const touchStartXRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
   const touchEndXRef = useRef<number | null>(null);
 
   const durationSec = Math.max(3, heroSettings?.rotationDurationSeconds || 5);
@@ -192,38 +193,45 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   const handleGoToSlide = useCallback((index: number) => {
     const diff = index - currentIndex;
     if (diff !== 0) {
-      paginate(diff > 0 ? 1 : -1);
       setPage([index, diff > 0 ? 1 : -1]);
     }
-  }, [currentIndex, paginate]);
+  }, [currentIndex]);
 
-  // Autoplay Timer with Hover Pause & Reset on Navigation
+  // Stable ref for auto-play callback to avoid re-binding interval constantly
+  const handleNextRef = useRef(handleNext);
+  useEffect(() => {
+    handleNextRef.current = handleNext;
+  }, [handleNext]);
+
+  // Autoplay Timer with Hover Pause
   useEffect(() => {
     if (!isAutoPlay || isPaused || activeSlides.length <= 1) return;
 
     const interval = setInterval(() => {
-      handleNext();
+      handleNextRef.current();
     }, durationSec * 1000);
 
     return () => clearInterval(interval);
-  }, [isAutoPlay, isPaused, durationSec, activeSlides.length, handleNext, page]);
+  }, [isAutoPlay, isPaused, durationSec, activeSlides.length, page]);
 
-  // Preload adjacent slide images for instant responsiveness
+  // Preload next slide image smoothly in background without blocking main thread
   useEffect(() => {
     if (activeSlides.length <= 1) return;
     const nextIdx = (currentIndex + 1) % activeSlides.length;
-    const prevIdx = (currentIndex - 1 + activeSlides.length) % activeSlides.length;
-    [activeSlides[nextIdx]?.image, activeSlides[prevIdx]?.image].forEach(src => {
-      if (src) {
+    const nextSrc = activeSlides[nextIdx]?.image;
+    if (nextSrc) {
+      const timer = setTimeout(() => {
         const img = new Image();
-        img.src = src;
-      }
-    });
+        img.src = nextSrc;
+      }, 150);
+      return () => clearTimeout(timer);
+    }
   }, [currentIndex, activeSlides]);
 
-  // Touch handlers for mobile swipe
+  // Touch handlers for mobile swipe with vertical scroll preservation
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartXRef.current = e.touches[0].clientX;
+    touchStartYRef.current = e.touches[0].clientY;
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
@@ -233,7 +241,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   const handleTouchEnd = () => {
     if (touchStartXRef.current !== null && touchEndXRef.current !== null) {
       const deltaX = touchStartXRef.current - touchEndXRef.current;
-      const swipeThreshold = 45; // Minimum px for swipe
+      const swipeThreshold = 40; // Minimum px for swipe
       if (deltaX > swipeThreshold) {
         handleNext();
       } else if (deltaX < -swipeThreshold) {
@@ -241,6 +249,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
       }
     }
     touchStartXRef.current = null;
+    touchStartYRef.current = null;
     touchEndXRef.current = null;
   };
 
@@ -323,7 +332,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         </AnimatePresence>
 
         {/* Carousel Slider Stage with Horizontal Slide Animation */}
-        <div className="relative overflow-hidden min-h-[480px] sm:min-h-[500px] lg:min-h-[460px] flex items-center">
+        <div className="relative overflow-hidden min-h-[480px] sm:min-h-[500px] lg:min-h-[460px] flex items-center touch-pan-y">
           <AnimatePresence initial={false} custom={direction} mode="wait">
             <motion.div
               key={page}
@@ -333,10 +342,10 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               animate="center"
               exit="exit"
               transition={{
-                x: { type: "tween", ease: [0.25, 1, 0.5, 1], duration: 0.55 },
-                opacity: { duration: 0.35 }
+                x: { type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.42 },
+                opacity: { duration: 0.28 }
               }}
-              className="w-full grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center"
+              className="w-full grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center transform-gpu will-change-transform"
             >
               
               {/* LEFT COLUMN: HERO INFORMATION, BADGES, DESCRIPTION, CTAS */}
@@ -509,8 +518,10 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                       <img
                         src={productImage}
                         alt={currentSlide.title}
-                        className="max-h-full max-w-full object-contain filter drop-shadow-2xl transition-transform duration-500 group-hover:scale-105"
-                        loading="eager"
+                        className="max-h-full max-w-full object-contain filter drop-shadow-2xl transition-transform duration-300 group-hover:scale-105 will-change-transform"
+                        loading={currentIndex === 0 ? "eager" : "lazy"}
+                        decoding="async"
+                        fetchPriority={currentIndex === 0 ? "high" : "auto"}
                       />
 
                       {/* Brand Tag Pill */}

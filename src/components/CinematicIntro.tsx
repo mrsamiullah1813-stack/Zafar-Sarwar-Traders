@@ -232,23 +232,62 @@ export const CinematicIntro: React.FC<CinematicIntroProps> = ({ onComplete }) =>
             />
           </div>
 
-          {/* Subtle "Built by Sami Ullah" Signature Credit at Bottom */}
+          {/* Refined "Site Built by SamiUllah" Handwritten Signature Credit in Bottom-Right Corner */}
           <motion.div
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1.0, delay: 1.9, ease: 'easeOut' }}
-            className="absolute bottom-6 sm:bottom-8 inset-x-0 flex items-center justify-center z-20 pointer-events-none"
+            transition={{ duration: 0.8, delay: 1.6, ease: 'easeOut' }}
+            className="absolute bottom-5 right-5 sm:bottom-7 sm:right-8 z-20 pointer-events-none text-right flex flex-col items-end"
           >
-            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-950/60 border border-slate-800/60 backdrop-blur-sm shadow-sm">
-              <span className="text-[10px] sm:text-[11px] font-sans font-medium uppercase tracking-[0.22em] text-slate-400">
-                Built by
+            <div className="flex flex-col items-end px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-slate-950/75 border border-slate-800/70 backdrop-blur-md shadow-xl shadow-black/60">
+              <span className="text-[9px] sm:text-[10px] font-sans font-semibold uppercase tracking-[0.22em] text-slate-400 leading-none mb-1">
+                Site Built by
               </span>
-              <span 
-                className="text-base sm:text-xl font-medium text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-400 tracking-wide px-0.5"
-                style={{ fontFamily: "'Great Vibes', 'Alex Brush', 'Dancing Script', cursive, sans-serif" }}
-              >
-                Sami Ullah
-              </span>
+              
+              {/* Handwritten Signature Container with Signature Stroke Reveal */}
+              <div className="relative inline-block overflow-visible py-0.5">
+                <motion.div
+                  initial={{ clipPath: 'inset(0% 100% 0% 0%)', opacity: 0 }}
+                  animate={{ clipPath: 'inset(0% 0% 0% 0%)', opacity: 1 }}
+                  transition={{ duration: 1.2, delay: 1.85, ease: [0.22, 1, 0.36, 1] }}
+                  className="flex items-center"
+                >
+                  <span
+                    className="text-xl sm:text-2xl font-normal text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-400 tracking-wide select-none drop-shadow-[0_2px_12px_rgba(245,158,11,0.35)]"
+                    style={{
+                      fontFamily: "'Alex Brush', 'Great Vibes', 'Dancing Script', cursive, sans-serif",
+                      letterSpacing: '0.04em'
+                    }}
+                  >
+                    SamiUllah
+                  </span>
+                </motion.div>
+                
+                {/* Signature Flourish Pen Underline Draw-on */}
+                <svg
+                  className="w-full h-2 mt-0.5 text-amber-400 overflow-visible"
+                  viewBox="0 0 100 8"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <motion.path
+                    d="M2 3.5C25 1.5 60 7 98 2.5"
+                    stroke="url(#sig-grad)"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    initial={{ pathLength: 0, opacity: 0 }}
+                    animate={{ pathLength: 1, opacity: 0.85 }}
+                    transition={{ duration: 0.9, delay: 2.2, ease: 'easeOut' }}
+                  />
+                  <defs>
+                    <linearGradient id="sig-grad" x1="0" y1="0" x2="100" y2="0" gradientUnits="userSpaceOnUse">
+                      <stop stopColor="#fde68a" />
+                      <stop offset="0.5" stopColor="#f59e0b" />
+                      <stop offset="1" stopColor="#d97706" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </div>
             </div>
           </motion.div>
         </motion.div>

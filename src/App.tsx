@@ -292,14 +292,14 @@ export default function App() {
     const path = currentPath;
     if (path === '/' || path === '') {
       updateSeoMetadata({
-        title: `${config.name || 'Zafar Sarwar Traders'} | Luxury Sanitaryware & Building Materials Pakistan`,
-        description: 'Pakistan\'s premier destination for luxury sanitaryware, designer faucets, rain showers, Master paints, PVC pipes, cement, and construction materials.',
+        title: `${config.name || 'Zafar Sarwar Traders'} | Sanitaryware & Building Materials | Sanitary Shop in Chiniot`,
+        description: 'Zafar Sarwar Traders is a sanitaryware and building materials shop in Chiniot, offering sanitary fittings, bathroom products, pipes, water tanks, and paints.',
         path: '/'
       });
     } else if (path === '/store' || path === '/products') {
       updateSeoMetadata({
-        title: 'Online Store & Building Material Catalog | Zafar Sarwar Traders',
-        description: 'Shop luxury sanitaryware, CPVC pipes, Master paints, bathroom accessories, and construction materials online with delivery across Pakistan.',
+        title: 'Sanitaryware & Building Materials Shop in Chiniot | Zafar Sarwar Traders',
+        description: 'Shop sanitary fittings, bathroom products, pipes, water tanks, paints, and building materials at Zafar Sarwar Traders Chiniot with delivery across Pakistan.',
         path: '/store'
       });
     } else if (path === '/categories') {
@@ -313,8 +313,8 @@ export default function App() {
       const cat = findCategoryBySlug(slug, categories);
       if (cat) {
         updateSeoMetadata({
-          title: `${cat.name} | Zafar Sarwar Traders`,
-          description: cat.description || `Browse our verified collection of ${cat.name} at Zafar Sarwar Traders with delivery across Pakistan.`,
+          title: `${cat.name} in Chiniot | Zafar Sarwar Traders`,
+          description: cat.description || `Browse our verified collection of ${cat.name} at Zafar Sarwar Traders in Chiniot with delivery across Pakistan.`,
           path: `/category/${slug}`,
           image: cat.image
         });
@@ -324,8 +324,8 @@ export default function App() {
       const prod = findProductBySlug(slug, products);
       if (prod) {
         updateSeoMetadata({
-          title: `${prod.name} | Buy Online | Zafar Sarwar Traders`,
-          description: prod.description || `Buy ${prod.name} at guaranteed wholesale prices from Zafar Sarwar Traders with fast delivery across Pakistan.`,
+          title: `${prod.name} | ${prod.category ? `${prod.category} | ` : ''}Zafar Sarwar Traders Chiniot`,
+          description: prod.description ? `${prod.description.slice(0, 140)}... Available at Zafar Sarwar Traders Chiniot.` : `Buy ${prod.name} at wholesale prices from Zafar Sarwar Traders in Chiniot with fast delivery across Pakistan.`,
           path: `/product/${slug}`,
           image: prod.image,
           type: 'product'
@@ -1453,17 +1453,36 @@ export default function App() {
           __html: JSON.stringify({
             "@context": "https://schema.org",
             "@type": "HomeGoodsStore",
-            "name": config.name,
-            "description": config.tagline,
+            "name": config.name || "Zafar Sarwar Traders",
+            "alternateName": "ZST",
+            "description": "Zafar Sarwar Traders is a sanitaryware and building materials shop in Chiniot, offering sanitary fittings, bathroom products, pipes, water tanks, and paints.",
+            "url": "https://zafarsarwartraders.shop/",
+            "telephone": config.phone || "+923108002863",
+            "email": config.email || "info@zafarsarwartraders.shop",
             "address": {
               "@type": "PostalAddress",
-              "streetAddress": config.address,
+              "streetAddress": config.address || "Jhang Road, Jhummrah Chowk",
+              "addressLocality": "Chiniot",
+              "addressRegion": "Punjab",
               "addressCountry": "PK"
             },
-            "telephone": config.phone,
-            "email": config.email,
-            "openingHours": [config.hoursWeekday, config.hoursSunday],
-            "priceRange": "$$$"
+            "openingHoursSpecification": [
+              {
+                "@type": "OpeningHoursSpecification",
+                "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+                "opens": "08:00",
+                "closes": "21:00"
+              },
+              {
+                "@type": "OpeningHoursSpecification",
+                "dayOfWeek": ["Sunday"],
+                "opens": "10:00",
+                "closes": "18:00"
+              }
+            ],
+            "currenciesAccepted": "PKR",
+            "paymentAccepted": "Cash, Bank Transfer, EasyPaisa, JazzCash",
+            "priceRange": "$$"
           })
         }}
       />

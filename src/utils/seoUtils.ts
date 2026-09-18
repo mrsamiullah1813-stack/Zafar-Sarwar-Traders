@@ -42,7 +42,7 @@ export function updatePageSeo({
 
   // 3. Meta Description
   const defaultDesc =
-    "Pakistan's premier luxury sanitaryware, bathroom accessories, plumbing pipes, paints, and construction materials showroom in Chiniot with nationwide delivery.";
+    "Zafar Sarwar Traders is a sanitaryware and building materials shop in Chiniot, offering sanitary fittings, bathroom products, pipes, water tanks, and paints.";
   const metaDesc = description || defaultDesc;
 
   let descTag = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
@@ -53,7 +53,7 @@ export function updatePageSeo({
   }
   descTag.setAttribute('content', metaDesc);
 
-  // 4. OpenGraph Tags
+  // 4. OpenGraph & Twitter Tags
   const updateMetaTag = (attrName: string, attrValue: string, content: string) => {
     let tag = document.querySelector(`meta[${attrName}="${attrValue}"]`) as HTMLMetaElement | null;
     if (!tag) {
@@ -68,9 +68,14 @@ export function updatePageSeo({
   updateMetaTag('property', 'og:description', metaDesc);
   updateMetaTag('property', 'og:url', canonicalUrl);
   updateMetaTag('property', 'og:type', ogType);
+  updateMetaTag('property', 'og:site_name', 'Zafar Sarwar Traders');
+
+  updateMetaTag('name', 'twitter:title', formattedTitle);
+  updateMetaTag('name', 'twitter:description', metaDesc);
 
   if (ogImage) {
     updateMetaTag('property', 'og:image', ogImage);
+    updateMetaTag('name', 'twitter:image', ogImage);
   }
 }
 

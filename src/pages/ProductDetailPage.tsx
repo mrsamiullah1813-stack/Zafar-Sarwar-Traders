@@ -199,9 +199,47 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     }
   };
 
+  // Safe Product JSON-LD structured data using existing real data ONLY (zero fake ratings/reviews)
+  const productJsonLd = useMemo(() => {
+    const slug = getProductSlug(product);
+    const prodUrl = `https://zafarsarwartraders.shop/product/${slug}`;
+    const primaryImg = normalizeProductImage(mediaImages[0] || product.image, product.category, product.name);
+
+    return {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": product.name,
+      "image": primaryImg,
+      "description": product.description || `${product.name} available at Zafar Sarwar Traders in Chiniot, Pakistan.`,
+      ...(brandName ? { "brand": { "@type": "Brand", "name": brandName } } : {}),
+      ...(product.category ? { "category": product.category } : {}),
+      "offers": {
+        "@type": "Offer",
+        "url": prodUrl,
+        "priceCurrency": "PKR",
+        "price": activePricing.effectivePrice,
+        "availability": product.stockStatus === 'out_of_stock' 
+          ? "https://schema.org/OutOfStock" 
+          : "https://schema.org/InStock",
+        "itemCondition": "https://schema.org/NewCondition",
+        "seller": {
+          "@type": "HomeGoodsStore",
+          "name": "Zafar Sarwar Traders",
+          "url": "https://zafarsarwartraders.shop/"
+        }
+      }
+    };
+  }, [product, mediaImages, brandName, activePricing.effectivePrice]);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
       
+      {/* Schema.org Product Structured Data */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
+      />
+
       {/* Toast */}
       {addedToast && (
         <div className="fixed top-24 right-6 z-50 px-4 py-3 bg-emerald-900/95 border border-emerald-500/50 text-white text-xs font-semibold rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-2">
@@ -266,7 +304,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
               <div className="relative w-full h-80 sm:h-96 lg:h-[450px] bg-slate-50 rounded-2xl border border-slate-200/80 p-6 flex items-center justify-center overflow-hidden group">
                 <img
                   src={normalizeProductImage(mediaImages[selectedImageIndex] || mediaImages[0], product.category, product.name)}
-                  alt={product.name}
+                  alt={`${product.name} - ${product.category || 'Sanitaryware & Building Materials'} | Zafar Sarwar Traders Chiniot`}
                   onError={(e) => handleImageError(e, product.category, product.name)}
                   className="max-h-full max-w-full object-contain filter drop-shadow-lg transition-transform duration-300 group-hover:scale-105"
                 />
@@ -310,7 +348,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                     >
                       <img
                         src={normalizeProductImage(img, product.category, product.name)}
-                        alt={`${product.name} preview ${idx + 1}`}
+                        alt={`${product.name} - ${product.category || 'Sanitaryware'} view ${idx + 1}`}
                         onError={(e) => handleImageError(e, product.category, product.name)}
                         className="w-full h-full object-contain"
                       />
@@ -569,7 +607,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                     <div className="relative h-44 bg-slate-50 rounded-xl p-3 flex items-center justify-center overflow-hidden">
                       <img
                         src={normalizeProductImage(rel.image || rel.images?.[0], rel.category, rel.name)}
-                        alt={rel.name}
+                        alt={`${rel.name} - ${rel.category || 'Sanitaryware & Building Materials'} Chiniot`}
                         onError={(e) => handleImageError(e, rel.category, rel.name)}
                         className="max-h-full max-w-full object-contain filter group-hover:scale-105 transition-transform"
                       />

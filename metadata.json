@@ -1,6 +1,6 @@
 {
   "name": "Zafar Sarwar Traders",
-  "description": "Pakistan's premier luxury sanitaryware, bathroom accessories, plumbing pipes, paints, and construction materials showroom.",
+  "description": "Zafar Sarwar Traders is a sanitaryware and building materials shop in Chiniot, offering sanitary fittings, bathroom products, pipes, water tanks, and paints.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
