@@ -263,7 +263,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
         )}
 
         {/* Product Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-7">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 lg:gap-7">
           <AnimatePresence mode="popLayout">
             {filteredProducts.map((product, idx) => {
               const isWishlisted = wishlistIds.includes(product.id);
@@ -284,7 +284,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                 >
                   
                   {/* Image Box */}
-                  <div className="relative h-60 w-full bg-gradient-to-b from-slate-50 to-slate-100/60 overflow-hidden flex items-center justify-center p-3">
+                  <div className="relative h-38 sm:h-60 w-full bg-gradient-to-b from-slate-50 to-slate-100/60 overflow-hidden flex items-center justify-center p-2.5 sm:p-3">
                     <img
                       src={normalizeProductImage(product.image, product.category, product.name)}
                       alt={`${product.name} - Luxury Sanitaryware & Bathroom Fittings Pakistan | Zafar Sarwar Traders`}
@@ -295,37 +295,37 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                     />
 
                     {/* Top Badges */}
-                    <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10 items-start">
+                    <div className="absolute top-2 left-2 sm:top-3 sm:left-3 flex flex-col gap-1 sm:gap-1.5 z-10 items-start">
                       {/* Product Sale Badge if Sale is Active */}
                       <ProductSaleBadge product={product} />
 
                       {/* Variant Badge if active */}
                       {isVariantEnabled && variantSummary && variantSummary.variantCount > 1 && (
-                        <span className="px-2 py-0.5 rounded-md bg-slate-900/90 backdrop-blur-sm text-white font-bold text-[10px] shadow-sm flex items-center gap-1">
-                          <Boxes className="w-3 h-3 text-cyan-400" />
+                        <span className="px-1.5 sm:px-2 py-0.5 rounded-md bg-slate-900/90 backdrop-blur-sm text-white font-bold text-[9px] sm:text-[10px] shadow-sm flex items-center gap-1">
+                          <Boxes className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-cyan-400" />
                           <span>{variantSummary.variantCount} {product.optionName || 'Sizes'}</span>
                         </span>
                       )}
 
                       {product.isNew && (
-                        <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white font-bold text-[10px] shadow-sm">
+                        <span className="px-1.5 sm:px-2 py-0.5 rounded-md bg-blue-600 text-white font-bold text-[9px] sm:text-[10px] shadow-sm">
                           NEW
                         </span>
                       )}
                       {product.isBestSeller && (
-                        <span className="px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 font-black text-[10px] shadow-sm">
+                        <span className="px-1.5 sm:px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 font-black text-[9px] sm:text-[10px] shadow-sm">
                           BESTSELLER
                         </span>
                       )}
                       {product.badge && !product.isNew && !product.isBestSeller && (
-                        <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white font-bold text-[10px] shadow-sm">
+                        <span className="px-1.5 sm:px-2 py-0.5 rounded-md bg-slate-900 text-white font-bold text-[9px] sm:text-[10px] shadow-sm">
                           {product.badge}
                         </span>
                       )}
                     </div>
 
                     {/* Wishlist & Compare Quick Floating Buttons */}
-                    <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 flex flex-col gap-1 sm:gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
                       {onToggleWishlist && (
                         <button
                           type="button"
@@ -333,14 +333,14 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                             e.stopPropagation();
                             onToggleWishlist(product.id);
                           }}
-                          className={`p-2 rounded-xl border backdrop-blur-md transition-colors ${
+                          className={`p-1.5 sm:p-2 rounded-xl border backdrop-blur-md transition-colors ${
                             isWishlisted 
                               ? 'bg-rose-500 text-white border-rose-400' 
                               : 'bg-white/95 text-slate-600 border-slate-200/90 hover:text-rose-600 hover:bg-white shadow-sm'
                           }`}
                           title={isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
                         >
-                          <Heart className="w-3.5 h-3.5 fill-current" />
+                          <Heart className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-current" />
                         </button>
                       )}
 
@@ -351,21 +351,21 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                             e.stopPropagation();
                             onToggleCompare(product.id);
                           }}
-                          className={`p-2 rounded-xl border backdrop-blur-md transition-colors ${
+                          className={`p-1.5 sm:p-2 rounded-xl border backdrop-blur-md transition-colors hidden sm:flex ${
                             isCompared 
                               ? 'bg-amber-500 text-slate-950 border-amber-400' 
                               : 'bg-white/95 text-slate-600 border-slate-200/90 hover:text-amber-600 hover:bg-white shadow-sm'
                           }`}
                           title={isCompared ? 'Remove from Compare' : 'Add to Compare'}
                         >
-                          <Scale className="w-3.5 h-3.5" />
+                          <Scale className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                         </button>
                       )}
                     </div>
 
                     {/* Admin Edit / Delete Floating Buttons */}
                     {isAdmin && onEditProduct && (
-                      <div className="absolute bottom-3 left-3 z-20 flex items-center gap-1.5">
+                      <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 z-20 flex items-center gap-1.5">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -393,66 +393,61 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                   </div>
 
                   {/* Body Info */}
-                  <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
+                  <div className="p-3 sm:p-5 flex-1 flex flex-col justify-between space-y-2 sm:space-y-3">
                     <div>
-                      <div className="flex items-center justify-between text-[11px] font-semibold text-blue-600 uppercase tracking-wider mb-1">
-                        <span className="truncate max-w-[140px]">{product.brand || product.category}</span>
-                        <div className="flex items-center gap-1 text-amber-500">
-                          <Star className="w-3 h-3 fill-amber-400" />
-                          <span className="text-slate-700 font-mono text-[10px] font-bold">
+                      <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-semibold text-blue-600 uppercase tracking-wider mb-1">
+                        <span className="truncate max-w-[90px] sm:max-w-[140px]">{product.brand || product.category}</span>
+                        <div className="flex items-center gap-0.5 sm:gap-1 text-amber-500">
+                          <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-amber-400" />
+                          <span className="text-slate-700 font-mono text-[9px] sm:text-[10px] font-bold">
                             {typeof product.rating === 'number' ? product.rating.toFixed(1) : (product.rating || '4.8')}
                           </span>
-                          {(product.reviewsCount || product.reviews_count) && (
-                            <span className="text-slate-400 text-[9px] font-normal">
-                              ({product.reviewsCount || product.reviews_count})
-                            </span>
-                          )}
                         </div>
                       </div>
 
-                      <h3 className="font-bold text-slate-900 text-sm group-hover:text-blue-600 transition-colors line-clamp-2 leading-snug">
+                      <h3 className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-blue-600 transition-colors line-clamp-2 leading-snug">
                         {product.name}
                       </h3>
 
-                      <p className="mt-1 text-slate-500 text-xs line-clamp-2 font-normal leading-relaxed">
+                      <p className="mt-1 text-slate-500 text-xs line-clamp-1 sm:line-clamp-2 font-normal leading-relaxed hidden sm:block">
                         {product.description}
                       </p>
 
                       {/* Dynamic Pricing: Sale or Regular */}
-                      <div className="mt-2.5">
+                      <div className="mt-1.5 sm:mt-2.5">
                         {pricing.isSaleActive ? (
-                          <div className="space-y-1">
-                            <div className="flex items-baseline gap-2 flex-wrap">
-                              <span className="text-base font-black text-rose-600 font-mono">
+                          <div className="space-y-0.5 sm:space-y-1">
+                            <div className="flex items-baseline gap-1.5 sm:gap-2 flex-wrap">
+                              <span className="text-sm sm:text-base font-black text-rose-600 font-mono">
                                 {pricing.formattedSalePrice}
                               </span>
                               {pricing.showRegularPriceStrike && (
-                                <span className="text-xs text-slate-400 line-through font-mono">
+                                <span className="text-[10px] sm:text-xs text-slate-400 line-through font-mono">
                                   {pricing.formattedRegularPrice}
                                 </span>
                               )}
                               {pricing.showDiscountPercentage && pricing.discountPercentage > 0 && (
-                                <span className="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-black text-[10px] font-mono border border-rose-200">
+                                <span className="px-1 py-0.2 sm:px-1.5 sm:py-0.5 rounded bg-rose-50 text-rose-700 font-black text-[9px] sm:text-[10px] font-mono border border-rose-200">
                                   {pricing.discountPercentage}% OFF
                                 </span>
                               )}
                             </div>
 
                             {pricing.showSavings && pricing.savingsAmount > 0 && (
-                              <div className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                              <div className="text-[9px] sm:text-[10px] font-bold text-emerald-600 flex items-center gap-1 hidden sm:flex">
                                 <span>🎉 Save {pricing.formattedSavings}</span>
                               </div>
                             )}
 
                             {pricing.showCountdown && pricing.saleEndDate && (
-                              <div className="pt-1">
+                              <div className="pt-0.5 sm:pt-1">
                                 <SaleCountdownTimer endDate={pricing.saleEndDate} compact />
                               </div>
                             )}
                           </div>
                         ) : (
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-sm font-bold text-slate-900 font-mono product-price-typography">
+                          <div className="flex items-baseline gap-1 sm:gap-2">
+                            <span className="text-xs sm:text-sm font-bold text-slate-900 font-mono product-price-typography">
                               {isVariantEnabled && variantSummary && variantSummary.variantCount > 0
                                 ? (variantSummary.minPrice > 0 ? (variantSummary.minPrice === variantSummary.maxPrice ? `Rs. ${variantSummary.minPrice.toLocaleString('en-PK')}` : `Rs. ${variantSummary.minPrice.toLocaleString('en-PK')} – ${variantSummary.maxPrice.toLocaleString('en-PK')}`) : (product.price || 'Price on Request'))
                                 : (product.hidePrice ? 'Call for Price' : (product.isPriceOnRequest ? 'Price on Request' : (product.price || 'Price on Request')))}
@@ -463,7 +458,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="pt-3 border-t border-slate-100 grid grid-cols-2 gap-2">
+                    <div className="pt-2 sm:pt-3 border-t border-slate-100 grid grid-cols-2 gap-1.5 sm:gap-2">
                       {onAddToCart && (
                         <button
                           type="button"
@@ -471,9 +466,9 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                             e.stopPropagation();
                             onAddToCart(product);
                           }}
-                          className="py-2.5 px-2 rounded-xl bg-slate-900 hover:bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-95"
+                          className="py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl bg-slate-900 hover:bg-blue-600 text-white text-[10px] sm:text-[11px] font-bold flex items-center justify-center gap-1 transition-all shadow-sm active:scale-95"
                         >
-                          <ShoppingBag className="w-3.5 h-3.5" />
+                          <ShoppingBag className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                           <span>Add Cart</span>
                         </button>
                       )}
@@ -488,9 +483,9 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                             onAddToCart(product);
                           }
                         }}
-                        className="py-2.5 px-2.5 rounded-lg bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:from-blue-700 active:to-blue-800 text-white text-[11px] font-semibold tracking-wide flex items-center justify-center gap-1.5 transition-all duration-200 shadow-sm hover:shadow-md hover:shadow-blue-600/20 border border-blue-500/40 active:scale-[0.98] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="py-2 px-1 sm:py-2.5 sm:px-2.5 rounded-xl bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:from-blue-700 active:to-blue-800 text-white text-[10px] sm:text-[11px] font-semibold tracking-wide flex items-center justify-center gap-1 transition-all duration-200 shadow-sm border border-blue-500/40 active:scale-[0.98] cursor-pointer"
                       >
-                        <Zap className="w-3.5 h-3.5 text-blue-200 stroke-[2.2]" />
+                        <Zap className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-200 stroke-[2.2]" />
                         <span>Buy Now</span>
                       </button>
                     </div>

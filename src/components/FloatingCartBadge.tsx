@@ -61,7 +61,7 @@ export const FloatingCartBadge: React.FC<FloatingCartBadgeProps> = ({
   }
 
   return (
-    <div className="fixed bottom-24 sm:bottom-28 right-3 sm:right-6 z-40 flex flex-col items-end safe-area-bottom pointer-events-none animate-in fade-in zoom-in-95 duration-300">
+    <div className="fixed bottom-36 md:bottom-28 right-3 sm:right-6 z-40 flex flex-col items-end safe-area-bottom pointer-events-none animate-in fade-in zoom-in-95 duration-300">
       {/* Real-time "Item Added" Notification Alert Bubble */}
       {showAddedAlert && (
         <div

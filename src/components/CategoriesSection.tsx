@@ -93,8 +93,8 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
   };
 
   return (
-    <section id="categories" className="py-20 bg-slate-50 relative overflow-hidden border-b border-slate-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 space-y-12">
+    <section id="categories" className="py-12 sm:py-20 bg-slate-50 relative overflow-hidden border-b border-slate-200">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 relative z-10 space-y-6 sm:space-y-12">
         
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto">
@@ -103,19 +103,19 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
             <span>Shop By Department</span>
           </div>
 
-          <h2 className="text-3xl sm:text-4xl font-serif font-black text-slate-900 tracking-tight">
+          <h2 className="text-2xl sm:text-4xl font-serif font-black text-slate-900 tracking-tight">
             Explore Product Categories
           </h2>
 
-          <p className="mt-3 text-slate-600 text-sm sm:text-base font-normal leading-relaxed">
+          <p className="mt-2 sm:mt-3 text-slate-600 text-xs sm:text-base font-normal leading-relaxed">
             Browse our comprehensive department collections designed for luxury bathrooms, piping infrastructure, paints, and hardware.
           </p>
         </div>
 
         {/* Filter Bar & Search */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-3 sm:gap-4">
           
-          <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 no-scrollbar">
+          <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 no-scrollbar">
             {filterTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -123,7 +123,7 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
                     isActive
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
                       : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
@@ -150,7 +150,7 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
         </div>
 
         {/* Grid Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6">
           <AnimatePresence mode="popLayout">
             {filteredCategories.map((cat, idx) => (
               <motion.div
@@ -162,7 +162,7 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
                 onClick={() => onSelectCategory(cat.id)}
                 className="group bg-white rounded-2xl border border-slate-200/85 shadow-sm hover:shadow-xl hover:border-blue-500/60 hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between overflow-hidden"
               >
-                <div className="relative h-48 w-full overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200/60">
+                <div className="relative h-32 sm:h-48 w-full overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200/60">
                   <img
                     src={cat.image || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80'}
                     alt={`${cat.name} - Luxury Sanitaryware & Building Materials | Zafar Sarwar Traders Pakistan`}
@@ -171,39 +171,39 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   {cat.badge && (
-                    <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-blue-600 text-white text-[10px] font-bold uppercase tracking-wider shadow-sm">
+                    <div className="absolute top-2 left-2 sm:top-3 sm:left-3 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md bg-blue-600 text-white text-[9px] sm:text-[10px] font-bold uppercase tracking-wider shadow-sm">
                       {cat.badge}
                     </div>
                   )}
-                  <div className="absolute top-3 right-3 px-2.5 py-1 rounded-md bg-slate-900/85 backdrop-blur-sm text-white text-[10px] font-medium font-mono">
+                  <div className="absolute top-2 right-2 sm:top-3 sm:right-3 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md bg-slate-900/85 backdrop-blur-sm text-white text-[9px] sm:text-[10px] font-medium font-mono">
                     {cat.itemCount}+ Items
                   </div>
                 </div>
 
-                <div className="p-5 flex-1 flex flex-col justify-between space-y-3">
+                <div className="p-3 sm:p-5 flex-1 flex flex-col justify-between space-y-2 sm:space-y-3">
                   <div>
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="font-bold text-slate-900 text-base group-hover:text-blue-600 transition-colors">
+                    <div className="flex items-center justify-between gap-1.5">
+                      <h3 className="font-bold text-slate-900 text-xs sm:text-base group-hover:text-blue-600 transition-colors line-clamp-1 sm:line-clamp-none">
                         {cat.name}
                       </h3>
-                      <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                      <ArrowUpRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform shrink-0" />
                     </div>
-                    <p className="mt-1.5 text-slate-500 text-xs line-clamp-2 leading-relaxed">
+                    <p className="mt-1 text-slate-500 text-xs line-clamp-2 leading-relaxed hidden sm:block">
                       {cat.description}
                     </p>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                    <span className="text-xs font-bold text-blue-600 group-hover:underline">
-                      Explore Collection →
+                  <div className="pt-2 sm:pt-3 border-t border-slate-100 flex items-center justify-between gap-1">
+                    <span className="text-[11px] sm:text-xs font-bold text-blue-600 group-hover:underline">
+                      Explore →
                     </span>
 
                     <button
                       onClick={(e) => handleInquireCategory(e, cat.name)}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white border border-emerald-200 text-[11px] font-bold transition-all"
+                      className="flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white border border-emerald-200 text-[10px] sm:text-[11px] font-bold transition-all shrink-0"
                     >
                       <MessageSquare className="w-3 h-3" />
-                      <span>WhatsApp</span>
+                      <span className="hidden sm:inline">WhatsApp</span>
                     </button>
                   </div>
                 </div>

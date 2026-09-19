@@ -209,7 +209,7 @@ export const BrandDetailPage: React.FC<BrandDetailPageProps> = ({
 
         {/* Product Grid */}
         {filteredProducts.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5">
             {filteredProducts.map((product) => {
               const pricing = getProductPricingDetails(product);
               const productSlug = getProductSlug(product);
@@ -220,7 +220,7 @@ export const BrandDetailPage: React.FC<BrandDetailPageProps> = ({
                   className="bg-white rounded-2xl border border-slate-200/90 shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col overflow-hidden group"
                 >
                   <div 
-                    className="relative w-full h-56 bg-slate-50 p-4 flex items-center justify-center cursor-pointer overflow-hidden"
+                    className="relative w-full h-40 sm:h-56 bg-slate-50 p-2.5 sm:p-4 flex items-center justify-center cursor-pointer overflow-hidden"
                     onClick={() => onNavigate(`/product/${productSlug}`)}
                   >
                     <img
@@ -232,7 +232,7 @@ export const BrandDetailPage: React.FC<BrandDetailPageProps> = ({
                     />
 
                     {pricing.isOnSale && (
-                      <div className="absolute top-3 left-3">
+                      <div className="absolute top-2 left-2 sm:top-3 sm:left-3">
                         <ProductSaleBadge pricing={pricing} size="sm" />
                       </div>
                     )}
@@ -243,20 +243,20 @@ export const BrandDetailPage: React.FC<BrandDetailPageProps> = ({
                         e.stopPropagation();
                         onQuickView(product);
                       }}
-                      className="absolute bottom-3 right-3 p-2 rounded-xl bg-white/95 text-slate-700 hover:text-blue-600 hover:bg-white shadow-md transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+                      className="absolute bottom-2 right-2 sm:bottom-3 sm:right-3 p-1.5 sm:p-2 rounded-xl bg-white/95 text-slate-700 hover:text-blue-600 hover:bg-white shadow-md transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
                       title="Quick View"
                     >
-                      <Eye className="w-4 h-4" />
+                      <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </button>
                   </div>
 
-                  <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                  <div className="p-3 sm:p-4 flex-1 flex flex-col justify-between space-y-2 sm:space-y-3">
                     <div>
-                      <div className="text-[11px] font-bold text-blue-600 uppercase tracking-wide">
+                      <div className="text-[10px] sm:text-[11px] font-bold text-blue-600 uppercase tracking-wide">
                         {product.category || brand.name}
                       </div>
                       <h2 
-                        className="text-sm font-bold text-slate-900 hover:text-blue-600 transition-colors cursor-pointer line-clamp-2 leading-snug mt-1"
+                        className="text-xs sm:text-sm font-bold text-slate-900 hover:text-blue-600 transition-colors cursor-pointer line-clamp-2 leading-snug mt-1"
                         onClick={() => onNavigate(`/product/${productSlug}`)}
                       >
                         {product.name}

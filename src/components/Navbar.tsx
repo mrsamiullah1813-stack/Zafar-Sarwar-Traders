@@ -181,8 +181,8 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* ANNOUNCEMENT BAR */}
       <AnnouncementBar settings={announcementSettings} />
 
-      {/* TOP UTILITY BAR */}
-      <div className="bg-[#0b1324] text-slate-300 text-[11px] py-1.5 px-4 border-b border-slate-800/80">
+      {/* TOP UTILITY BAR (Desktop) */}
+      <div className="bg-[#0b1324] text-slate-300 text-[11px] py-1.5 px-4 border-b border-slate-800/80 hidden md:block">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
           
           {/* Left Highlights */}
@@ -279,10 +279,10 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      {/* MAIN HEADER */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between gap-4">
+      {/* DESKTOP MAIN HEADER (Desktop Only) */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 hidden md:flex items-center justify-between gap-4">
         
-        {/* Left: Brand Emblem & Mobile Brand Name */}
+        {/* Left: Brand Emblem */}
         <div className="flex items-center gap-3 shrink-0">
           <a
             href="/"
@@ -290,12 +290,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="flex items-center gap-3 group cursor-pointer"
             title="ZAFAR SARWAR TRADERS"
           >
-            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-blue-400 shadow-md group-hover:bg-blue-600 group-hover:text-white transition-all">
+            <div className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-blue-400 shadow-md group-hover:bg-blue-600 group-hover:text-white transition-all">
               <svg
                 viewBox="0 0 48 48"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
-                className="w-8 h-8 sm:w-9 sm:h-9 transition-transform group-hover:scale-105"
+                className="w-9 h-9 transition-transform group-hover:scale-105"
                 aria-hidden="true"
               >
                 {/* Architectural Skyline Apex / Pediment */}
@@ -358,21 +358,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                 />
               </svg>
             </div>
-            
-            {/* Mobile Brand Name */}
-            <div className="md:hidden flex flex-col">
-              <span className="text-base font-black font-serif tracking-tight text-slate-900 uppercase leading-none">
-                ZAFAR SARWAR <span className="text-blue-600 font-sans font-light">TRADERS</span>
-              </span>
-              <span className="text-[9px] font-bold text-slate-500 tracking-wider uppercase mt-0.5">
-                Luxury Sanitary & Building Supplies
-              </span>
-            </div>
           </a>
         </div>
 
         {/* Center: Large Brand Name & Subtitle */}
-        <div className="text-center flex-1 max-w-xl hidden md:block">
+        <div className="text-center flex-1 max-w-xl">
           <button 
             type="button" 
             onClick={(e) => handleNavClick('/', e)} 
@@ -387,8 +377,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         </div>
 
-        {/* Right: Search, Theme, Wishlist, Compare, Cart, WhatsApp Order */}
-        <div className="mobile-header-actions-container flex items-center gap-2 sm:gap-3">
+        {/* Right: Desktop Action Icons */}
+        <div className="flex items-center gap-2 sm:gap-3">
           
           {/* Search Trigger */}
           <button
@@ -397,7 +387,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             title="Search Products & Specifications"
           >
             <Search className="w-4 h-4 text-blue-600" />
-            <span className="hidden sm:inline">Search</span>
+            <span>Search</span>
           </button>
 
           {/* Track Order Button */}
@@ -408,7 +398,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               title="Track Order Status"
             >
               <Truck className="w-4 h-4 text-amber-600" />
-              <span className="hidden md:inline">Track</span>
+              <span>Track</span>
             </button>
           )}
 
@@ -420,7 +410,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               title="Switch Visual Theme"
             >
               <Palette className="w-4 h-4 text-blue-600" />
-              <span className="hidden sm:inline">Theme</span>
+              <span>Theme</span>
             </button>
           )}
 
@@ -441,7 +431,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Compare */}
           <button
             onClick={onOpenCompare}
-            className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors relative hidden sm:flex"
+            className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors relative"
             title="Compare Products"
           >
             <Scale className="w-4 h-4 text-amber-600" />
@@ -459,7 +449,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             title="View Shopping Cart"
           >
             <ShoppingBag className="w-4 h-4 text-blue-600" />
-            <span className="text-xs font-bold hidden sm:inline">Cart</span>
+            <span className="text-xs font-bold">Cart</span>
             {cartCount > 0 && (
               <span className="bg-blue-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">
                 {cartCount}
@@ -473,18 +463,128 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/15 flex items-center gap-1.5 transition-all active:scale-95 shrink-0"
           >
             <MessageSquare className="w-4 h-4" />
-            <span className="hidden lg:inline">WhatsApp Order</span>
+            <span>WhatsApp Order</span>
           </button>
+        </div>
 
-          {/* Mobile Menu Toggle */}
+      </div>
+
+      {/* MOBILE HEADER (Mobile App View) */}
+      <div className="md:hidden flex flex-col bg-white">
+        {/* Top Row: Hamburger + Brand + Action Icons */}
+        <div className="px-3 py-2.5 flex items-center justify-between gap-2 border-b border-slate-100">
+          
+          {/* Left: Hamburger & Brand */}
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-2 rounded-xl bg-slate-100 text-slate-800 hover:bg-slate-200 active:scale-95 transition-all shrink-0 min-w-[40px] min-h-[40px] flex items-center justify-center"
+              aria-label="Toggle navigation menu"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5 text-slate-900" /> : <Menu className="w-5 h-5 text-slate-900" />}
+            </button>
+
+            <a
+              href="/"
+              onClick={(e) => handleNavClick('/', e)}
+              className="flex items-center gap-2 min-w-0 cursor-pointer"
+              title="ZAFAR SARWAR TRADERS"
+            >
+              <div className="w-9 h-9 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-blue-400 shadow-xs shrink-0">
+                <svg
+                  viewBox="0 0 48 48"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="w-6 h-6"
+                  aria-hidden="true"
+                >
+                  <path d="M24 3.5L42 14.5V17L24 5.8L6 17V14.5L24 3.5Z" fill="currentColor" />
+                  <path d="M24 7.5C24 7.5 20.8 11.2 20.8 13.5C20.8 15.3 22.2 16.8 24 16.8C25.8 16.8 27.2 15.3 27.2 13.5C27.2 11.2 24 7.5 24 7.5Z" fill="currentColor" opacity="0.85" />
+                  <rect x="6" y="18.5" width="3.5" height="14" rx="1" fill="currentColor" opacity="0.3" />
+                  <rect x="38.5" y="18.5" width="3.5" height="14" rx="1" fill="currentColor" opacity="0.3" />
+                  <text x="24.5" y="30.5" textAnchor="middle" fill="currentColor" fontSize="13.5" fontWeight="900" letterSpacing="1.2px" fontFamily="'Arial Black', 'Montserrat', 'Impact', sans-serif">ZST</text>
+                  <path d="M5.5 36H42.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                  <path d="M12 40.5C16 39.2 20 41.8 24 40.5C28 39.2 32 41.8 36 40.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.7" />
+                </svg>
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs sm:text-sm font-black font-serif tracking-tight text-slate-900 uppercase leading-tight truncate">
+                  ZAFAR SARWAR <span className="text-blue-600 font-sans font-light">TRADERS</span>
+                </span>
+                <span className="text-[8.5px] font-semibold text-slate-500 uppercase tracking-wider truncate">
+                  Chiniot • Sanitary & Building
+                </span>
+              </div>
+            </a>
+          </div>
+
+          {/* Right: Quick Action Icons */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Wishlist */}
+            <button
+              type="button"
+              onClick={onOpenWishlist}
+              className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors relative min-w-[38px] min-h-[38px] flex items-center justify-center"
+              title="Wishlist"
+              aria-label="Wishlist"
+            >
+              <Heart className="w-4 h-4 text-rose-500" />
+              {wishlistCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-rose-600 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+                  {wishlistCount}
+                </span>
+              )}
+            </button>
+
+            {/* Cart Button */}
+            <button
+              type="button"
+              onClick={onOpenCart}
+              className="p-2 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-900 transition-colors relative min-w-[38px] min-h-[38px] flex items-center justify-center active:scale-95"
+              title="View Shopping Cart"
+              aria-label="View Shopping Cart"
+            >
+              <ShoppingBag className="w-4 h-4 text-blue-600" />
+              {cartCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+                  {cartCount}
+                </span>
+              )}
+            </button>
+
+            {/* WhatsApp Quick Link */}
+            <button
+              type="button"
+              onClick={handleWhatsAppClick}
+              className="p-2 rounded-xl bg-emerald-600 text-white transition-colors min-w-[38px] min-h-[38px] flex items-center justify-center shadow-xs active:scale-95"
+              title="WhatsApp Showroom"
+              aria-label="WhatsApp Showroom"
+            >
+              <MessageSquare className="w-4 h-4" />
+            </button>
+          </div>
+
+        </div>
+
+        {/* Second Row: Prominent Mobile Search Bar */}
+        <div className="px-3 pt-2 pb-2.5">
           <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2.5 rounded-xl bg-slate-100 text-slate-700 md:hidden hover:bg-slate-200 transition-colors"
-            aria-label="Toggle navigation menu"
+            type="button"
+            onClick={onSearchClick}
+            className="w-full h-10 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-500 flex items-center justify-between text-xs active:scale-[0.99] transition-all shadow-xs cursor-pointer"
+            aria-label="Search sanitaryware, tiles, faucets, brands"
           >
-            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            <div className="flex items-center gap-2.5 truncate">
+              <Search className="w-4 h-4 text-blue-600 shrink-0" />
+              <span className="truncate text-slate-500 font-medium">
+                Search sanitaryware, tiles, faucets, brands...
+              </span>
+            </div>
+            <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white text-[10px] font-bold tracking-wide shrink-0">
+              Search
+            </span>
           </button>
-
         </div>
 
       </div>

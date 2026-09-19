@@ -29,7 +29,7 @@ export const FloatingWhatsApp: React.FC<FloatingWhatsAppProps> = ({ config }) =>
   };
 
   return (
-    <div className="fixed bottom-4 sm:bottom-6 left-3 sm:left-6 z-50 flex flex-col items-start safe-area-bottom">
+    <div className="fixed bottom-20 md:bottom-6 left-3 sm:left-6 z-40 flex flex-col items-start safe-area-bottom">
       {/* Expanded Quick Chat Popup */}
       {open && (
         <div className="mb-4 w-[calc(100vw-2rem)] sm:w-88 max-w-sm rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl p-4 sm:p-5 overflow-hidden animate-fadeIn">

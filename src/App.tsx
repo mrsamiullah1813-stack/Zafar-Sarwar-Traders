@@ -103,6 +103,8 @@ import { CinematicIntro } from './components/CinematicIntro';
 import { LuxuryCursorEffect } from './components/LuxuryCursorEffect';
 import { DeliveryCheckerModal } from './components/DeliveryCheckerModal';
 import { DeliveryAreasPage } from './components/DeliveryAreasPage';
+import { MobileCategoryScroll } from './components/MobileCategoryScroll';
+import { MobileBottomNav } from './components/MobileBottomNav';
 
 // Multi-Page E-commerce Pages
 import { StorePage } from './pages/StorePage';
@@ -1355,6 +1357,23 @@ export default function App() {
           onNavigateToCategories={() => navigateTo('/categories')}
         />
 
+        {/* Mobile-Only Horizontal Category Scrolling Bar */}
+        <div className="md:hidden">
+          <MobileCategoryScroll
+            categories={categories}
+            onSelectCategory={(catId) => {
+              const cat = categories.find(c => c.id === catId);
+              if (cat) {
+                const slug = generateCategorySlug(cat.name, cat.id);
+                navigateTo(`/category/${slug}`);
+              } else {
+                handleSelectCategory(catId);
+              }
+            }}
+            onNavigateToCategories={() => navigateTo('/categories')}
+          />
+        </div>
+
         {/* Feature Highlights Bar */}
         <FeatureBar />
 
@@ -1436,7 +1455,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-blue-600 selection:text-white relative overflow-x-hidden">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-blue-600 selection:text-white relative overflow-x-hidden pb-18 md:pb-0">
       
       {/* Luxury Interactive Cursor Effect */}
       <LuxuryCursorEffect />
@@ -1850,6 +1869,17 @@ export default function App() {
       <DeliveryCheckerModal
         isOpen={deliveryCheckerOpen}
         onClose={handleCloseDeliveryChecker}
+      />
+
+      {/* Mobile-Only Bottom Navigation Bar (E-Commerce App UX) */}
+      <MobileBottomNav
+        currentPath={currentPath}
+        cartCount={totalCartCount}
+        onNavigate={navigateTo}
+        onOpenCart={handleOpenCart}
+        onOpenOrders={handleOpenOrderTracking}
+        onOpenAccount={handleOpenOrderTracking}
+        onOpenSearch={() => setSearchModalOpen(true)}
       />
     </div>
   );

@@ -476,7 +476,7 @@ export const FloatingAiChat: React.FC<FloatingAiChatProps> = ({
     <>
       {/* FLOATING AI CHAT BUTTON (Bottom-Right Corner) */}
       {!isOpen && (
-        <div className="fixed bottom-4 sm:bottom-6 right-3 sm:right-6 z-50 flex items-center gap-3 animate-bounce-subtle safe-area-bottom">
+        <div className="fixed bottom-20 md:bottom-6 right-3 sm:right-6 z-40 flex items-center gap-3 animate-bounce-subtle safe-area-bottom">
           {/* Unread Message Tooltip Preview */}
           <div className="hidden sm:flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-slate-900/90 backdrop-blur-xl border border-cyan-500/40 text-xs text-white shadow-2xl shadow-cyan-950/80 animate-fadeIn">
             <span className="relative flex h-2 w-2">

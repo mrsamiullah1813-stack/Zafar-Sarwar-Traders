@@ -217,7 +217,7 @@ export const CategoryDetailPage: React.FC<CategoryDetailPageProps> = ({
 
         {/* Product Grid */}
         {filteredProducts.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5">
             {filteredProducts.map((product) => {
               const pricing = getProductPricingDetails(product);
               const brandName = product.brand || (brands.find(b => b.id === product.brandId)?.name) || 'Genuine';
@@ -230,7 +230,7 @@ export const CategoryDetailPage: React.FC<CategoryDetailPageProps> = ({
                 >
                   {/* Image */}
                   <div 
-                    className="relative w-full h-56 bg-slate-50 p-4 flex items-center justify-center cursor-pointer overflow-hidden"
+                    className="relative w-full h-40 sm:h-56 bg-slate-50 p-2.5 sm:p-4 flex items-center justify-center cursor-pointer overflow-hidden"
                     onClick={() => onNavigate(`/product/${productSlug}`)}
                   >
                     <img
@@ -242,12 +242,12 @@ export const CategoryDetailPage: React.FC<CategoryDetailPageProps> = ({
                     />
 
                     {pricing.isOnSale && (
-                      <div className="absolute top-3 left-3">
+                      <div className="absolute top-2 left-2 sm:top-3 sm:left-3">
                         <ProductSaleBadge pricing={pricing} size="sm" />
                       </div>
                     )}
 
-                    <div className="absolute top-3 right-3 px-2 py-0.5 rounded bg-white/95 border border-slate-200 text-[10px] font-bold text-slate-600 uppercase shadow-xs">
+                    <div className="absolute top-2 right-2 sm:top-3 sm:right-3 px-1.5 sm:px-2 py-0.5 rounded bg-white/95 border border-slate-200 text-[8.5px] sm:text-[10px] font-bold text-slate-600 uppercase shadow-xs">
                       {brandName}
                     </div>
 
@@ -257,15 +257,15 @@ export const CategoryDetailPage: React.FC<CategoryDetailPageProps> = ({
                         e.stopPropagation();
                         onQuickView(product);
                       }}
-                      className="absolute bottom-3 right-3 p-2 rounded-xl bg-white/95 text-slate-700 hover:text-blue-600 hover:bg-white shadow-md transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+                      className="absolute bottom-2 right-2 sm:bottom-3 sm:right-3 p-1.5 sm:p-2 rounded-xl bg-white/95 text-slate-700 hover:text-blue-600 hover:bg-white shadow-md transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
                       title="Quick View"
                     >
-                      <Eye className="w-4 h-4" />
+                      <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </button>
                   </div>
 
                   {/* Body */}
-                  <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                  <div className="p-3 sm:p-4 flex-1 flex flex-col justify-between space-y-2 sm:space-y-3">
                     <div>
                       <h2 
                         className="text-sm font-bold text-slate-900 hover:text-blue-600 transition-colors cursor-pointer line-clamp-2 leading-snug"
