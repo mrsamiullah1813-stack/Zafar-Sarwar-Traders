@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Grid, ShoppingBag, Package, User } from 'lucide-react';
+import { Home, Grid, ShoppingBag, Package, Wrench } from 'lucide-react';
 
 interface MobileBottomNavProps {
   currentPath: string;
@@ -9,6 +9,8 @@ interface MobileBottomNavProps {
   onOpenOrders?: () => void;
   onOpenAccount?: () => void;
   onOpenSearch?: () => void;
+  onOpenProducts?: () => void;
+  onOpenSmartTools?: () => void;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -18,11 +20,14 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   onOpenCart,
   onOpenOrders,
   onOpenAccount,
-  onOpenSearch
+  onOpenSearch,
+  onOpenProducts,
+  onOpenSmartTools
 }) => {
   const isHome = currentPath === '/';
   const isCategories = currentPath.startsWith('/categor');
-  const isStore = currentPath.startsWith('/store');
+  const isProducts = currentPath.startsWith('/store') || currentPath.startsWith('/product');
+  const isSmartTools = currentPath.startsWith('/smart-tools') || currentPath.startsWith('/tools');
 
   return (
     <nav
@@ -90,30 +95,56 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           </span>
         </button>
 
-        {/* Orders / Tracking */}
+        {/* Products / Store Catalog */}
         <button
           type="button"
-          onClick={onOpenOrders}
-          className="flex flex-col items-center justify-center h-full min-h-[44px] text-slate-500 hover:text-slate-800 transition-colors relative"
-          title="Track Orders"
+          onClick={() => {
+            if (onOpenProducts) {
+              onOpenProducts();
+            } else if (isProducts) {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+              onNavigate('/store');
+            }
+          }}
+          className={`flex flex-col items-center justify-center h-full min-h-[44px] transition-colors relative ${
+            isProducts ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800'
+          }`}
+          title="Products Catalog"
         >
-          <Package className="w-5 h-5 stroke-[1.8]" />
-          <span className="text-[10px] mt-0.5 leading-tight font-medium">
-            Orders
+          <Package className={`w-5 h-5 ${isProducts ? 'stroke-[2.4]' : 'stroke-[1.8]'}`} />
+          <span className={`text-[10px] mt-0.5 leading-tight ${isProducts ? 'font-bold' : 'font-medium'}`}>
+            Products
           </span>
+          {isProducts && (
+            <span className="absolute top-1 w-1 h-1 bg-blue-600 rounded-full" />
+          )}
         </button>
 
-        {/* Customer Account / Profile */}
+        {/* Smart Tools Hub */}
         <button
           type="button"
-          onClick={onOpenAccount}
-          className="flex flex-col items-center justify-center h-full min-h-[44px] text-slate-500 hover:text-slate-800 transition-colors relative"
-          title="My Account"
+          onClick={() => {
+            if (onOpenSmartTools) {
+              onOpenSmartTools();
+            } else if (isSmartTools) {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+              onNavigate('/smart-tools');
+            }
+          }}
+          className={`flex flex-col items-center justify-center h-full min-h-[44px] transition-colors relative ${
+            isSmartTools ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800'
+          }`}
+          title="Smart Tools Hub"
         >
-          <User className="w-5 h-5 stroke-[1.8]" />
-          <span className="text-[10px] mt-0.5 leading-tight font-medium">
-            Account
+          <Wrench className={`w-5 h-5 ${isSmartTools ? 'stroke-[2.4]' : 'stroke-[1.8]'}`} />
+          <span className={`text-[10px] mt-0.5 leading-tight ${isSmartTools ? 'font-bold' : 'font-medium'} whitespace-nowrap`}>
+            Smart Tools
           </span>
+          {isSmartTools && (
+            <span className="absolute top-1 w-1 h-1 bg-blue-600 rounded-full" />
+          )}
         </button>
       </div>
     </nav>
