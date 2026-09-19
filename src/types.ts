@@ -310,6 +310,30 @@ export interface Review {
   avatar?: string;
 }
 
+export interface ProductReview {
+  id: string;
+  productId: string;
+  customerName: string;
+  customerId?: string;
+  rating: number; // 1 to 5
+  reviewText: string;
+  createdAt: string;
+  updatedAt?: string;
+  status?: 'published' | 'pending' | 'approved';
+}
+
+export interface ProductRatingStats {
+  averageRating: number;
+  totalCount: number;
+  distribution: {
+    5: number;
+    4: number;
+    3: number;
+    2: number;
+    1: number;
+  };
+}
+
 export interface FaqItem {
   id: string;
   category: string;

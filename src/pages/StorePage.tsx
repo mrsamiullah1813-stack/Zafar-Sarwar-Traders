@@ -624,7 +624,8 @@ export const StorePage: React.FC<StorePageProps> = ({
                   return (
                     <div
                       key={product.id}
-                      className="bg-white rounded-2xl border border-slate-200/90 shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col overflow-hidden group"
+                      onClick={() => onNavigate(`/product/${productSlug}`)}
+                      className="bg-white rounded-2xl border border-slate-200/90 shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col overflow-hidden group cursor-pointer"
                     >
                       {/* Image Stage */}
                       <div 
@@ -663,15 +664,15 @@ export const StorePage: React.FC<StorePageProps> = ({
                           </div>
                         )}
 
-                        {/* Quick View Button Hover Overlay */}
+                        {/* View Details Button Hover Overlay */}
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onQuickView(product);
+                            onNavigate(`/product/${productSlug}`);
                           }}
                           className="absolute bottom-2.5 right-2.5 p-2 rounded-xl bg-white/95 text-slate-700 hover:text-blue-600 hover:bg-white shadow-md transition-all opacity-0 group-hover:opacity-100 cursor-pointer hidden sm:block"
-                          title="Quick View"
+                          title="View Details"
                         >
                           <Eye className="w-4 h-4" />
                         </button>

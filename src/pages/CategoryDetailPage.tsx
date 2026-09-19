@@ -226,7 +226,8 @@ export const CategoryDetailPage: React.FC<CategoryDetailPageProps> = ({
               return (
                 <div
                   key={product.id}
-                  className="bg-white rounded-2xl border border-slate-200/90 shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col overflow-hidden group"
+                  onClick={() => onNavigate(`/product/${productSlug}`)}
+                  className="bg-white rounded-2xl border border-slate-200/90 shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col overflow-hidden group cursor-pointer"
                 >
                   {/* Image */}
                   <div 
@@ -255,10 +256,10 @@ export const CategoryDetailPage: React.FC<CategoryDetailPageProps> = ({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onQuickView(product);
+                        onNavigate(`/product/${productSlug}`);
                       }}
                       className="absolute bottom-2 right-2 sm:bottom-3 sm:right-3 p-1.5 sm:p-2 rounded-xl bg-white/95 text-slate-700 hover:text-blue-600 hover:bg-white shadow-md transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
-                      title="Quick View"
+                      title="View Details"
                     >
                       <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </button>

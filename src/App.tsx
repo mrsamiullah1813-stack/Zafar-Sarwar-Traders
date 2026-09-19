@@ -437,7 +437,10 @@ export default function App() {
       const isDedicatedProductPage = typeof window !== 'undefined' && window.location.pathname.startsWith('/product/');
       if (!isDedicatedProductPage) {
         const prod = products.find(p => p.id === initialState.productId);
-        if (prod) setSelectedProduct(prod);
+        if (prod) {
+          const slug = getProductSlug(prod);
+          navigateTo(`/product/${slug}`);
+        }
       }
     } else if (initialState.view === 'category' && initialState.categoryId && initialState.categoryId !== 'all') {
       setSelectedCategoryFilter(initialState.categoryId);
@@ -520,7 +523,10 @@ export default function App() {
             setSelectedProduct(null);
           } else if (state.productId) {
             const prod = products.find(p => p.id === state.productId);
-            if (prod) setSelectedProduct(prod);
+            if (prod) {
+              const slug = getProductSlug(prod);
+              navigateTo(`/product/${slug}`);
+            }
           }
           if (state.categoryId) {
             setSelectedCategoryFilter(state.categoryId);
@@ -956,22 +962,10 @@ export default function App() {
     }
   };
 
-  const handleQuickViewProduct = (prod: Product, skipPush: boolean = false) => {
-    setSelectedProduct(prod);
+  const handleQuickViewProduct = (prod: Product, _skipPush: boolean = false) => {
     trackProductView(prod.id, prod.name);
-
-    if (!skipPush) {
-      pushNavigationState(
-        'product',
-        {
-          productId: prod.id,
-          categoryId: selectedCategoryFilter,
-          fromSearch: searchModalOpen,
-          fromCart: cartOpen
-        },
-        { product: prod.id }
-      );
-    }
+    const slug = getProductSlug(prod);
+    navigateTo(`/product/${slug}`);
   };
 
   const handleOpenCart = () => {
@@ -1681,7 +1675,10 @@ export default function App() {
           brand={selectedBrand}
           products={products}
           onClose={handleCloseBrand}
-          onSelectProduct={(prod) => handleQuickViewProduct(prod)}
+          onSelectProduct={(prod) => {
+            setSelectedBrand(null);
+            handleQuickViewProduct(prod);
+          }}
         />
       )}
 

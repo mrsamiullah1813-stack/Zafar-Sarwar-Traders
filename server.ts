@@ -1476,6 +1476,133 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
     }
   });
 
+  // =========================================================
+  // PRODUCTION-GRADE PRODUCT REVIEWS & RATINGS DATABASE API
+  // =========================================================
+  const REVIEWS_STORAGE_KEY = "zst_product_reviews_v1";
+
+  async function getStoredProductReviews(): Promise<any[]> {
+    if (dbClient) {
+      try {
+        const { data, error } = await dbClient
+          .from("site_settings")
+          .select("theme_settings")
+          .eq("id", "product_reviews")
+          .maybeSingle();
+        if (!error && data?.theme_settings?.reviews && Array.isArray(data.theme_settings.reviews)) {
+          return data.theme_settings.reviews;
+        }
+      } catch (err) {
+        console.warn("[Reviews DB Load Warning]:", err);
+      }
+    }
+    const cmsList = cmsDataStore[REVIEWS_STORAGE_KEY];
+    if (Array.isArray(cmsList)) return cmsList;
+    return [];
+  }
+
+  async function persistProductReviews(reviews: any[]): Promise<boolean> {
+    cmsDataStore[REVIEWS_STORAGE_KEY] = reviews;
+    await persistDataStoreToDisk();
+
+    if (dbClient) {
+      try {
+        await dbClient.from("site_settings").upsert({
+          id: "product_reviews",
+          theme_settings: { reviews },
+          updated_at: new Date().toISOString()
+        }, { onConflict: "id" });
+        return true;
+      } catch (err) {
+        console.warn("[Reviews DB Save Warning]:", err);
+      }
+    }
+    return true;
+  }
+
+  // GET All Product Reviews
+  app.get("/api/db/reviews", async (req, res) => {
+    try {
+      const allReviews = await getStoredProductReviews();
+      return res.json({ success: true, reviews: allReviews });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // GET Reviews for a specific product ID
+  app.get("/api/db/products/:productId/reviews", async (req, res) => {
+    try {
+      const { productId } = req.params;
+      const allReviews = await getStoredProductReviews();
+      const productReviews = allReviews.filter((r: any) => String(r.productId) === String(productId));
+      return res.json({ success: true, reviews: productReviews });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  // POST a new verified review
+  app.post("/api/db/reviews", async (req, res) => {
+    try {
+      const { productId, customerName, customerId, rating, reviewText } = req.body;
+      
+      if (!productId || typeof productId !== "string" || !productId.trim()) {
+        return res.status(400).json({ success: false, error: "Valid Product ID is required." });
+      }
+      if (!customerName || typeof customerName !== "string" || !customerName.trim()) {
+        return res.status(400).json({ success: false, error: "Customer display name is required." });
+      }
+      const numRating = Number(rating);
+      if (!numRating || isNaN(numRating) || numRating < 1 || numRating > 5) {
+        return res.status(400).json({ success: false, error: "Rating must be a whole number between 1 and 5 stars." });
+      }
+      if (!reviewText || typeof reviewText !== "string" || !reviewText.trim()) {
+        return res.status(400).json({ success: false, error: "Written review comment is required." });
+      }
+
+      const cleanProductId = productId.trim();
+      const cleanName = customerName.trim().substring(0, 100);
+      const cleanText = reviewText.trim().substring(0, 2000);
+      const cleanRating = Math.max(1, Math.min(5, Math.round(numRating)));
+
+      const allReviews = await getStoredProductReviews();
+
+      // Prevent duplicate rapid-fire submissions (same customer, same product within 30s)
+      const isDuplicate = allReviews.some((r: any) =>
+        r.productId === cleanProductId &&
+        (r.customerName || "").toLowerCase() === cleanName.toLowerCase() &&
+        (r.reviewText || "").toLowerCase() === cleanText.toLowerCase() &&
+        Date.now() - new Date(r.createdAt).getTime() < 30000
+      );
+
+      if (isDuplicate) {
+        const existing = allReviews.find((r: any) => r.productId === cleanProductId && (r.customerName || "").toLowerCase() === cleanName.toLowerCase());
+        return res.json({ success: true, review: existing, duplicatePrevented: true });
+      }
+
+      const newReview = {
+        id: `rev-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        productId: cleanProductId,
+        customerName: cleanName,
+        customerId: customerId ? String(customerId).trim() : undefined,
+        rating: cleanRating,
+        reviewText: cleanText,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        status: "published"
+      };
+
+      const updatedReviews = [newReview, ...allReviews];
+      await persistProductReviews(updatedReviews);
+
+      return res.json({ success: true, review: newReview });
+    } catch (err: any) {
+      console.error("[Submit Review Error]:", err);
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
   // HERO SETTINGS DB Proxy
   app.get("/api/db/hero-settings", async (req, res) => {
     try {

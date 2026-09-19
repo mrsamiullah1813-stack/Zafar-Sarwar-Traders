@@ -20,7 +20,9 @@ import {
   PaintShadesConfig,
   FittingBuilderConfig,
   PaymentMethodConfig,
-  HowToOrderConfig
+  HowToOrderConfig,
+  ProductReview,
+  ProductRatingStats
 } from '../types';
 import { defaultFittingBuilderConfig } from '../data/defaultFittingBuilderData';
 import { parseNumericPrice } from '../utils/pricingUtils';
@@ -2863,3 +2865,122 @@ export async function uploadMediaToSupabase(
     return { error: err?.message || 'Media upload failed' };
   }
 }
+
+// =========================================================
+// REAL PRODUCTION DATABASE PRODUCT REVIEWS & RATINGS SERVICE
+// =========================================================
+
+/**
+ * Loads real verified reviews for a specific product or all products from production database
+ */
+export async function loadProductReviewsFromDatabase(productId?: string): Promise<ProductReview[]> {
+  try {
+    // 1. Primary: Server Proxy Route
+    const endpoint = productId 
+      ? `/api/db/products/${encodeURIComponent(productId)}/reviews`
+      : '/api/db/reviews';
+      
+    const res = await fetch(endpoint);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.reviews)) {
+        return data.reviews;
+      }
+    }
+  } catch (err) {
+    console.warn('[Product Reviews Service] Server endpoint fetch error, trying direct SDK:', err);
+  }
+
+  // 2. Direct Supabase SDK fallback
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('site_settings')
+        .select('theme_settings')
+        .eq('id', 'product_reviews')
+        .maybeSingle();
+
+      if (!error && data?.theme_settings?.reviews && Array.isArray(data.theme_settings.reviews)) {
+        const allReviews: ProductReview[] = data.theme_settings.reviews;
+        if (productId) {
+          return allReviews.filter(r => String(r.productId) === String(productId));
+        }
+        return allReviews;
+      }
+    } catch (sdkErr) {
+      console.warn('[Product Reviews Service] Direct Supabase SDK error:', sdkErr);
+    }
+  }
+
+  return [];
+}
+
+/**
+ * Submits a new real customer review to the production database
+ */
+export async function submitProductReviewToDatabase(payload: {
+  productId: string;
+  customerName: string;
+  customerId?: string;
+  rating: number;
+  reviewText: string;
+}): Promise<{ success: boolean; review?: ProductReview; error?: string }> {
+  try {
+    // 1. Primary: Server endpoint (handles validation, rate-limiting & atomic database persistence)
+    const res = await fetch('/api/db/reviews', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && data.review) {
+        return { success: true, review: data.review };
+      }
+      return { success: false, error: data?.error || 'Failed to save review to database.' };
+    }
+
+    const errData = await res.json().catch(() => null);
+    return { success: false, error: errData?.error || `Server responded with status ${res.status}` };
+  } catch (err: any) {
+    console.error('[Product Reviews Service] Review submission error:', err);
+    return { success: false, error: err?.message || 'Network error while submitting review to database.' };
+  }
+}
+
+/**
+ * Calculates real mathematical rating stats (average, count, star distribution) strictly from actual reviews
+ */
+export function calculateProductRatingStats(reviews: ProductReview[]): ProductRatingStats {
+  const totalCount = reviews.length;
+  const distribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+  
+  if (totalCount === 0) {
+    return {
+      averageRating: 0,
+      totalCount: 0,
+      distribution
+    };
+  }
+
+  let totalScore = 0;
+  for (const rev of reviews) {
+    const r = Math.max(1, Math.min(5, Math.round(Number(rev.rating) || 5)));
+    if (r in distribution) {
+      distribution[r as keyof typeof distribution] += 1;
+    }
+    totalScore += r;
+  }
+
+  const avg = Number((totalScore / totalCount).toFixed(1));
+
+  return {
+    averageRating: avg,
+    totalCount,
+    distribution
+  };
+}
+

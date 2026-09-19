@@ -34,6 +34,7 @@ import { getActivePaintShades, hasActivePaintShades } from '../utils/paintShadeU
 import { getProductSlug, getCategorySlug } from '../utils/slugUtils';
 import { navigateBackFromProduct } from '../utils/navigationHistory';
 import { normalizeProductImage, normalizeProductImages, handleImageError } from '../utils/imageUtils';
+import { ProductReviewsSection } from '../components/ProductReviewsSection';
 
 interface ProductDetailPageProps {
   product: Product;
@@ -572,6 +573,16 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
             </div>
 
           </div>
+        </div>
+
+        {/* REAL DATABASE PRODUCT REVIEWS & RATINGS SECTION */}
+        <div className="pt-8">
+          <ProductReviewsSection
+            productId={product.id}
+            productName={product.name}
+            productCategory={product.category}
+            onNavigate={onNavigate}
+          />
         </div>
 
         {/* RELATED PRODUCTS */}
