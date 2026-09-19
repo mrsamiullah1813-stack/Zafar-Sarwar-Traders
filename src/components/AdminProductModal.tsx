@@ -763,37 +763,19 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
           </div>
 
           {/* Rating & Review Count */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1">
+          <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                 <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                <span>Customer Rating (1.0 – 5.0)</span>
-              </label>
-              <input
-                type="number"
-                step="0.1"
-                min="1.0"
-                max="5.0"
-                value={formData.rating ?? 4.8}
-                onChange={(e) => setFormData({ ...formData, rating: parseFloat(e.target.value) || 4.8 })}
-                placeholder="4.8"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
-              />
+                <span>Storefront Dynamic Customer Reviews</span>
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 font-mono border border-blue-500/20">
+                Live Database Synchronized
+              </span>
             </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Verified Reviews Count
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={formData.reviewsCount ?? 12}
-                onChange={(e) => setFormData({ ...formData, reviewsCount: parseInt(e.target.value, 10) || 0 })}
-                placeholder="12"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
-              />
-            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Product card ratings and review counts across the store are calculated directly from genuine customer reviews in the database. Manual overrides are disabled to ensure authentic ratings.
+            </p>
           </div>
 
           {/* 🔥 PRODUCT SALE & DISCOUNT PRICING SYSTEM (OPTIONAL PER PRODUCT) */}

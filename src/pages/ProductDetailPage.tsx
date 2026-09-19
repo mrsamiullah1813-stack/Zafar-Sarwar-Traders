@@ -35,6 +35,7 @@ import { getProductSlug, getCategorySlug } from '../utils/slugUtils';
 import { navigateBackFromProduct } from '../utils/navigationHistory';
 import { normalizeProductImage, normalizeProductImages, handleImageError } from '../utils/imageUtils';
 import { ProductReviewsSection } from '../components/ProductReviewsSection';
+import { ProductCardRating } from '../components/ProductCardRating';
 
 interface ProductDetailPageProps {
   product: Product;
@@ -399,11 +400,14 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                   {product.name}
                 </h1>
 
-                {product.sku && (
-                  <div className="text-xs font-mono text-slate-400">
-                    SKU: {product.sku}
-                  </div>
-                )}
+                <div className="flex items-center gap-3">
+                  <ProductCardRating productId={product.id} />
+                  {product.sku && (
+                    <span className="text-xs font-mono text-slate-400">
+                      SKU: {product.sku}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Pricing Box */}
@@ -624,7 +628,10 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                       />
                     </div>
                     <div className="pt-3 space-y-1.5">
-                      <div className="text-[10px] font-bold text-blue-600 uppercase">{rel.category}</div>
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[10px] font-bold text-blue-600 uppercase truncate">{rel.category}</span>
+                        <ProductCardRating productId={rel.id} />
+                      </div>
                       <h3 className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-2">
                         {rel.name}
                       </h3>

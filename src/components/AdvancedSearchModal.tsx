@@ -3,6 +3,7 @@ import { Search, X, Filter, ArrowUpDown, Tag, Sparkles, ShoppingBag, Eye, Check,
 import { Product, ProductCategory, ProductBrand } from '../types';
 import { filterProducts, parseNaturalLanguageQuery, getNumericPrice, getInstantSearchSuggestions } from '../utils/searchUtils';
 import { ProductSaleBadge } from './ProductSaleBadge';
+import { ProductCardRating } from './ProductCardRating';
 import { getProductPricingDetails } from '../utils/pricingUtils';
 import { trackSearchQuery } from '../utils/analyticsStorage';
 import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
@@ -479,9 +480,12 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
                       {/* DETAILS */}
                       <div className="p-3.5 flex-1 flex flex-col justify-between gap-2.5">
                         <div>
-                          <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider font-mono">
-                            {product.category}
-                          </p>
+                          <div className="flex items-center justify-between gap-1 mb-0.5">
+                            <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider font-mono truncate">
+                              {product.category}
+                            </p>
+                            <ProductCardRating productId={product.id} />
+                          </div>
                           <h4 
                             onClick={() => { onSelectProduct(product); onClose(); }}
                             className="text-xs font-bold text-slate-900 line-clamp-2 hover:text-blue-600 transition-colors cursor-pointer mt-0.5"

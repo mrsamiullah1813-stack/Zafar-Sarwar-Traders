@@ -3,6 +3,7 @@ import { Search, ShoppingBag, Eye, MessageCircle, Check, ArrowLeft, PackageCheck
 import { ProductBrand, Product, ProductCategory, BusinessConfig } from '../types';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ProductSaleBadge } from '../components/ProductSaleBadge';
+import { ProductCardRating } from '../components/ProductCardRating';
 import { getProductPricingDetails, buildProductWhatsAppOrderUrl } from '../utils/pricingUtils';
 import { getProductSlug } from '../utils/slugUtils';
 import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
@@ -253,8 +254,11 @@ export const BrandDetailPage: React.FC<BrandDetailPageProps> = ({
 
                   <div className="p-3 sm:p-4 flex-1 flex flex-col justify-between space-y-2 sm:space-y-3">
                     <div>
-                      <div className="text-[10px] sm:text-[11px] font-bold text-blue-600 uppercase tracking-wide">
-                        {product.category || brand.name}
+                      <div className="flex items-center justify-between gap-1 mb-1">
+                        <span className="text-[10px] sm:text-[11px] font-bold text-blue-600 uppercase tracking-wide truncate">
+                          {product.category || brand.name}
+                        </span>
+                        <ProductCardRating productId={product.id} />
                       </div>
                       <h2 
                         className="text-xs sm:text-sm font-bold text-slate-900 hover:text-blue-600 transition-colors cursor-pointer line-clamp-2 leading-snug mt-1"

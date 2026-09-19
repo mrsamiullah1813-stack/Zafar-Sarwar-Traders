@@ -22,6 +22,7 @@ import {
 import { Product, BusinessConfig, ProductCategory } from '../types';
 import { ProductSaleBadge } from './ProductSaleBadge';
 import { SaleCountdownTimer } from './SaleCountdownTimer';
+import { ProductCardRating } from './ProductCardRating';
 import { getProductPricingDetails, getProductVariantDisplaySummary, hasActiveVariants, getActiveProductPrice, buildProductWhatsAppOrderUrl } from '../utils/pricingUtils';
 import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
 
@@ -397,12 +398,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                     <div>
                       <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-semibold text-blue-600 uppercase tracking-wider mb-1">
                         <span className="truncate max-w-[90px] sm:max-w-[140px]">{product.brand || product.category}</span>
-                        <div className="flex items-center gap-0.5 sm:gap-1 text-amber-500">
-                          <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-amber-400" />
-                          <span className="text-slate-700 font-mono text-[9px] sm:text-[10px] font-bold">
-                            {typeof product.rating === 'number' ? product.rating.toFixed(1) : (product.rating || '4.8')}
-                          </span>
-                        </div>
+                        <ProductCardRating productId={product.id} />
                       </div>
 
                       <h3 className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-blue-600 transition-colors line-clamp-2 leading-snug">

@@ -4248,26 +4248,27 @@
       {
         "id": "banner-1",
         "imageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789801499997-al0mjh-1789801497049-59ux9ia.jpeg",
+        "mobileImageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789804135846-mtmaqu-1789804132989-46c3abf.jpeg",
         "title": "Luxury Sanitaryware & Complete Bathroom Solutions",
         "linkUrl": "#products",
         "openInNewTab": false,
         "isActive": true,
-        "displayOrder": 0,
-        "mobileImageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789804135846-mtmaqu-1789804132989-46c3abf.jpeg"
+        "displayOrder": 0
       },
       {
         "id": "banner-2",
         "imageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789801539280-l1otl1-1789801536418-ykx8vyp.jpeg",
+        "mobileImageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789804156102-8fxj59-1789804153274-a9evqmv.jpeg",
         "title": "Premium Sanitary and Building Materials",
         "linkUrl": "#products",
         "openInNewTab": false,
         "isActive": true,
-        "displayOrder": 1,
-        "mobileImageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789804156102-8fxj59-1789804153274-a9evqmv.jpeg"
+        "displayOrder": 1
       },
       {
         "id": "banner-3",
-        "imageUrl": "https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&w=1920&q=85",
+        "imageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789822099724-xzjok9-1789822096542-q2se50q.jpeg",
+        "mobileImageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789822049719-k42gsh-1789822043651-3h5d606.png",
         "title": "Designer Wellness & High-Flow Rainfall Showers",
         "linkUrl": "/categories",
         "openInNewTab": false,
@@ -4306,26 +4307,27 @@
       {
         "id": "banner-1",
         "imageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789801499997-al0mjh-1789801497049-59ux9ia.jpeg",
+        "mobileImageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789804135846-mtmaqu-1789804132989-46c3abf.jpeg",
         "title": "Luxury Sanitaryware & Complete Bathroom Solutions",
         "linkUrl": "#products",
         "openInNewTab": false,
         "isActive": true,
-        "displayOrder": 0,
-        "mobileImageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789804135846-mtmaqu-1789804132989-46c3abf.jpeg"
+        "displayOrder": 0
       },
       {
         "id": "banner-2",
         "imageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789801539280-l1otl1-1789801536418-ykx8vyp.jpeg",
+        "mobileImageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789804156102-8fxj59-1789804153274-a9evqmv.jpeg",
         "title": "Premium Sanitary and Building Materials",
         "linkUrl": "#products",
         "openInNewTab": false,
         "isActive": true,
-        "displayOrder": 1,
-        "mobileImageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789804156102-8fxj59-1789804153274-a9evqmv.jpeg"
+        "displayOrder": 1
       },
       {
         "id": "banner-3",
-        "imageUrl": "https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&w=1920&q=85",
+        "imageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789822099724-xzjok9-1789822096542-q2se50q.jpeg",
+        "mobileImageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789822049719-k42gsh-1789822043651-3h5d606.png",
         "title": "Designer Wellness & High-Flow Rainfall Showers",
         "linkUrl": "/categories",
         "openInNewTab": false,
@@ -4362,26 +4364,27 @@
     {
       "id": "banner-1",
       "imageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789801499997-al0mjh-1789801497049-59ux9ia.jpeg",
+      "mobileImageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789804135846-mtmaqu-1789804132989-46c3abf.jpeg",
       "title": "Luxury Sanitaryware & Complete Bathroom Solutions",
       "linkUrl": "#products",
       "openInNewTab": false,
       "isActive": true,
-      "displayOrder": 0,
-      "mobileImageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789804135846-mtmaqu-1789804132989-46c3abf.jpeg"
+      "displayOrder": 0
     },
     {
       "id": "banner-2",
       "imageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789801539280-l1otl1-1789801536418-ykx8vyp.jpeg",
+      "mobileImageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789804156102-8fxj59-1789804153274-a9evqmv.jpeg",
       "title": "Premium Sanitary and Building Materials",
       "linkUrl": "#products",
       "openInNewTab": false,
       "isActive": true,
-      "displayOrder": 1,
-      "mobileImageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789804156102-8fxj59-1789804153274-a9evqmv.jpeg"
+      "displayOrder": 1
     },
     {
       "id": "banner-3",
-      "imageUrl": "https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&w=1920&q=85",
+      "imageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789822099724-xzjok9-1789822096542-q2se50q.jpeg",
+      "mobileImageUrl": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/hero-media/uploads/1789822049719-k42gsh-1789822043651-3h5d606.png",
       "title": "Designer Wellness & High-Flow Rainfall Showers",
       "linkUrl": "/categories",
       "openInNewTab": false,
@@ -4391,24 +4394,25 @@
   ],
   "zst_product_reviews_v1": [
     {
-      "id": "rev-1789820321078-fwbu51n",
-      "productId": "test-prod-101",
-      "customerName": "Customer Test",
+      "id": "rev-1789823099611-xqe8moh",
+      "productId": "prod-1788266771036",
+      "customerName": "Ahmad Raza",
       "rating": 5,
-      "reviewText": "High quality fitting tools!",
-      "createdAt": "2026-09-19T12:18:41.078Z",
-      "updatedAt": "2026-09-19T12:18:41.078Z",
+      "reviewText": "Outstanding finish and material!",
+      "createdAt": "2026-09-19T13:04:59.611Z",
+      "updatedAt": "2026-09-19T13:04:59.611Z",
       "status": "published"
     },
     {
-      "id": "rev-1789820092624-c3fucic",
-      "rating": 5,
-      "status": "published",
-      "createdAt": "2026-09-19T12:14:52.624Z",
-      "productId": "test-prod-1",
-      "updatedAt": "2026-09-19T12:14:52.624Z",
-      "reviewText": "Great quality product!",
-      "customerName": "John Doe"
+      "id": "rev-1789820649302-u1mgih9",
+      "productId": "prod-1788266771036",
+      "customerName": "Sami Ullah",
+      "customerId": "ZFT-CUST-1001",
+      "rating": 4,
+      "reviewText": "Very good quality i am satisfied.",
+      "createdAt": "2026-09-19T12:24:09.302+00:00",
+      "updatedAt": "2026-09-19T12:24:09.302+00:00",
+      "status": "published"
     }
   ]
 }

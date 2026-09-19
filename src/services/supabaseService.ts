@@ -3038,6 +3038,9 @@ export async function submitProductReviewToDatabase(payload: {
         if (data && data.success && data.review) {
           const mapped = mapDbReviewToProductReview(data.review);
           saveReviewToLocalCache(mapped);
+          if (typeof window !== 'undefined') {
+            try { window.dispatchEvent(new CustomEvent('product-reviews-updated', { detail: { productId: mapped.productId } })); } catch {}
+          }
           return { success: true, review: mapped };
         }
       } else if (res.status !== 404) {
@@ -3076,6 +3079,9 @@ export async function submitProductReviewToDatabase(payload: {
         if (!insertError) {
           const saved = inserted ? mapDbReviewToProductReview(inserted) : newReview;
           saveReviewToLocalCache(saved);
+          if (typeof window !== 'undefined') {
+            try { window.dispatchEvent(new CustomEvent('product-reviews-updated', { detail: { productId: saved.productId } })); } catch {}
+          }
           return { success: true, review: saved };
         }
 
@@ -3107,6 +3113,9 @@ export async function submitProductReviewToDatabase(payload: {
           }, { onConflict: 'id' });
 
         if (!upsertErr) {
+          if (typeof window !== 'undefined') {
+            try { window.dispatchEvent(new CustomEvent('product-reviews-updated', { detail: { productId: newReview.productId } })); } catch {}
+          }
           return { success: true, review: newReview };
         }
       } catch (settingsErr) {
@@ -3115,6 +3124,9 @@ export async function submitProductReviewToDatabase(payload: {
     }
 
     // 3. Graceful fallback: return saved local review so customer experience is completely smooth
+    if (typeof window !== 'undefined') {
+      try { window.dispatchEvent(new CustomEvent('product-reviews-updated', { detail: { productId: newReview.productId } })); } catch {}
+    }
     return { success: true, review: newReview };
   } catch (err: any) {
     console.error('[Product Reviews Service] Review submission error:', err);
