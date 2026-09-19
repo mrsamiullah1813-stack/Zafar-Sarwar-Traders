@@ -1484,6 +1484,27 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
   async function getStoredProductReviews(): Promise<any[]> {
     if (dbClient) {
       try {
+        // 1. Check dedicated product_reviews table first
+        const { data: tableData, error: tableErr } = await dbClient
+          .from("product_reviews")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (!tableErr && Array.isArray(tableData) && tableData.length > 0) {
+          return tableData.map((row: any) => ({
+            id: String(row.id),
+            productId: String(row.product_id || row.productId || ""),
+            customerName: String(row.customer_name || row.customerName || "Customer"),
+            customerId: row.customer_id || row.customerId || undefined,
+            rating: Math.max(1, Math.min(5, Number(row.rating) || 5)),
+            reviewText: String(row.review_text || row.reviewText || ""),
+            createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+            updatedAt: row.updated_at || row.updatedAt || undefined,
+            status: row.status || "published"
+          }));
+        }
+
+        // 2. Fallback to site_settings
         const { data, error } = await dbClient
           .from("site_settings")
           .select("theme_settings")
@@ -1501,12 +1522,30 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
     return [];
   }
 
-  async function persistProductReviews(reviews: any[]): Promise<boolean> {
+  async function persistProductReviews(reviews: any[], newReviewToInsert?: any): Promise<boolean> {
     cmsDataStore[REVIEWS_STORAGE_KEY] = reviews;
     await persistDataStoreToDisk();
 
     if (dbClient) {
       try {
+        if (newReviewToInsert) {
+          try {
+            await dbClient.from("product_reviews").upsert({
+              id: newReviewToInsert.id,
+              product_id: newReviewToInsert.productId,
+              customer_name: newReviewToInsert.customerName,
+              customer_id: newReviewToInsert.customerId || null,
+              rating: newReviewToInsert.rating,
+              review_text: newReviewToInsert.reviewText,
+              status: newReviewToInsert.status || "published",
+              created_at: newReviewToInsert.createdAt || new Date().toISOString(),
+              updated_at: newReviewToInsert.updatedAt || new Date().toISOString()
+            }, { onConflict: "id" });
+          } catch (tblErr) {
+            console.warn("[Reviews DB Table Insert Notice]:", tblErr);
+          }
+        }
+
         await dbClient.from("site_settings").upsert({
           id: "product_reviews",
           theme_settings: { reviews },
@@ -1520,18 +1559,21 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
     return true;
   }
 
-  // GET All Product Reviews
-  app.get("/api/db/reviews", async (req, res) => {
+  // GET All Product Reviews (with URL aliases to avoid any 404)
+  const handleGetReviews = async (req: express.Request, res: express.Response) => {
     try {
       const allReviews = await getStoredProductReviews();
       return res.json({ success: true, reviews: allReviews });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
-  });
+  };
+  app.get("/api/db/reviews", handleGetReviews);
+  app.get("/api/reviews", handleGetReviews);
+  app.get("/api/product-reviews", handleGetReviews);
 
   // GET Reviews for a specific product ID
-  app.get("/api/db/products/:productId/reviews", async (req, res) => {
+  const handleGetProductReviews = async (req: express.Request, res: express.Response) => {
     try {
       const { productId } = req.params;
       const allReviews = await getStoredProductReviews();
@@ -1540,10 +1582,12 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
-  });
+  };
+  app.get("/api/db/products/:productId/reviews", handleGetProductReviews);
+  app.get("/api/products/:productId/reviews", handleGetProductReviews);
 
-  // POST a new verified review
-  app.post("/api/db/reviews", async (req, res) => {
+  // POST a new verified review (with URL aliases to avoid any 404)
+  const handlePostReview = async (req: express.Request, res: express.Response) => {
     try {
       const { productId, customerName, customerId, rating, reviewText } = req.body;
       
@@ -1594,14 +1638,17 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
       };
 
       const updatedReviews = [newReview, ...allReviews];
-      await persistProductReviews(updatedReviews);
+      await persistProductReviews(updatedReviews, newReview);
 
       return res.json({ success: true, review: newReview });
     } catch (err: any) {
       console.error("[Submit Review Error]:", err);
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
-  });
+  };
+  app.post("/api/db/reviews", handlePostReview);
+  app.post("/api/reviews", handlePostReview);
+  app.post("/api/product-reviews", handlePostReview);
 
   // HERO SETTINGS DB Proxy
   app.get("/api/db/hero-settings", async (req, res) => {

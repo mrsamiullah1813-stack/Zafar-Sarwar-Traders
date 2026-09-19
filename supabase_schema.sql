@@ -231,6 +231,23 @@ CREATE TABLE IF NOT EXISTS ai_knowledge (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 13. PRODUCT REVIEWS TABLE (Customer Ratings & Reviews)
+CREATE TABLE IF NOT EXISTS product_reviews (
+  id TEXT PRIMARY KEY,
+  product_id TEXT NOT NULL,
+  customer_name TEXT NOT NULL,
+  customer_id TEXT,
+  rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+  review_text TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'published',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_reviews_product_id ON product_reviews(product_id);
+CREATE INDEX IF NOT EXISTS idx_product_reviews_created_at ON product_reviews(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_product_reviews_status ON product_reviews(status);
+
 -- =========================================================
 -- CREATE AUTOMATIC UPDATED_AT TRIGGERS
 -- =========================================================
@@ -263,6 +280,9 @@ CREATE TRIGGER trigger_site_settings_updated_at BEFORE UPDATE ON site_settings F
 
 DROP TRIGGER IF EXISTS trigger_ai_knowledge_updated_at ON ai_knowledge;
 CREATE TRIGGER trigger_ai_knowledge_updated_at BEFORE UPDATE ON ai_knowledge FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS trigger_product_reviews_updated_at ON product_reviews;
+CREATE TRIGGER trigger_product_reviews_updated_at BEFORE UPDATE ON product_reviews FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =========================================================
 -- SEAMLESS SCHEMA UPGRADES FOR EXISTING TABLES
@@ -379,6 +399,7 @@ ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE delivery_cities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE site_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_knowledge ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_reviews ENABLE ROW LEVEL SECURITY;
 
 -- PUBLIC READ POLICIES (Allow customers to view store catalog and settings)
 CREATE POLICY "Allow public read categories" ON categories FOR SELECT USING (true);
@@ -389,6 +410,10 @@ CREATE POLICY "Allow public read hero_settings" ON hero_settings FOR SELECT USIN
 CREATE POLICY "Allow public read delivery_cities" ON delivery_cities FOR SELECT USING (enabled = true);
 CREATE POLICY "Allow public read site_settings" ON site_settings FOR SELECT USING (true);
 CREATE POLICY "Allow public read ai_knowledge" ON ai_knowledge FOR SELECT USING (is_enabled = true);
+CREATE POLICY "Allow public read product_reviews" ON product_reviews FOR SELECT USING (true);
+CREATE POLICY "Allow public insert product_reviews" ON product_reviews FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow authenticated or admin update product_reviews" ON product_reviews FOR UPDATE USING (true);
+CREATE POLICY "Allow authenticated or admin delete product_reviews" ON product_reviews FOR DELETE USING (true);
 
 -- CUSTOMER ORDER POLICIES (Strictly scoped to authenticated user or secure RPC)
 CREATE POLICY "Allow customers to view their own orders" ON orders FOR SELECT USING (

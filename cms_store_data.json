@@ -4391,14 +4391,24 @@
   ],
   "zst_product_reviews_v1": [
     {
-      "id": "rev-1789814595734-2xb3ews",
-      "productId": "prod-test-verification",
-      "customerName": "Engr. Bilal Ahmad",
+      "id": "rev-1789820321078-fwbu51n",
+      "productId": "test-prod-101",
+      "customerName": "Customer Test",
       "rating": 5,
-      "reviewText": "Premium quality chrome finish and heavy brass core. Absolutely worth the price.",
-      "createdAt": "2026-09-19T10:43:15.734Z",
-      "updatedAt": "2026-09-19T10:43:15.734Z",
+      "reviewText": "High quality fitting tools!",
+      "createdAt": "2026-09-19T12:18:41.078Z",
+      "updatedAt": "2026-09-19T12:18:41.078Z",
       "status": "published"
+    },
+    {
+      "id": "rev-1789820092624-c3fucic",
+      "rating": 5,
+      "status": "published",
+      "createdAt": "2026-09-19T12:14:52.624Z",
+      "productId": "test-prod-1",
+      "updatedAt": "2026-09-19T12:14:52.624Z",
+      "reviewText": "Great quality product!",
+      "customerName": "John Doe"
     }
   ]
 }
