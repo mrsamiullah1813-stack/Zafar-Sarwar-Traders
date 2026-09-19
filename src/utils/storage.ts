@@ -1,4 +1,4 @@
-import { BusinessConfig, Product, ProductCategory, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, CartItem, CustomerOrder, CheckoutSettings, DeliverySettings, CityDeliveryInfo, ThemeOption, ThemeSettings, AnnouncementBarSettings, AnnouncementItem, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig, PricingTypographySettings, defaultPricingTypography, Coupon, CouponValidationResult, AppliedCouponState, PaymentMethodConfig, HowToOrderConfig, HowToOrderStep } from '../types';
+import { BusinessConfig, Product, ProductCategory, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, CartItem, CustomerOrder, CheckoutSettings, DeliverySettings, CityDeliveryInfo, ThemeOption, ThemeSettings, AnnouncementBarSettings, AnnouncementItem, HeroSettings, HeroBannerSlide, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig, PricingTypographySettings, defaultPricingTypography, Coupon, CouponValidationResult, AppliedCouponState, PaymentMethodConfig, HowToOrderConfig, HowToOrderStep } from '../types';
 import { initialBusinessConfig, productCategories, featuredProducts, galleryItems, productBrands, defaultStatCounters } from '../data/storeData';
 import { broadcastNewOrderPlaced } from './orderNotificationUtils';
 import { generateCityTiersForBaseFee, generateHeavyCityTiersForBaseFee } from './deliveryFeeCalculator';
@@ -72,8 +72,39 @@ export const STORAGE_KEYS = {
   HOW_TO_ORDER_GUIDE: 'zst_how_to_order_guide_v1',
 };
 
+export const defaultHeroBanners: HeroBannerSlide[] = [
+  {
+    id: 'banner-1',
+    imageUrl: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1920&q=85',
+    title: 'Luxury Sanitaryware & Complete Bathroom Solutions',
+    linkUrl: '#products',
+    openInNewTab: false,
+    isActive: true,
+    displayOrder: 0
+  },
+  {
+    id: 'banner-2',
+    imageUrl: 'https://images.unsplash.com/photo-1585412727339-54e4bae3bbf9?auto=format&fit=crop&w=1920&q=85',
+    title: 'Architectural Faucets, Mixers & Shower Systems',
+    linkUrl: '/store',
+    openInNewTab: false,
+    isActive: true,
+    displayOrder: 1
+  },
+  {
+    id: 'banner-3',
+    imageUrl: 'https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&w=1920&q=85',
+    title: 'Designer Wellness & High-Flow Rainfall Showers',
+    linkUrl: '/categories',
+    openInNewTab: false,
+    isActive: true,
+    displayOrder: 2
+  }
+];
+
 export const defaultHeroSettings: HeroSettings = {
   isEnabled: true,
+  banners: defaultHeroBanners,
   badgeText: 'ZAFAR SARWAR TRADERS',
   heading: 'Premium Sanitaryware\n& Bathroom Solutions',
   subheading: 'Explore premium sanitaryware, bathroom fittings, showers, basins, tiles, paints and complete bathroom solutions.',
@@ -1669,7 +1700,11 @@ export const loadHeroSettings = (): HeroSettings => {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.HERO_SETTINGS);
     if (saved !== null) {
-      return { ...defaultHeroSettings, ...JSON.parse(saved) };
+      const parsed = JSON.parse(saved);
+      const banners = Array.isArray(parsed.banners) && parsed.banners.length > 0
+        ? parsed.banners
+        : defaultHeroBanners;
+      return { ...defaultHeroSettings, ...parsed, banners };
     }
   } catch (e) {
     console.error('Error loading hero settings', e);

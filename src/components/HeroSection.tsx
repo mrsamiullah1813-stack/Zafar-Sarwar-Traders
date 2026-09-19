@@ -1,24 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  ArrowRight, 
-  ChevronLeft, 
-  ChevronRight, 
-  ShoppingBag, 
-  ShieldCheck, 
-  Truck, 
-  Award,
-  Layers,
-  Sparkles,
-  CheckCircle2,
-  MessageCircle,
-  Eye,
-  Check
-} from 'lucide-react';
-import { Product, ProductCategory, ProductBrand, HeroSettings } from '../types';
-import { getProductPricingDetails } from '../utils/pricingUtils';
+import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
+import { Product, ProductCategory, ProductBrand, HeroSettings, HeroBannerSlide } from '../types';
+import { defaultHeroBanners } from '../utils/storage';
 
-interface HeroSectionProps {
+export interface HeroSectionProps {
   products: Product[];
   categories: ProductCategory[];
   brands: ProductBrand[];
@@ -31,39 +17,6 @@ interface HeroSectionProps {
   onNavigateToCategories?: () => void;
 }
 
-interface HeroSlide {
-  id: string;
-  badge: string;
-  title: string;
-  subtitle: string;
-  categoryTag: string;
-  image: string;
-  product?: Product;
-}
-
-// Fallback high-resolution images for key departments
-const FALLBACK_CATEGORY_IMAGES = {
-  sanitary: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1000&q=80',
-  faucets: 'https://images.unsplash.com/photo-1585412727339-54e4bae3bbf9?auto=format&fit=crop&w=1000&q=80',
-  pipes: 'https://images.unsplash.com/photo-1541888946425-d0fbb186156f?auto=format&fit=crop&w=1000&q=80',
-  paints: 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?auto=format&fit=crop&w=1000&q=80'
-};
-
-const slideVariants = {
-  enter: ({ direction, isMobile }: { direction: number; isMobile: boolean }) => ({
-    x: direction > 0 ? (isMobile ? '22%' : '100%') : (isMobile ? '-22%' : '-100%'),
-    opacity: 0
-  }),
-  center: {
-    x: '0%',
-    opacity: 1
-  },
-  exit: ({ direction, isMobile }: { direction: number; isMobile: boolean }) => ({
-    x: direction > 0 ? (isMobile ? '-22%' : '-100%') : (isMobile ? '22%' : '100%'),
-    opacity: 0
-  })
-};
-
 export const HeroSection: React.FC<HeroSectionProps> = ({
   products,
   categories,
@@ -75,620 +28,342 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   onNavigateToStore,
   onNavigateToCategories
 }) => {
-  // Respect master on/off toggle from AdminHeroManager
+  // If explicitly disabled in settings, return null
   if (heroSettings && heroSettings.isEnabled === false) {
     return null;
   }
 
-  // Mobile viewport detection for performance scaling
-  const [isMobile, setIsMobile] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return window.innerWidth < 768;
-    }
-    return false;
-  });
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    window.addEventListener('resize', handleResize, { passive: true });
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Root ref and visibility observer to pause autoplay when offscreen or tab inactive
-  const heroRef = useRef<HTMLElement>(null);
-  const [isVisible, setIsVisible] = useState(true);
-
-  useEffect(() => {
-    if (!('IntersectionObserver' in window) || !heroRef.current) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setIsVisible(entry.isIntersecting);
-      },
-      { threshold: 0.05 }
-    );
-    observer.observe(heroRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        setIsVisible(false);
-      } else if (heroRef.current) {
-        const rect = heroRef.current.getBoundingClientRect();
-        const inView = rect.top < window.innerHeight && rect.bottom > 0;
-        setIsVisible(inView);
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, []);
-
-  // 1. Resolve safe, visible products
-  const safeProducts = Array.isArray(products) ? products.filter(p => !p.isHidden) : [];
-
-  // 2. Build slides dynamically based on Admin configuration or curated database products
-  const slides: HeroSlide[] = React.useMemo(() => {
-    const customIds = heroSettings?.heroProductIds || [];
-    const customOrder = heroSettings?.customProductOrder || [];
-    const imageOverrides = heroSettings?.productImageOverrides || {};
-
-    let selectedProducts: Product[] = [];
-
-    if (customIds.length > 0) {
-      // Find products selected by Admin
-      const matched = safeProducts.filter(p => customIds.includes(p.id));
-      if (customOrder.length > 0) {
-        const orderMap = new Map<string, number>(customOrder.map((id, index) => [id, index]));
-        matched.sort((a, b) => {
-          const orderA = orderMap.get(a.id) ?? 999;
-          const orderB = orderMap.get(b.id) ?? 999;
-          return orderA - orderB;
-        });
-      }
-      selectedProducts = matched;
-    }
-
-    // If no custom products chosen, fallback to featured or top category products
-    if (selectedProducts.length === 0) {
-      const featured = safeProducts.filter(p => p.isFeatured || p.isHeroFeatured);
-      if (featured.length >= 3) {
-        selectedProducts = featured.slice(0, 5);
-      } else {
-        // Diverse selection across categories
-        const sanitary = safeProducts.find(p => p.category?.toLowerCase().includes('sanitary') || p.name?.toLowerCase().includes('commode') || p.name?.toLowerCase().includes('basin'));
-        const faucets = safeProducts.find(p => p.category?.toLowerCase().includes('faucet') || p.name?.toLowerCase().includes('mixer') || p.name?.toLowerCase().includes('shower'));
-        const pipes = safeProducts.find(p => p.category?.toLowerCase().includes('pipe') || p.category?.toLowerCase().includes('tank') || p.name?.toLowerCase().includes('tank'));
-        const paints = safeProducts.find(p => p.category?.toLowerCase().includes('paint') || p.name?.toLowerCase().includes('paint') || p.name?.toLowerCase().includes('emulsion'));
-
-        const pool = [sanitary, faucets, pipes, paints].filter(Boolean) as Product[];
-        safeProducts.forEach(p => {
-          if (!pool.some(item => item.id === p.id) && pool.length < 5) {
-            pool.push(p);
-          }
-        });
-        selectedProducts = pool;
+  // Active banner slides resolution
+  const activeBanners: HeroBannerSlide[] = React.useMemo(() => {
+    if (heroSettings?.banners && Array.isArray(heroSettings.banners) && heroSettings.banners.length > 0) {
+      const filtered = heroSettings.banners.filter(b => b.isActive !== false && b.imageUrl);
+      if (filtered.length > 0) {
+        return [...filtered].sort((a, b) => a.displayOrder - b.displayOrder);
       }
     }
+    return defaultHeroBanners;
+  }, [heroSettings?.banners]);
 
-    // Map resolved products to clean Hero Slides
-    return selectedProducts.map((prod, index) => {
-      const overrideImg = imageOverrides[prod.id];
-      const productImg = overrideImg || prod.image || prod.images?.[0] || FALLBACK_CATEGORY_IMAGES.sanitary;
-      const catName = prod.category || (categories.find(c => c.id === prod.categoryId)?.name) || 'Premium Quality';
-      const brandName = prod.brand || (brands.find(b => b.id === prod.brandId)?.name) || 'Zafar Sarwar Traders';
-
-      return {
-        id: `hero-slide-${prod.id}-${index}`,
-        badge: `${brandName.toUpperCase()} • ${catName.toUpperCase()}`,
-        title: prod.name,
-        subtitle: prod.description || `High-grade ${catName.toLowerCase()} engineered for durability, premium aesthetic appeal, and long-lasting performance.`,
-        categoryTag: catName,
-        image: productImg,
-        product: prod
-      };
-    });
-  }, [safeProducts, heroSettings, categories, brands]);
-
-  // Fallback if no products exist at all
-  const activeSlides: HeroSlide[] = slides.length > 0 ? slides : [
-    {
-      id: 'fallback-1',
-      badge: heroSettings?.badgeText || 'ZAFAR SARWAR TRADERS',
-      title: heroSettings?.heading || 'Premium Sanitaryware & Bathroom Solutions',
-      subtitle: heroSettings?.subheading || 'Explore premium sanitaryware, bathroom fittings, showers, basins, tiles, paints and complete bathroom solutions.',
-      categoryTag: 'Authorized Distributor',
-      image: FALLBACK_CATEGORY_IMAGES.sanitary
-    }
-  ];
-
-  // State Management
-  const [[page, direction], setPage] = useState<[number, number]>([0, 0]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [direction, setDirection] = useState<1 | -1>(1);
   const [isPaused, setIsPaused] = useState(false);
-  const [addedToast, setAddedToast] = useState<string | null>(null);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchDeltaX, setTouchDeltaX] = useState<number>(0);
 
-  // Touch tracking for swipe gestures
-  const touchStartXRef = useRef<number | null>(null);
-  const touchStartYRef = useRef<number | null>(null);
-  const touchEndXRef = useRef<number | null>(null);
-  const touchEndYRef = useRef<number | null>(null);
+  // Settings configs
+  const autoPlay = heroSettings?.autoPlay ?? true;
+  const rotationDuration = Math.max(2, heroSettings?.rotationDurationSeconds ?? 5) * 1000;
+  const pauseOnHover = heroSettings?.pauseOnHover ?? true;
 
-  const durationSec = Math.max(3, heroSettings?.rotationDurationSeconds || 5);
-  const isAutoPlay = heroSettings?.autoPlay !== false;
-  const isPauseOnHover = heroSettings?.pauseOnHover !== false;
-
-  // Safe Index Wrap
-  const currentIndex = ((page % activeSlides.length) + activeSlides.length) % activeSlides.length;
-  const currentSlide = activeSlides[currentIndex];
-  const slideProduct = currentSlide.product;
-
-  // Navigation handlers
-  const paginate = useCallback((newDirection: number) => {
-    setPage(([prevPage]) => [prevPage + newDirection, newDirection]);
-  }, []);
+  // Safe navigation helpers
+  const totalBanners = activeBanners.length;
 
   const handleNext = useCallback(() => {
-    paginate(1);
-  }, [paginate]);
+    if (totalBanners <= 1) return;
+    setDirection(1);
+    setCurrentIndex(prev => (prev + 1) % totalBanners);
+  }, [totalBanners]);
 
   const handlePrev = useCallback(() => {
-    paginate(-1);
-  }, [paginate]);
+    if (totalBanners <= 1) return;
+    setDirection(-1);
+    setCurrentIndex(prev => (prev - 1 + totalBanners) % totalBanners);
+  }, [totalBanners]);
 
-  const handleGoToSlide = useCallback((index: number) => {
-    const diff = index - currentIndex;
-    if (diff !== 0) {
-      setPage([index, diff > 0 ? 1 : -1]);
-    }
+  const handleDotClick = useCallback((index: number) => {
+    if (index === currentIndex) return;
+    setDirection(index > currentIndex ? 1 : -1);
+    setCurrentIndex(index);
   }, [currentIndex]);
 
-  // Stable ref for auto-play callback to avoid re-binding interval constantly
-  const handleNextRef = useRef(handleNext);
+  // Autoplay timer
   useEffect(() => {
-    handleNextRef.current = handleNext;
-  }, [handleNext]);
+    if (!autoPlay || isPaused || totalBanners <= 1) return;
 
-  // Autoplay Timer with Hover Pause and Visibility Awareness
+    const timer = setInterval(() => {
+      handleNext();
+    }, rotationDuration);
+
+    return () => clearInterval(timer);
+  }, [autoPlay, isPaused, rotationDuration, totalBanners, handleNext]);
+
+  // Preload next image for instant transition
   useEffect(() => {
-    if (!isAutoPlay || isPaused || !isVisible || activeSlides.length <= 1) return;
-
-    const interval = setInterval(() => {
-      handleNextRef.current();
-    }, durationSec * 1000);
-
-    return () => clearInterval(interval);
-  }, [isAutoPlay, isPaused, isVisible, durationSec, activeSlides.length, page]);
-
-  // Track preloaded images to avoid redundant downloads
-  const preloadedUrls = useRef<Set<string>>(new Set());
-
-  // Preload next slide image smoothly in background without blocking main thread
-  useEffect(() => {
-    if (activeSlides.length <= 1) return;
-    const nextIdx = (currentIndex + 1) % activeSlides.length;
-    const nextSrc = activeSlides[nextIdx]?.image;
-    if (nextSrc && !preloadedUrls.current.has(nextSrc)) {
-      preloadedUrls.current.add(nextSrc);
-      const timer = setTimeout(() => {
-        const img = new Image();
-        img.src = nextSrc;
-      }, isMobile ? 250 : 150);
-      return () => clearTimeout(timer);
+    if (totalBanners <= 1) return;
+    const nextIdx = (currentIndex + 1) % totalBanners;
+    const nextBanner = activeBanners[nextIdx];
+    if (nextBanner?.imageUrl) {
+      const img = new Image();
+      img.src = nextBanner.imageUrl;
     }
-  }, [currentIndex, activeSlides, isMobile]);
+  }, [currentIndex, activeBanners, totalBanners]);
 
-  // Touch handlers for mobile swipe with vertical scroll preservation
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') handlePrev();
+      if (e.key === 'ArrowRight') handleNext();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handlePrev, handleNext]);
+
+  // Touch handlers for mobile swipe
   const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartXRef.current = e.touches[0].clientX;
-    touchStartYRef.current = e.touches[0].clientY;
-    touchEndXRef.current = e.touches[0].clientX;
-    touchEndYRef.current = e.touches[0].clientY;
+    setTouchStartX(e.touches[0].clientX);
+    setTouchDeltaX(0);
+    if (pauseOnHover) setIsPaused(true);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    touchEndXRef.current = e.touches[0].clientX;
-    touchEndYRef.current = e.touches[0].clientY;
+    if (touchStartX === null) return;
+    const currentX = e.touches[0].clientX;
+    setTouchDeltaX(currentX - touchStartX);
   };
 
   const handleTouchEnd = () => {
-    if (
-      touchStartXRef.current !== null && 
-      touchEndXRef.current !== null &&
-      touchStartYRef.current !== null &&
-      touchEndYRef.current !== null
-    ) {
-      const deltaX = touchStartXRef.current - touchEndXRef.current;
-      const deltaY = touchStartYRef.current - touchEndYRef.current;
-      const swipeThreshold = 35; // Minimum px for swipe
-      // Only register horizontal swipe if horizontal movement is greater than vertical movement
-      if (Math.abs(deltaX) > swipeThreshold && Math.abs(deltaX) > Math.abs(deltaY) * 1.3) {
-        if (deltaX > 0) {
-          handleNext();
-        } else {
-          handlePrev();
+    if (pauseOnHover) setIsPaused(false);
+    if (touchStartX === null) return;
+
+    const swipeThreshold = 50;
+    if (touchDeltaX < -swipeThreshold) {
+      handleNext();
+    } else if (touchDeltaX > swipeThreshold) {
+      handlePrev();
+    }
+    setTouchStartX(null);
+    setTouchDeltaX(0);
+  };
+
+  // Banner click routing
+  const handleBannerClick = (banner: HeroBannerSlide) => {
+    if (!banner.linkUrl) return;
+    const link = banner.linkUrl.trim();
+
+    // 1. External link
+    if (link.startsWith('http://') || link.startsWith('https://')) {
+      if (banner.openInNewTab) {
+        window.open(link, '_blank', 'noopener,noreferrer');
+      } else {
+        window.location.href = link;
+      }
+      return;
+    }
+
+    // 2. WhatsApp redirect
+    if (link.startsWith('whatsapp') || link.startsWith('https://wa.me/')) {
+      window.open(link.startsWith('http') ? link : 'https://wa.me/923108002863', '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    // 3. Anchor scrolling (e.g., #products, #contact)
+    if (link.startsWith('#')) {
+      const targetEl = document.querySelector(link);
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: 'smooth' });
+      }
+      return;
+    }
+
+    // 4. Store navigation
+    if (link === '/store' || link === 'store') {
+      if (onNavigateToStore) {
+        onNavigateToStore();
+      } else {
+        window.location.hash = '/store';
+      }
+      return;
+    }
+
+    // 5. Categories navigation
+    if (link === '/categories' || link === 'categories') {
+      if (onNavigateToCategories) {
+        onNavigateToCategories();
+      } else {
+        window.location.hash = '/categories';
+      }
+      return;
+    }
+
+    // 6. Product link matching (e.g., /product/123 or product ID/slug)
+    if (link.includes('/product/')) {
+      const parts = link.split('/product/');
+      const query = parts[1]?.trim().toLowerCase();
+      if (query && products && products.length > 0) {
+        const found = products.find(p => 
+          p.id.toLowerCase() === query || 
+          p.name.toLowerCase().replace(/\s+/g, '-').includes(query)
+        );
+        if (found) {
+          onSelectProduct(found);
+          return;
         }
       }
+      window.location.href = link;
+      return;
     }
-    touchStartXRef.current = null;
-    touchStartYRef.current = null;
-    touchEndXRef.current = null;
-    touchEndYRef.current = null;
-  };
 
-  // Quick Add to Cart with Toast
-  const handleQuickAdd = (e: React.MouseEvent, prod: Product) => {
-    e.stopPropagation();
-    if (onAddToCart) {
-      onAddToCart(prod, 1);
-      setAddedToast(prod.name);
-      setTimeout(() => setAddedToast(null), 2500);
+    // Default fallback: internal route or anchor
+    if (link.startsWith('/')) {
+      window.location.href = link;
     } else {
-      onSelectProduct(prod);
+      const el = document.getElementById(link);
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
-  // Pricing & metadata calculations
-  const pricing = slideProduct ? getProductPricingDetails(slideProduct) : null;
-  const brandName = slideProduct?.brand || (brands.find(b => b.id === slideProduct?.brandId)?.name) || 'Zafar Sarwar Traders';
-  const productImage = currentSlide.image;
+  const currentBanner = activeBanners[currentIndex] || activeBanners[0];
+  const isClickable = Boolean(currentBanner?.linkUrl);
 
-  // WhatsApp link generator
-  const getWhatsAppLink = (prod?: Product) => {
-    const phone = '923108002863';
-    const text = prod 
-      ? `Hello Zafar Sarwar Traders! I am interested in purchasing: "${prod.name}" (SKU: ${prod.sku || prod.id}). Please share price and delivery details.`
-      : `Hello Zafar Sarwar Traders! I would like to inquire about your sanitaryware, faucets, and construction materials catalog.`;
-    return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+  const slideVariants = {
+    enter: (dir: number) => ({
+      x: dir > 0 ? '100%' : '-100%',
+      opacity: 0
+    }),
+    center: {
+      x: '0%',
+      opacity: 1
+    },
+    exit: (dir: number) => ({
+      x: dir > 0 ? '-100%' : '100%',
+      opacity: 0
+    })
   };
-
-  // CTAs config
-  const showPrimaryBtn = heroSettings?.enablePrimaryBtn !== false;
-  const showSecondaryBtn = heroSettings?.enableSecondaryBtn !== false;
-  const showTertiaryBtn = heroSettings?.enableTertiaryBtn !== false;
-
-  const primaryBtnText = heroSettings?.primaryBtnText || 'View Full Details';
-  const secondaryBtnText = heroSettings?.secondaryBtnText || 'Add to Cart';
-  const tertiaryBtnText = heroSettings?.tertiaryBtnText || 'Order on WhatsApp';
 
   return (
     <section 
-      ref={heroRef}
-      id="hero-slider-section"
-      className="relative bg-slate-950 text-white overflow-hidden border-b border-slate-800/80 select-none touch-pan-y"
-      onMouseEnter={() => { if (isPauseOnHover) setIsPaused(true); }}
-      onMouseLeave={() => { if (isPauseOnHover) setIsPaused(false); }}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      aria-label="Featured Products Slider"
+      id="hero-banner-slider" 
+      aria-label="Promotional Banners"
+      className="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 pt-3 sm:pt-4 pb-2 sm:pb-3"
     >
-      {/* Background Architectural Canvas - Optimized for low mobile GPU fillrate */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-[#0b1324] to-slate-950" />
-        {/* Desktop ambient blur spheres - hidden on mobile to eliminate Gaussian blur GPU overhead */}
-        <div className="hidden sm:block absolute -top-32 -left-32 w-[500px] h-[500px] bg-blue-900/15 rounded-full blur-[130px]" />
-        <div className="hidden sm:block absolute -bottom-32 -right-32 w-[500px] h-[500px] bg-amber-600/10 rounded-full blur-[140px]" />
-        {/* Lightweight mobile ambient gradient - single render pass without blur kernels */}
-        <div className="sm:hidden absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-950/25 via-transparent to-transparent" />
-        <div 
-          className="absolute inset-0 opacity-[0.02] sm:opacity-[0.03]"
-          style={{
-            backgroundImage: `radial-gradient(#ffffff 1px, transparent 1px)`,
-            backgroundSize: '28px 28px'
-          }}
-        />
-      </div>
-
-      {/* Main Container */}
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16">
-        
-        {/* Toast Notification for Quick Cart Add */}
-        <AnimatePresence>
-          {addedToast && (
+      <div
+        className="relative w-full rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-900/80 border border-slate-800/80 shadow-2xl shadow-black/40 group select-none"
+        onMouseEnter={() => pauseOnHover && setIsPaused(true)}
+        onMouseLeave={() => pauseOnHover && setIsPaused(false)}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        {/* Aspect Ratio Container for Responsive Full Banner Display */}
+        {/* Mobile: 16/9, Tablet: 16/7, Desktop: 21/8 -> displays entire graphic banner without distortion */}
+        <div className="relative w-full aspect-[16/9] sm:aspect-[16/7] md:aspect-[21/8] overflow-hidden">
+          <AnimatePresence initial={false} custom={direction} mode="popLayout">
             <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="fixed top-24 right-6 z-50 px-4 py-3 bg-emerald-900/95 border border-emerald-500/50 text-white text-xs font-semibold rounded-xl shadow-2xl sm:backdrop-blur-md flex items-center gap-2"
-            >
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>Added <strong>{addedToast}</strong> to Cart!</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Carousel Slider Stage with Horizontal Slide Animation */}
-        <div className="relative overflow-hidden min-h-[480px] sm:min-h-[500px] lg:min-h-[460px] flex items-center touch-pan-y">
-          <AnimatePresence initial={false} custom={{ direction, isMobile }} mode="wait">
-            <motion.div
-              key={page}
-              custom={{ direction, isMobile }}
+              key={currentBanner?.id || currentIndex}
+              custom={direction}
               variants={slideVariants}
               initial="enter"
               animate="center"
               exit="exit"
               transition={{
-                x: { 
-                  type: "tween", 
-                  ease: isMobile ? [0.25, 1, 0.5, 1] : [0.22, 1, 0.36, 1], 
-                  duration: isMobile ? 0.22 : 0.40 
-                },
-                opacity: { duration: isMobile ? 0.16 : 0.26 }
+                x: { type: 'spring', stiffness: 280, damping: 32 },
+                opacity: { duration: 0.35 }
               }}
-              style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
-              className="w-full grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center transform-gpu will-change-transform"
+              onClick={() => handleBannerClick(currentBanner)}
+              className={`absolute inset-0 w-full h-full ${isClickable ? 'cursor-pointer' : 'cursor-default'}`}
+              role={isClickable ? 'button' : 'img'}
+              aria-label={currentBanner?.title || `Promotional Banner ${currentIndex + 1}`}
+              tabIndex={isClickable ? 0 : undefined}
+              onKeyDown={(e) => {
+                if (isClickable && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  handleBannerClick(currentBanner);
+                }
+              }}
             >
-              
-              {/* LEFT COLUMN: HERO INFORMATION, BADGES, DESCRIPTION, CTAS */}
-              <div className="lg:col-span-7 space-y-5 text-left">
-                
-                {/* Department & Brand Badge */}
-                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-slate-700/80 text-slate-300 text-xs font-bold tracking-wider uppercase sm:backdrop-blur-sm">
-                  <ShieldCheck className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                  <span className="truncate">{currentSlide.badge}</span>
-                </div>
-
-                {/* Product / Category Headline */}
-                <div className="space-y-3">
-                  <div className="text-xs font-bold uppercase tracking-widest text-blue-400">
-                    {currentSlide.categoryTag}
-                  </div>
-
-                  <h1 
-                    onClick={() => {
-                      if (slideProduct) onSelectProduct(slideProduct);
-                    }}
-                    className="text-2xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight leading-[1.15] cursor-pointer hover:text-blue-300 transition-colors line-clamp-2"
-                  >
-                    {currentSlide.title}
-                  </h1>
-
-                  <p className="text-sm sm:text-base text-slate-300 font-normal leading-relaxed max-w-xl line-clamp-3">
-                    {currentSlide.subtitle}
-                  </p>
-                </div>
-
-                {/* Price Display */}
-                {slideProduct && (
-                  <div className="flex items-center gap-3 pt-1">
-                    {pricing?.isOnSale ? (
-                      <div className="flex items-baseline gap-2.5">
-                        <span className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono">
-                          {pricing.effectivePrice}
-                        </span>
-                        <span className="text-sm text-slate-500 line-through font-mono">
-                          {pricing.originalPrice}
-                        </span>
-                        {pricing.discountPercent && (
-                          <span className="px-2 py-0.5 rounded bg-red-950/80 border border-red-500/40 text-red-400 text-xs font-bold">
-                            Save {pricing.discountPercent}%
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-2xl sm:text-3xl font-black text-white font-mono">
-                        {pricing?.effectivePrice || slideProduct.price || 'Rs. Contact for Price'}
-                      </div>
-                    )}
-                    <span className="text-xs text-slate-400 font-medium px-2.5 py-1 rounded bg-slate-900 border border-slate-800">
-                      ✓ In Stock
-                    </span>
-                  </div>
+              <picture className="w-full h-full block">
+                {currentBanner?.mobileImageUrl && (
+                  <source media="(max-width: 640px)" srcSet={currentBanner.mobileImageUrl} />
                 )}
+                <img
+                  src={currentBanner?.imageUrl}
+                  alt={currentBanner?.title || 'Promotional Banner'}
+                  className="w-full h-full object-cover object-center transition-transform duration-700 sm:group-hover:scale-[1.01]"
+                  loading={currentIndex === 0 ? 'eager' : 'lazy'}
+                  decoding="async"
+                  onError={(e) => {
+                    // Fallback to high-res banner if broken link
+                    const target = e.currentTarget;
+                    if (!target.src.includes('photo-1584622650111')) {
+                      target.src = 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1920&q=85';
+                    }
+                  }}
+                />
+              </picture>
 
-                {/* Interactive Action Buttons */}
-                <div className="pt-2 flex flex-wrap items-center gap-3">
-                  {/* Button 1: View Product Details */}
-                  {showPrimaryBtn && (
-                    <button
-                      type="button"
-                      id="hero-view-details-btn"
-                      onClick={() => {
-                        if (slideProduct) {
-                          onSelectProduct(slideProduct);
-                        } else if (onNavigateToStore) {
-                          onNavigateToStore();
-                        }
-                      }}
-                      className="inline-flex items-center justify-center gap-2 px-5 sm:px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs sm:text-sm font-bold shadow-lg shadow-blue-600/30 transition-all cursor-pointer sm:hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      <Eye className="w-4 h-4 shrink-0" />
-                      <span>{primaryBtnText}</span>
-                      <ArrowRight className="w-4 h-4 shrink-0" />
-                    </button>
-                  )}
-
-                  {/* Button 2: Quick Add to Cart */}
-                  {showSecondaryBtn && slideProduct && (
-                    <button
-                      type="button"
-                      id="hero-add-to-cart-btn"
-                      onClick={(e) => handleQuickAdd(e, slideProduct)}
-                      className="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-3 rounded-xl bg-slate-800/90 hover:bg-slate-700 active:bg-slate-800 border border-slate-700 text-slate-200 hover:text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer sm:hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      <ShoppingBag className="w-4 h-4 text-cyan-400 shrink-0" />
-                      <span>{secondaryBtnText}</span>
-                    </button>
-                  )}
-
-                  {/* Button 3: WhatsApp Quick Order */}
-                  {showTertiaryBtn && (
-                    <a
-                      href={getWhatsAppLink(slideProduct)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer sm:hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      <MessageCircle className="w-4 h-4 text-emerald-400 hover:text-white shrink-0" />
-                      <span>{tertiaryBtnText}</span>
-                    </a>
-                  )}
-
-                  {/* Secondary Explore Store Link */}
-                  {onNavigateToStore && (
-                    <button
-                      type="button"
-                      onClick={onNavigateToStore}
-                      className="inline-flex items-center justify-center gap-1.5 px-3 py-3 rounded-xl text-slate-400 hover:text-white text-xs font-semibold transition-colors cursor-pointer"
-                    >
-                      <Layers className="w-3.5 h-3.5" />
-                      <span>All Products</span>
-                    </button>
-                  )}
+              {/* Optional Subtle Link Indicator on desktop hover if clickable */}
+              {isClickable && (
+                <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-md border border-white/10 text-white/90 text-xs font-medium pointer-events-none shadow-lg">
+                  <span>Explore</span>
+                  <ExternalLink className="w-3 h-3 text-amber-400" />
                 </div>
-
-                {/* Trust Highlights */}
-                <div className="pt-3 border-t border-slate-800/80 grid grid-cols-3 gap-2 sm:gap-4 max-w-lg">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-md bg-blue-950/80 border border-blue-800/50 flex items-center justify-center shrink-0">
-                      <Award className="w-3 h-3 text-blue-400" />
-                    </div>
-                    <div>
-                      <div className="text-[11px] font-bold text-white leading-tight">100% Genuine</div>
-                      <div className="text-[9px] text-slate-400">Authorized Stock</div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-md bg-emerald-950/80 border border-emerald-800/50 flex items-center justify-center shrink-0">
-                      <Truck className="w-3 h-3 text-emerald-400" />
-                    </div>
-                    <div>
-                      <div className="text-[11px] font-bold text-white leading-tight">Fast Delivery</div>
-                      <div className="text-[9px] text-slate-400">All Pakistan</div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-md bg-amber-950/80 border border-amber-800/50 flex items-center justify-center shrink-0">
-                      <Sparkles className="w-3 h-3 text-amber-400" />
-                    </div>
-                    <div>
-                      <div className="text-[11px] font-bold text-white leading-tight">Wholesale Rates</div>
-                      <div className="text-[9px] text-slate-400">Direct Dealer</div>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-
-              {/* RIGHT COLUMN: HIGH-DEFINITION PRODUCT SHOWCASE STAGE */}
-              <div className="lg:col-span-5 flex justify-center">
-                <div className="w-full max-w-md">
-                  <div 
-                    onClick={() => {
-                      if (slideProduct) onSelectProduct(slideProduct);
-                    }}
-                    className="bg-slate-900/90 rounded-2xl border border-slate-800/90 shadow-2xl shadow-black/60 overflow-hidden hover:border-slate-700 transition-all group relative cursor-pointer"
-                  >
-                    {/* Product Image Stage */}
-                    <div className="relative w-full h-64 sm:h-72 bg-gradient-to-b from-slate-900 to-slate-950 p-6 flex items-center justify-center overflow-hidden">
-                      {/* Ambient Glow behind image - hidden on mobile to avoid offscreen filter blur */}
-                      <div className="absolute inset-x-8 bottom-3 h-14 bg-blue-500/10 rounded-full hidden sm:block blur-xl pointer-events-none" />
-
-                      <img
-                        src={productImage}
-                        alt={currentSlide.title}
-                        className="max-h-full max-w-full object-contain filter drop-shadow-md sm:drop-shadow-2xl transition-transform duration-300 sm:group-hover:scale-105 transform-gpu will-change-transform"
-                        loading={currentIndex === 0 ? "eager" : "lazy"}
-                        decoding="async"
-                        fetchPriority={currentIndex === 0 ? "high" : "auto"}
-                      />
-
-                      {/* Brand Tag Pill */}
-                      <div className="absolute top-4 left-4 px-2.5 py-1 rounded-md bg-slate-950/90 border border-slate-800 text-[11px] font-bold tracking-wider text-slate-300 uppercase sm:backdrop-blur-sm">
-                        {brandName}
-                      </div>
-
-                      {/* Discount or Authenticity Badge */}
-                      {pricing?.isOnSale ? (
-                        <div className="absolute top-4 right-4 px-2.5 py-1 rounded-md bg-red-600 text-white text-[10px] font-extrabold uppercase shadow-md">
-                          {pricing.discountPercent ? `SAVE ${pricing.discountPercent}%` : 'SPECIAL OFFER'}
-                        </div>
-                      ) : (
-                        <div className="absolute top-4 right-4 px-2.5 py-1 rounded-md bg-blue-950/90 border border-blue-700/60 text-blue-300 text-[10px] font-bold uppercase sm:backdrop-blur-sm">
-                          ORIGINAL
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Footer Info Strip */}
-                    <div className="p-4 bg-slate-900 border-t border-slate-800/80 flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-[11px] text-slate-400 truncate">{currentSlide.categoryTag}</p>
-                        <h3 className="text-sm font-bold text-white truncate group-hover:text-blue-400 transition-colors">
-                          {currentSlide.title}
-                        </h3>
-                      </div>
-
-                      {slideProduct && (
-                        <button
-                          type="button"
-                          onClick={(e) => handleQuickAdd(e, slideProduct)}
-                          className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shrink-0 flex items-center gap-1 shadow"
-                        >
-                          <ShoppingBag className="w-3.5 h-3.5" />
-                          <span>Add</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
+              )}
             </motion.div>
           </AnimatePresence>
         </div>
 
-        {/* CONTROLS BAR: PAGINATION DOTS, SLIDE COUNTER & PREV/NEXT BUTTONS */}
-        {activeSlides.length > 1 && (
-          <div className="mt-6 pt-4 border-t border-slate-800/60 flex items-center justify-between">
-            {/* Pagination Pill Dots */}
-            <div className="flex items-center gap-2">
-              {activeSlides.map((slide, idx) => (
-                <button
-                  key={slide.id}
-                  type="button"
-                  aria-label={`Go to slide ${idx + 1}`}
-                  onClick={() => handleGoToSlide(idx)}
-                  className={`h-2 rounded-full transition-all cursor-pointer ${
-                    idx === currentIndex
-                      ? 'w-8 bg-blue-500 shadow-md shadow-blue-500/40'
-                      : 'w-2 bg-slate-700 hover:bg-slate-500'
-                  }`}
-                />
-              ))}
-            </div>
-
-            {/* Slide Index Counter */}
-            <div className="text-xs font-mono font-bold text-slate-400">
-              <span className="text-white">0{currentIndex + 1}</span> / 0{activeSlides.length}
-            </div>
-
-            {/* Navigation Buttons */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                aria-label="Previous Slide"
-                onClick={handlePrev}
-                className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 active:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer sm:hover:scale-105 active:scale-95"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                aria-label="Next Slide"
-                onClick={handleNext}
-                className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 active:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer sm:hover:scale-105 active:scale-95"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+        {/* Minimalist Left Navigation Arrow */}
+        {totalBanners > 1 && (
+          <button
+            type="button"
+            id="hero-banner-prev-btn"
+            aria-label="Previous Banner"
+            onClick={(e) => {
+              e.stopPropagation();
+              handlePrev();
+            }}
+            className="absolute left-2.5 sm:left-4 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-11 sm:h-11 rounded-full bg-black/45 hover:bg-black/75 active:bg-black/90 backdrop-blur-md border border-white/15 text-white/90 hover:text-white flex items-center justify-center transition-all duration-200 shadow-xl opacity-80 sm:opacity-0 sm:group-hover:opacity-100 hover:scale-105 active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+          >
+            <ChevronLeft className="w-4 h-4 sm:w-6 sm:h-6" />
+          </button>
         )}
 
+        {/* Minimalist Right Navigation Arrow */}
+        {totalBanners > 1 && (
+          <button
+            type="button"
+            id="hero-banner-next-btn"
+            aria-label="Next Banner"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleNext();
+            }}
+            className="absolute right-2.5 sm:right-4 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-11 sm:h-11 rounded-full bg-black/45 hover:bg-black/75 active:bg-black/90 backdrop-blur-md border border-white/15 text-white/90 hover:text-white flex items-center justify-center transition-all duration-200 shadow-xl opacity-80 sm:opacity-0 sm:group-hover:opacity-100 hover:scale-105 active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+          >
+            <ChevronRight className="w-4 h-4 sm:w-6 sm:h-6" />
+          </button>
+        )}
+
+        {/* Minimalist Pagination Dots at Bottom Center */}
+        {totalBanners > 1 && (
+          <div 
+            className="absolute bottom-2.5 sm:bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 rounded-full bg-black/45 backdrop-blur-md border border-white/10 shadow-lg"
+            role="tablist"
+            aria-label="Banner pagination"
+          >
+            {activeBanners.map((banner, idx) => {
+              const isActive = idx === currentIndex;
+              return (
+                <button
+                  key={banner.id || idx}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  aria-label={`Go to slide ${idx + 1}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDotClick(idx);
+                  }}
+                  className={`h-2 rounded-full transition-all duration-300 cursor-pointer focus:outline-none ${
+                    isActive 
+                      ? 'w-5 sm:w-7 bg-amber-400 shadow-sm shadow-amber-400/50' 
+                      : 'w-2 bg-white/40 hover:bg-white/70'
+                  }`}
+                />
+              );
+            })}
+          </div>
+        )}
       </div>
     </section>
   );

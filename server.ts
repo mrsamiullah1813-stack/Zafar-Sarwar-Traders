@@ -1478,38 +1478,83 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
 
   // HERO SETTINGS DB Proxy
   app.get("/api/db/hero-settings", async (req, res) => {
-    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
-      const { data, error } = await dbClient.from("hero_settings").select("*").eq("id", "default").maybeSingle();
-      if (error) return res.status(500).json({ success: false, error: error.message });
-      return res.json({ success: true, data });
+      let heroData: any = null;
+      if (dbClient) {
+        const { data, error } = await dbClient.from("hero_settings").select("*").eq("id", "default").maybeSingle();
+        if (!error && data) {
+          heroData = data;
+        }
+      }
+
+      // Check cmsDataStore or site_settings for banners
+      const cmsHero = cmsDataStore?.zst_hero_settings;
+      const cmsBanners = cmsDataStore?.zst_hero_banners || (cmsHero && cmsHero.banners);
+
+      if (heroData) {
+        if (cmsBanners && Array.isArray(cmsBanners) && cmsBanners.length > 0) {
+          heroData.banners = cmsBanners;
+        } else if (Array.isArray(heroData.draft_slides) && heroData.draft_slides.length > 0) {
+          heroData.banners = heroData.draft_slides;
+        }
+        return res.json({ success: true, data: heroData });
+      }
+
+      if (cmsHero) {
+        return res.json({ success: true, data: cmsHero });
+      }
+
+      return res.json({ success: true, data: null });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
   });
 
   app.post("/api/db/hero-settings/upsert", requireAdminAuth, async (req, res) => {
-    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { settings } = req.body;
-      const payload = {
-        id: "default",
-        autoplay: Boolean(settings.autoPlay ?? true),
-        slide_duration: (settings.rotationDurationSeconds || 5) * 1000,
-        transition_style: settings.transitionStyle || "fade",
-        overlay_intensity: 0.4,
-        height: "h-[85vh]",
-        show_price: true,
-        show_brand: true,
-        show_category: true,
-        show_stock: true,
-        show_cart: Boolean(settings.enableSecondaryBtn ?? true),
-        show_whatsapp: Boolean(settings.enableTertiaryBtn ?? true),
-        published: Boolean(settings.isEnabled ?? true),
-        updated_at: new Date().toISOString()
-      };
-      const result = await robustUpsert("hero_settings", [payload], { onConflict: "id" });
-      if (!result.success) return res.status(500).json({ success: false, error: result.error });
+      if (!settings) return res.status(400).json({ success: false, error: "Settings required" });
+
+      // Always save to in-memory store and disk
+      cmsDataStore.zst_hero_settings = settings;
+      if (Array.isArray(settings.banners)) {
+        cmsDataStore.zst_hero_banners = settings.banners;
+      }
+      await persistDataStoreToDisk();
+
+      if (dbClient) {
+        const payload = {
+          id: "default",
+          autoplay: Boolean(settings.autoPlay ?? true),
+          slide_duration: (settings.rotationDurationSeconds || 5) * 1000,
+          transition_style: settings.transitionStyle || "fade",
+          overlay_intensity: 0.4,
+          height: "h-[85vh]",
+          show_price: true,
+          show_brand: true,
+          show_category: true,
+          show_stock: true,
+          show_cart: Boolean(settings.enableSecondaryBtn ?? true),
+          show_whatsapp: Boolean(settings.enableTertiaryBtn ?? true),
+          published: Boolean(settings.isEnabled ?? true),
+          draft_slides: Array.isArray(settings.banners) ? settings.banners : [],
+          updated_at: new Date().toISOString()
+        };
+        const result = await robustUpsert("hero_settings", [payload], { onConflict: "id" });
+        if (!result.success) {
+          console.warn("[Hero Settings DB] Notice on hero_settings upsert:", result.error);
+        }
+
+        // Also persist to site_settings for dual safety
+        try {
+          await dbClient.from("site_settings").upsert({
+            key: "zst_hero_settings_v1",
+            value: settings,
+            updated_at: new Date().toISOString()
+          }, { onConflict: "key" });
+        } catch {}
+      }
+
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });

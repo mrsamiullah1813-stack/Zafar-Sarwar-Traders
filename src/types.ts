@@ -1047,23 +1047,35 @@ export interface ThemeSettings {
   availableThemes: ThemeOption[];
 }
 
+export interface HeroBannerSlide {
+  id: string;
+  imageUrl: string;
+  mobileImageUrl?: string;
+  title?: string;
+  linkUrl?: string;
+  openInNewTab?: boolean;
+  isActive: boolean;
+  displayOrder: number;
+}
+
 export interface HeroSettings {
   isEnabled: boolean;
-  badgeText: string;
-  heading: string;
-  subheading: string;
-  primaryBtnText: string;
-  primaryBtnLink: string;
-  enablePrimaryBtn: boolean;
-  secondaryBtnText: string;
-  secondaryBtnLink: string;
-  enableSecondaryBtn: boolean;
+  banners?: HeroBannerSlide[];
+  badgeText?: string;
+  heading?: string;
+  subheading?: string;
+  primaryBtnText?: string;
+  primaryBtnLink?: string;
+  enablePrimaryBtn?: boolean;
+  secondaryBtnText?: string;
+  secondaryBtnLink?: string;
+  enableSecondaryBtn?: boolean;
   tertiaryBtnText?: string;
   tertiaryBtnLink?: string;
   enableTertiaryBtn?: boolean;
   rotationDurationSeconds: number;
   transitionSpeedSeconds?: number;
-  transitionStyle?: 'cinematic-depth' | 'depth-zoom' | '3d-slide' | 'smooth-reveal' | 'scale-reveal' | 'perspective-slide';
+  transitionStyle?: 'cinematic-depth' | 'depth-zoom' | '3d-slide' | 'smooth-reveal' | 'scale-reveal' | 'perspective-slide' | 'fade' | 'slide';
   autoPlay: boolean;
   pauseOnHover?: boolean;
   enableParallax?: boolean;
@@ -1072,8 +1084,8 @@ export interface HeroSettings {
   bgType?: 'ambient-dark' | 'custom-image' | 'custom-video';
   bgMediaUrl?: string;
   bgVideoUrl?: string;
-  heroProductIds: string[];
-  heroMode: 'selected_or_featured' | 'featured_only' | 'all';
+  heroProductIds?: string[];
+  heroMode?: 'selected_or_featured' | 'featured_only' | 'all';
   productImageOverrides?: Record<string, string>;
   productVideoOverrides?: Record<string, string>;
   customProductOrder?: string[];

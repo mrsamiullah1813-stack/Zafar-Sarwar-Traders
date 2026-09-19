@@ -6,6 +6,7 @@ import {
   ProductCategory, 
   ProductBrand, 
   HeroSettings, 
+  HeroBannerSlide,
   CustomerOrder, 
   CityDeliveryInfo, 
   BusinessConfig, 
@@ -724,8 +725,26 @@ export function mapDbBrandToBrand(r: any, idx: number): ProductBrand {
 }
 
 export function mapDbHeroSettings(data: any, slideProductIds: string[] = []): HeroSettings {
+  const rawBanners = Array.isArray(data.banners) 
+    ? data.banners 
+    : (Array.isArray(data.draft_slides) ? data.draft_slides : []);
+  const mappedBanners: HeroBannerSlide[] = rawBanners
+    .filter((b: any) => b && (b.imageUrl || b.image_url))
+    .map((b: any, idx: number) => ({
+      id: String(b.id || `banner-${idx + 1}`),
+      imageUrl: b.imageUrl || b.image_url,
+      mobileImageUrl: b.mobileImageUrl || b.mobile_image_url || undefined,
+      title: b.title || `Promotional Banner ${idx + 1}`,
+      linkUrl: b.linkUrl || b.link_url || undefined,
+      openInNewTab: Boolean(b.openInNewTab || b.open_in_new_tab),
+      isActive: b.isActive !== undefined ? Boolean(b.isActive) : (b.is_active !== undefined ? Boolean(b.is_active) : true),
+      displayOrder: Number(b.displayOrder ?? b.display_order ?? idx)
+    }))
+    .sort((a, b) => a.displayOrder - b.displayOrder);
+
   return {
-    isEnabled: Boolean(data.is_enabled ?? true),
+    isEnabled: Boolean(data.is_enabled ?? data.published ?? true),
+    banners: mappedBanners.length > 0 ? mappedBanners : undefined,
     badgeText: data.badge_text || 'DIRECT DISTRIBUTOR & SANITARY SPECIALIST',
     heading: data.heading || 'INNOVATION & ELEGANCE IN SANITARYWARE',
     subheading: data.subheading || 'Premium Faucets, Luxury Bathroom Suites, Smart Showers & Complete Building Solutions',
@@ -738,7 +757,7 @@ export function mapDbHeroSettings(data: any, slideProductIds: string[] = []): He
     tertiaryBtnText: data.tertiary_btn_text || undefined,
     tertiaryBtnLink: data.tertiary_btn_link || undefined,
     enableTertiaryBtn: data.enable_tertiary_btn ? Boolean(data.enable_tertiary_btn) : undefined,
-    rotationDurationSeconds: Number(data.rotation_duration_seconds ?? (data.slide_duration ? data.slide_duration / 1000 : 6)),
+    rotationDurationSeconds: Number(data.rotation_duration_seconds ?? (data.slide_duration ? data.slide_duration / 1000 : 5)),
     transitionSpeedSeconds: Number(data.transition_speed_seconds ?? 0.8),
     transitionStyle: data.transition_style || 'cinematic-depth',
     autoPlay: Boolean(data.autoplay ?? true),

@@ -48,7 +48,19 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>(() => loadDeliverySettings());
+
+  useEffect(() => {
+    const handleSettingsUpdate = (e: any) => {
+      if (e.detail) {
+        setDeliverySettings(e.detail);
+      } else {
+        setDeliverySettings(loadDeliverySettings());
+      }
+    };
+    window.addEventListener('zst_delivery_settings_updated', handleSettingsUpdate);
+    return () => window.removeEventListener('zst_delivery_settings_updated', handleSettingsUpdate);
+  }, []);
 
   const items = Array.isArray(cartItems) ? cartItems : [];
   const totalItemCount = items.reduce((acc, item) => acc + (item?.quantity || 0), 0);
@@ -68,20 +80,6 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   };
 
   const subtotal = calculateSubtotal();
-
-  const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>(() => loadDeliverySettings());
-
-  useEffect(() => {
-    const handleSettingsUpdate = (e: any) => {
-      if (e.detail) {
-        setDeliverySettings(e.detail);
-      } else {
-        setDeliverySettings(loadDeliverySettings());
-      }
-    };
-    window.addEventListener('zst_delivery_settings_updated', handleSettingsUpdate);
-    return () => window.removeEventListener('zst_delivery_settings_updated', handleSettingsUpdate);
-  }, []);
 
   const defaultCity = useMemo(() => {
     const defaultCityId = deliverySettings.defaultSelectedCityId || 'city-chiniot';
@@ -112,6 +110,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
       items
     );
   }, [defaultCity, subtotal, deliverySettings, checkoutSettings, totalCartWeightKg, items]);
+
+  if (!isOpen) return null;
 
   const deliveryFee = subtotal > 0 ? (deliveryCalculation.isFree ? 0 : Math.max(200, deliveryCalculation.deliveryFee)) : 0;
   
