@@ -3,7 +3,7 @@ import { Search, X, MessageSquare, ArrowRight, Check } from 'lucide-react';
 import { Product, ProductCategory, BusinessConfig } from '../types';
 import { filterProducts } from '../utils/searchUtils';
 import { trackSearchQuery } from '../utils/analyticsStorage';
-import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
+import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
 
 interface SearchModalProps {
   products: Product[];
@@ -132,11 +132,22 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                       >
                         <div className="flex items-center gap-3">
                           <img
-                            src={normalizeProductImage(prod.image, prod.category, prod.name)}
+                            src={resolveProductImage(prod)}
                             alt={prod.name}
                             referrerPolicy="no-referrer"
-                            onError={(e) => handleImageError(e, prod.category, prod.name)}
-                            className="w-10 h-10 rounded-lg object-cover"
+                            loading="lazy"
+                            decoding="async"
+                            onError={(e) => {
+                              const target = e.currentTarget;
+                              target.onerror = null;
+                              const altList = Array.isArray(prod.images) ? prod.images.filter(i => i && typeof i === 'string' && !target.src.includes(i)) : [];
+                              if (altList.length > 0) {
+                                target.src = normalizeProductImage(altList[0], prod.category, prod.name);
+                                return;
+                              }
+                              handleImageError(e, prod.category, prod.name);
+                            }}
+                            className="w-12 h-12 rounded-lg object-contain bg-slate-900 border border-slate-800 p-1 shrink-0"
                           />
                           <div>
                             <div className="text-white font-bold text-xs group-hover:text-blue-300">

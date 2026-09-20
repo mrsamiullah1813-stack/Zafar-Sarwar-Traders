@@ -61,6 +61,19 @@ export function normalizeSearchString(text: string): string {
   // Normalize Horsepower: 1hp -> 1 hp
   str = str.replace(/(\d+(?:\.\d+)?)\s*hp\b/gi, '$1 hp');
 
+  // Normalize common compound words in sanitaryware & hardware
+  str = str.replace(/\bwashbasin(s)?\b/gi, 'wash basin$1');
+  str = str.replace(/\bshowerset(s)?\b/gi, 'shower set$1');
+  str = str.replace(/\bwatertank(s)?\b/gi, 'water tank$1');
+  str = str.replace(/\bwaterpump(s)?\b/gi, 'water pump$1');
+  str = str.replace(/\btilebond\b/gi, 'tile bond');
+  str = str.replace(/\btilefix\b/gi, 'tile fix');
+  str = str.replace(/\bsinkmixer(s)?\b/gi, 'sink mixer$1');
+  str = str.replace(/\bbibcock(s)?\b/gi, 'bib cock$1');
+  str = str.replace(/\bpillarcock(s)?\b/gi, 'pillar cock$1');
+  str = str.replace(/\bfloorwaste(s)?\b/gi, 'floor waste$1');
+  str = str.replace(/\bbottletrap(s)?\b/gi, 'bottle trap$1');
+
   // Normalize extra spacing
   return str.replace(/\s+/g, ' ').trim();
 }
@@ -377,11 +390,31 @@ export function matchProductWithVariants(
   // Calculate smart relevance score
   let score = 200;
 
+  const rawTrimmed = parsedQuery.rawQuery.toLowerCase().trim();
+
+  // Exact ID match
+  if (product.id && product.id.toLowerCase() === rawTrimmed) {
+    score += 2000;
+  }
+
+  // Exact SKU match
+  if (pSku && pSku === rawTrimmed) {
+    score += 1500;
+  }
+
   // Exact phrase matching on product name
-  if (pName === parsedQuery.rawQuery.toLowerCase() || pNormalizedName === parsedQuery.normalizedQuery) {
-    score += 1000;
-  } else if (pName.includes(parsedQuery.rawQuery.toLowerCase()) || pNormalizedName.includes(parsedQuery.normalizedQuery)) {
+  if (pName === rawTrimmed || pNormalizedName === parsedQuery.normalizedQuery) {
+    score += 1200;
+  } else if (pName.startsWith(rawTrimmed) || pNormalizedName.startsWith(parsedQuery.normalizedQuery)) {
+    score += 850;
+  } else if (pName.includes(rawTrimmed) || pNormalizedName.includes(parsedQuery.normalizedQuery)) {
     score += 600;
+  }
+
+  // Title keyword matches
+  const titleMatchedCount = parsedQuery.cleanKeywords.filter(kw => pName.includes(kw) || pNormalizedName.includes(kw)).length;
+  if (titleMatchedCount > 0) {
+    score += titleMatchedCount * 150;
   }
 
   // Exact Product Name + Variant Combination (e.g. "32 mm elbow" or "16 liter paint")

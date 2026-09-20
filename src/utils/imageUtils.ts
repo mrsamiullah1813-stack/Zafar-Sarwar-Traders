@@ -86,16 +86,47 @@ export function getCategoryFallbackImage(category?: string, name?: string): stri
 
 /**
  * Cleans, sanitizes, and normalizes a product image URL:
+ * - Handles strings, objects with URL, arrays, and JSON-encoded image fields
  * - Rewrites `/src/assets/images/...` to `/assets/images/...`
- * - Rewrites `/src/assets/...` to `/assets/...`
- * - Replaces empty, null, or corrupted image strings with a high-resolution, category-matching image
+ * - Resolves relative Supabase storage paths (e.g., `project media/uploads/...`)
+ * - Properly percent-encodes spaces in Supabase and CDN URLs (e.g., `project%20media`)
+ * - Replaces empty or corrupted image strings with a high-resolution, category-matching image
  */
-export function normalizeProductImage(image?: string | null, category?: string, name?: string): string {
-  if (!image || typeof image !== 'string') {
+export function normalizeProductImage(image?: string | null | any, category?: string, name?: string): string {
+  if (!image) {
     return getCategoryFallbackImage(category, name);
   }
 
-  const trimmed = image.trim();
+  // Handle accidental object input (e.g., { url: '...' })
+  if (typeof image === 'object') {
+    if (Array.isArray(image) && image.length > 0) {
+      return normalizeProductImage(image[0], category, name);
+    }
+    if (typeof image.url === 'string') {
+      return normalizeProductImage(image.url, category, name);
+    }
+    if (typeof image.image === 'string') {
+      return normalizeProductImage(image.image, category, name);
+    }
+    return getCategoryFallbackImage(category, name);
+  }
+
+  if (typeof image !== 'string') {
+    return getCategoryFallbackImage(category, name);
+  }
+
+  let trimmed = image.trim();
+
+  // If string contains JSON array like '["https://..."]'
+  if (trimmed.startsWith('["') && trimmed.endsWith('"]')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string') {
+        trimmed = parsed[0].trim();
+      }
+    } catch (e) {}
+  }
+
   if (
     trimmed === '' ||
     trimmed === 'undefined' ||
@@ -113,10 +144,84 @@ export function normalizeProductImage(image?: string | null, category?: string, 
 
   // Handle accidental unescaped backslashes in paths
   if (trimmed.includes('\\')) {
-    return trimmed.replace(/\\/g, '/');
+    trimmed = trimmed.replace(/\\/g, '/');
+  }
+
+  // Resolve relative Supabase storage bucket paths
+  if (trimmed.startsWith('project media/') || trimmed.startsWith('uploads/')) {
+    const bucketAndPath = trimmed.startsWith('project media/') ? trimmed : `project media/${trimmed}`;
+    trimmed = `https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/${bucketAndPath}`;
+  } else if (trimmed.startsWith('/storage/v1/object/public/')) {
+    trimmed = `https://hdbqzhyaluwbktogbfvu.supabase.co${trimmed}`;
+  }
+
+  // Ensure spaces in URLs are encoded properly (essential for mobile WebKit & Chrome)
+  if (trimmed.includes(' ') && (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('/'))) {
+    trimmed = trimmed.replace(/ /g, '%20');
   }
 
   return trimmed;
+}
+
+/**
+ * Resolves the exact primary image from any Product record.
+ * Checks all possible database fields used across Supabase and CMS:
+ * 1. product.image
+ * 2. product.images (first non-empty element or JSON array)
+ * 3. product.imageUrl / product.image_url
+ * 4. product.coverImage / product.cover_image
+ * 5. product.main_image
+ * 6. product.thumbnail
+ */
+export function resolveProductImage(product: any): string {
+  if (!product) return '';
+  if (typeof product === 'string') {
+    return normalizeProductImage(product);
+  }
+
+  // 1. Direct primary image field
+  if (typeof product.image === 'string' && product.image.trim().length > 3) {
+    return normalizeProductImage(product.image, product.category, product.name);
+  }
+
+  // 2. Images array or stringified JSON array
+  if (Array.isArray(product.images) && product.images.length > 0) {
+    for (const img of product.images) {
+      if (typeof img === 'string' && img.trim().length > 3) {
+        return normalizeProductImage(img, product.category, product.name);
+      }
+    }
+  } else if (typeof product.images === 'string' && product.images.trim().startsWith('[')) {
+    try {
+      const parsed = JSON.parse(product.images);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        for (const img of parsed) {
+          if (typeof img === 'string' && img.trim().length > 3) {
+            return normalizeProductImage(img, product.category, product.name);
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 3. Alternative database column variants
+  const candidateKeys = [
+    product.imageUrl,
+    product.image_url,
+    product.coverImage,
+    product.cover_image,
+    product.main_image,
+    product.thumbnail,
+    product.photo
+  ];
+
+  for (const cand of candidateKeys) {
+    if (typeof cand === 'string' && cand.trim().length > 3) {
+      return normalizeProductImage(cand, product.category, product.name);
+    }
+  }
+
+  return normalizeProductImage(product.image, product.category, product.name);
 }
 
 /**
