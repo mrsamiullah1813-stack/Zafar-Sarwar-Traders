@@ -118,6 +118,131 @@ export function getSafeHost(url: string): string {
   }
 }
 
+const authMemoryStorage = new Map<string, string>();
+
+/**
+ * Checks if localStorage has exceeded or is at its storage quota.
+ */
+export function isLocalStorageFull(): boolean {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return false;
+  try {
+    const testKey = '__zst_quota_check__';
+    window.localStorage.setItem(testKey, '1');
+    window.localStorage.removeItem(testKey);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Proactively evicts expendable large cache keys from localStorage to ensure auth tokens
+ * and critical session data can always be stored without hitting browser quota limits.
+ */
+export function purgeExpendableLocalStorage(): boolean {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return false;
+  try {
+    const expendablePrefixes = [
+      'zst_visitor_analytics',
+      'zst_products',
+      'zst_store_analytics',
+      'zst_cached',
+      'zst_product_reviews',
+      'zst_gallery',
+      'zst_contacts',
+      'zst_deleted_order_ids',
+      'zst_last_order_ping'
+    ];
+
+    let purgedAny = false;
+    for (let i = window.localStorage.length - 1; i >= 0; i--) {
+      const key = window.localStorage.key(i);
+      if (!key) continue;
+      if (expendablePrefixes.some(p => key.startsWith(p))) {
+        try {
+          window.localStorage.removeItem(key);
+          purgedAny = true;
+        } catch {}
+      }
+    }
+    return purgedAny;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resilient Supabase Auth Storage adapter that never throws QuotaExceededError.
+ * It writes to localStorage, automatically auto-recovers storage quota if full,
+ * and seamlessly falls back to sessionStorage and in-memory persistence.
+ */
+export const resilientSupabaseAuthStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const val = window.localStorage.getItem(key);
+        if (val !== null) return val;
+      }
+    } catch {}
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        const val = window.sessionStorage.getItem(key);
+        if (val !== null) return val;
+      }
+    } catch {}
+    return authMemoryStorage.get(key) ?? null;
+  },
+
+  setItem: (key: string, value: string): void => {
+    // 1. Try standard localStorage write
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(key, value);
+        authMemoryStorage.set(key, value);
+        return;
+      }
+    } catch (e: any) {
+      console.warn(`[Supabase Auth Storage] localStorage setItem failed for "${key}". Recovering space...`, e?.message);
+    }
+
+    // 2. On failure, purge non-critical caches from localStorage and retry
+    try {
+      purgeExpendableLocalStorage();
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(key, value);
+        authMemoryStorage.set(key, value);
+        return;
+      }
+    } catch (e2: any) {
+      console.warn(`[Supabase Auth Storage] Retry failed. Falling back to sessionStorage & memory:`, e2?.message);
+    }
+
+    // 3. Resilient fallback to sessionStorage
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        window.sessionStorage.setItem(key, value);
+      }
+    } catch {}
+
+    // 4. Guaranteed in-memory storage fallback (NEVER throws QuotaExceededError!)
+    authMemoryStorage.set(key, value);
+  },
+
+  removeItem: (key: string): void => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem(key);
+      }
+    } catch {}
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        window.sessionStorage.removeItem(key);
+      }
+    } catch {}
+    authMemoryStorage.delete(key);
+  }
+};
+
 function createSupabaseInstance(url: string, key: string, isReal: boolean): SupabaseClient {
   const strictBaseUrl = normalizeSupabaseUrl(url);
   const safeFetch = typeof window !== 'undefined' && window.fetch 
@@ -127,6 +252,7 @@ function createSupabaseInstance(url: string, key: string, isReal: boolean): Supa
   try {
     return createClient(strictBaseUrl, key, {
       auth: {
+        storage: resilientSupabaseAuthStorage,
         persistSession: isReal,
         autoRefreshToken: isReal,
         detectSessionInUrl: isReal,
@@ -139,6 +265,7 @@ function createSupabaseInstance(url: string, key: string, isReal: boolean): Supa
     console.warn('Failed to initialize Supabase client:', e);
     return createClient(dummyUrl, dummyKey, {
       auth: {
+        storage: resilientSupabaseAuthStorage,
         persistSession: false,
         autoRefreshToken: false,
         detectSessionInUrl: false,

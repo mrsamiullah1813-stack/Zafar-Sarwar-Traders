@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ShieldCheck, Lock, X, Mail, Key, AlertCircle, CheckCircle, Loader2, LogOut, Volume2, VolumeX, Sparkles, ArrowLeft, LayoutDashboard } from 'lucide-react';
 import { setAdminAuthToken, setIsAdminLoggedIn, getAdminPin } from '../utils/storage';
-import { supabase, initializeSupabaseRuntime } from '../lib/supabase';
+import { supabase, initializeSupabaseRuntime, isLocalStorageFull, purgeExpendableLocalStorage } from '../lib/supabase';
 import { speakAdminVoice, getAdminVoicePreference, setAdminVoicePreference } from '../utils/adminVoice';
 import { AIAssistantAvatar, AIAssistantMood } from './AIAssistantAvatar';
 import { PatternLock } from './PatternLock';
@@ -148,6 +148,11 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         speakAdminVoice("Please enter your email and password.");
       }
 
+      // Proactively clear any storage quota blockage so auth has immediate headroom
+      if (isLocalStorageFull()) {
+        purgeExpendableLocalStorage();
+      }
+
       // Check for an existing authenticated Supabase session
       initializeSupabaseRuntime().then(() => {
         supabase.auth.getSession().then(({ data }) => {
@@ -210,12 +215,35 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setLoading(true);
 
     try {
+      if (isLocalStorageFull()) {
+        purgeExpendableLocalStorage();
+      }
       await initializeSupabaseRuntime();
 
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: trimmedEmail,
-        password: trimmedPassword
-      });
+      let authResult;
+      try {
+        authResult = await supabase.auth.signInWithPassword({
+          email: trimmedEmail,
+          password: trimmedPassword
+        });
+      } catch (signInErr: any) {
+        // If quota exceeded or storage write error occurred during signIn
+        if (
+          signInErr?.name === 'QuotaExceededError' ||
+          signInErr?.message?.includes('quota') ||
+          signInErr?.message?.includes('setItem')
+        ) {
+          purgeExpendableLocalStorage();
+          authResult = await supabase.auth.signInWithPassword({
+            email: trimmedEmail,
+            password: trimmedPassword
+          });
+        } else {
+          throw signInErr;
+        }
+      }
+
+      const { data, error: authError } = authResult;
 
       if (authError) {
         console.error('[Admin Login] Supabase Auth error:', authError);
@@ -256,7 +284,16 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       }
     } catch (err: any) {
       console.error('[Admin Login] Unexpected error:', err);
-      setError(err?.message || 'Failed to authenticate with Supabase. Please check connection.');
+      if (
+        err?.name === 'QuotaExceededError' ||
+        err?.message?.includes('quota') ||
+        err?.message?.includes('setItem')
+      ) {
+        purgeExpendableLocalStorage();
+        setError('Storage quota limit was cleared to free space. Please click Sign In again.');
+      } else {
+        setError(err?.message || 'Failed to authenticate with Supabase. Please check connection.');
+      }
       triggerErrorShake();
       speakAdminVoice("Authentication failed. Please try again.");
     } finally {

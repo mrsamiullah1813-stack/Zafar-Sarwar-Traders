@@ -2381,17 +2381,22 @@ export const setAdminPin = (pin: string) => {
 
 export const getIsAdminLoggedIn = (): boolean => {
   try {
-    return localStorage.getItem(STORAGE_KEYS.IS_ADMIN) === 'true';
+    const local = localStorage.getItem(STORAGE_KEYS.IS_ADMIN);
+    if (local !== null) return local === 'true';
+    return sessionStorage.getItem(STORAGE_KEYS.IS_ADMIN) === 'true';
   } catch (e) {
     return false;
   }
 };
 
 export const setIsAdminLoggedIn = (status: boolean) => {
+  const val = status ? 'true' : 'false';
   try {
-    localStorage.setItem(STORAGE_KEYS.IS_ADMIN, status ? 'true' : 'false');
+    localStorage.setItem(STORAGE_KEYS.IS_ADMIN, val);
   } catch (e) {
-    console.error('Error saving admin login status', e);
+    try {
+      sessionStorage.setItem(STORAGE_KEYS.IS_ADMIN, val);
+    } catch {}
   }
 };
 
@@ -2400,13 +2405,18 @@ export const setAdminAuthToken = (token: string) => {
     localStorage.setItem(STORAGE_KEYS.IS_ADMIN, 'true');
     localStorage.setItem('zst_admin_token', token);
   } catch (e) {
-    console.error('Error setting admin auth token', e);
+    try {
+      sessionStorage.setItem(STORAGE_KEYS.IS_ADMIN, 'true');
+      sessionStorage.setItem('zst_admin_token', token);
+    } catch {}
   }
 };
 
 export const getAdminAuthToken = (): string | null => {
   try {
-    return localStorage.getItem('zst_admin_token');
+    const token = localStorage.getItem('zst_admin_token');
+    if (token) return token;
+    return sessionStorage.getItem('zst_admin_token');
   } catch (e) {
     return null;
   }
