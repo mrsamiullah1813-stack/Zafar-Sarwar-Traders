@@ -10,11 +10,10 @@ import {
   Plus, 
   Info, 
   Sparkles,
-  ArrowRight,
-  Edit3
+  ArrowRight
 } from 'lucide-react';
 import { DeliverySettings, CityDeliveryInfo, Product, ProductDeliveryConfig } from '../types';
-import { loadDeliverySettings, sanitizeAndDeduplicateCities } from '../utils/storage';
+import { loadDeliverySettings, sanitizeAndDeduplicateCities, saveSelectedDeliveryCity, loadSelectedDeliveryCity } from '../utils/storage';
 import { calculateCityDeliveryFee, isProductHeavyOrBulky } from '../utils/deliveryFeeCalculator';
 import { parseNumericPrice } from '../utils/pricingUtils';
 
@@ -62,8 +61,13 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
   const [isCityModalOpen, setIsCityModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Selection state
+  // Selection state initialized from saved city or default settings
   const [selectedCityId, setSelectedCityId] = useState<string>(() => {
+    const saved = loadSelectedDeliveryCity();
+    if (saved) {
+      const matched = activeCities.find(c => c.cityName?.toLowerCase() === saved.toLowerCase() || c.id === saved);
+      if (matched) return matched.id;
+    }
     if (deliverySettings.defaultSelectedCityId && activeCities.some(c => c.id === deliverySettings.defaultSelectedCityId)) {
       return deliverySettings.defaultSelectedCityId;
     }
@@ -71,13 +75,20 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
   });
 
   // Custom city inputs
-  const [isCustomMode, setIsCustomMode] = useState(false);
-  const [customCityName, setCustomCityName] = useState('');
-  const [customAddress, setCustomAddress] = useState('');
-  const [customLandmark, setCustomLandmark] = useState('');
-
-  // Standard address input
-  const [standardAddress, setStandardAddress] = useState('');
+  const [isCustomMode, setIsCustomMode] = useState(() => {
+    const saved = loadSelectedDeliveryCity();
+    if (saved && !activeCities.some(c => c.cityName?.toLowerCase() === saved.toLowerCase() || c.id === saved)) {
+      return true;
+    }
+    return false;
+  });
+  const [customCityName, setCustomCityName] = useState(() => {
+    const saved = loadSelectedDeliveryCity();
+    if (saved && !activeCities.some(c => c.cityName?.toLowerCase() === saved.toLowerCase() || c.id === saved)) {
+      return saved;
+    }
+    return '';
+  });
 
   // Find currently selected predefined city
   const selectedCity = useMemo(() => {
@@ -119,7 +130,7 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
 
   // Derive delivery fee info
   const deliveryFeeInfo = useMemo(() => {
-    // 1. Explicit Product specific fee override (only if admin explicitly configured one on this product)
+    // 1. Explicit Product specific fee override
     if (prodConfig && prodConfig.deliveryFeeType && prodConfig.deliveryFeeType !== 'inherit') {
       if (prodConfig.deliveryFeeType === 'free') {
         return { 
@@ -128,7 +139,7 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
           display: 'Free Delivery',
           heading: 'Free Delivery',
           subtitle: 'Free delivery applied for this product.',
-          note: 'Contact for delivery information.'
+          note: 'Direct showroom logistics & safe packaging.'
         };
       }
       if (prodConfig.deliveryFeeType === 'fixed') {
@@ -139,7 +150,7 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
           display: amt === 0 ? 'Free Delivery' : `Rs. ${amt.toLocaleString('en-PK')}`,
           heading: amt === 0 ? 'Free Delivery' : `Fixed Delivery Fee: Rs. ${amt.toLocaleString('en-PK')}`,
           subtitle: 'Fixed delivery charge configured for this product.',
-          note: 'Contact for delivery information.'
+          note: 'Safe packaging and doorstep delivery.'
         };
       }
       if (prodConfig.deliveryFeeType === 'custom' && prodConfig.deliveryFeeCustomText) {
@@ -166,9 +177,9 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
         deliverySettings.maxDeliveryFee,
         product.weightKg || (isHeavy ? 12 : 1),
         isHeavy ? 'heavy' : 'light',
-        1,
+        quantity || 1,
         isHeavy ? 1 : 0,
-        [{ product, quantity: 1 }]
+        [{ product, quantity: quantity || 1 }]
       );
 
       const feeAmt = calc.isFree ? 0 : Math.max(200, calc.deliveryFee);
@@ -196,15 +207,36 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
       subtitle: customSub,
       note: customNote
     };
-  }, [prodConfig, isCustomMode, selectedCity, product, deliverySettings, estimatedDays]);
+  }, [prodConfig, isCustomMode, selectedCity, product, deliverySettings, estimatedDays, quantity]);
 
   // Current active city name
   const currentCityName = isCustomMode ? customCityName.trim() : (selectedCity?.cityName || '');
-  
-  // Current active address
-  const currentAddress = isCustomMode 
-    ? [customAddress.trim(), customLandmark.trim() ? `(Landmark: ${customLandmark.trim()})` : ''].filter(Boolean).join(' ')
-    : standardAddress.trim();
+
+  // Sync with global storage when city changes
+  useEffect(() => {
+    if (currentCityName) {
+      saveSelectedDeliveryCity(currentCityName);
+    }
+  }, [currentCityName]);
+
+  // Listen to external city updates (e.g. from checkout or other components)
+  useEffect(() => {
+    const handleCityUpdated = (e: any) => {
+      const updatedCityName = e.detail || loadSelectedDeliveryCity();
+      if (!updatedCityName) return;
+      const matched = activeCities.find(c => c.cityName?.toLowerCase() === updatedCityName.toLowerCase() || c.id === updatedCityName);
+      if (matched) {
+        setSelectedCityId(matched.id);
+        setIsCustomMode(false);
+      } else {
+        setIsCustomMode(true);
+        setCustomCityName(updatedCityName);
+      }
+    };
+
+    window.addEventListener('zst_selected_city_updated', handleCityUpdated);
+    return () => window.removeEventListener('zst_selected_city_updated', handleCityUpdated);
+  }, [activeCities]);
 
   // Notify parent component on state changes
   useEffect(() => {
@@ -212,15 +244,15 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
       onDeliveryDetailsChange({
         city: currentCityName,
         isCustomCity: isCustomMode,
-        address: currentAddress,
+        address: '',
         deliveryFeeAmount: deliveryFeeInfo.amount,
         deliveryFeeType: deliveryFeeInfo.type,
         deliveryFeeDisplay: deliveryFeeInfo.display,
         estimatedDays,
-        isValid: Boolean(currentCityName && currentAddress)
+        isValid: Boolean(currentCityName)
       });
     }
-  }, [currentCityName, isCustomMode, currentAddress, deliveryFeeInfo, estimatedDays, onDeliveryDetailsChange]);
+  }, [currentCityName, isCustomMode, deliveryFeeInfo, estimatedDays, onDeliveryDetailsChange]);
 
   if (!deliverySettings.isEnabled || isHiddenForProduct) {
     return null;
@@ -231,6 +263,7 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
     setIsCustomMode(false);
     setIsCityModalOpen(false);
     setSearchQuery('');
+    saveSelectedDeliveryCity(city.cityName);
   };
 
   const handleContinueWithCustomCity = (e: React.FormEvent) => {
@@ -239,56 +272,60 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
     setIsCustomMode(true);
     setIsCityModalOpen(false);
     setSearchQuery('');
+    saveSelectedDeliveryCity(customCityName.trim());
   };
 
   return (
-    <div className="p-4 sm:p-5 rounded-3xl bg-slate-950/70 border border-slate-800 space-y-4">
+    <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-3.5">
       {/* Title & Badge Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
-            <Truck className="w-4 h-4" />
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 flex items-center justify-center">
+            <Truck className="w-4 h-4 text-slate-700" />
           </div>
           <div>
-            <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
               Delivery Information
             </h4>
-            <p className="text-[11px] text-amber-300/90 font-medium">
+            <p className="text-[11px] text-slate-500 font-medium">
               Delivery depends on city, location and quantity.
             </p>
           </div>
         </div>
 
         {selectedCity && !isCustomMode && (
-          <span className="px-2.5 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold flex items-center gap-1">
-            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+          <span className="px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
             <span>Delivery Available</span>
           </span>
         )}
       </div>
 
       {/* PROMINENT DELIVERY FEE NOTICE DISPLAY */}
-      <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-slate-900/90 to-slate-950/90 border border-amber-500/30 space-y-1 shadow-sm">
+      <div className="p-3 sm:p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
         <div className="flex items-center gap-2">
-          <Truck className="w-4 h-4 text-amber-400 shrink-0" />
-          <h5 className="text-xs sm:text-sm font-extrabold text-amber-300 uppercase tracking-wide">
+          <Truck className="w-4 h-4 text-slate-800 shrink-0" />
+          <h5 className="text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-wide">
             {deliveryFeeInfo.heading}
           </h5>
         </div>
-        <p className="text-xs text-slate-200 font-medium leading-relaxed pl-6">
+        <p className="text-xs text-slate-600 font-medium leading-relaxed pl-6">
           {deliveryFeeInfo.subtitle}
         </p>
-        <p className="text-[11px] text-slate-400 font-normal pl-6">
+        <p className="text-[11px] text-slate-500 font-normal pl-6">
           {deliveryFeeInfo.note}
         </p>
       </div>
 
       {/* 1. CUSTOMER-FACING DELIVERY CITY SELECTOR BUTTON */}
       <div className="space-y-1.5">
-        <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+        <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
           <span>Delivery City</span>
           {currentCityName && (
-            <span className="text-[10px] text-amber-400 font-semibold cursor-pointer hover:underline" onClick={() => setIsCityModalOpen(true)}>
+            <span 
+              className="text-[10px] text-blue-600 font-semibold cursor-pointer hover:underline" 
+              onClick={() => setIsCityModalOpen(true)}
+            >
               Change City
             </span>
           )}
@@ -297,41 +334,41 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
         <button
           type="button"
           onClick={() => setIsCityModalOpen(true)}
-          className="w-full bg-slate-900 hover:bg-slate-850 border border-slate-700/80 hover:border-amber-500/60 text-white rounded-2xl p-3.5 flex items-center justify-between transition-all group shadow-sm text-left"
+          className="w-full bg-white hover:bg-slate-50 border border-slate-300 hover:border-slate-400 text-slate-900 rounded-xl p-3 flex items-center justify-between transition-all group shadow-2xs text-left cursor-pointer"
         >
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-slate-800 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
-              <MapPin className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700 group-hover:scale-105 transition-transform">
+              <MapPin className="w-4 h-4 text-slate-700" />
             </div>
             <div>
               {currentCityName ? (
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-white">
+                  <span className="text-sm font-bold text-slate-900">
                     {currentCityName}
                   </span>
-                  <span className="text-emerald-400 text-xs font-bold">✓</span>
+                  <span className="text-emerald-600 text-xs font-bold">✓</span>
                   {isCustomMode && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800/50 font-medium">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-medium">
                       Custom Location
                     </span>
                   )}
                 </div>
               ) : (
-                <span className="text-sm font-medium text-slate-400">
+                <span className="text-sm font-medium text-slate-500">
                   Select Delivery City
                 </span>
               )}
-              <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+              <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
                 <span>{estimatedDays}</span>
                 <span>•</span>
-                <span className="text-amber-300 font-medium">
+                <span className="text-slate-900 font-semibold">
                   {deliveryFeeInfo.display}
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-amber-400 font-semibold group-hover:translate-x-0.5 transition-transform">
+          <div className="flex items-center gap-1 text-xs text-slate-600 group-hover:text-slate-900 font-semibold">
             <span>{currentCityName ? 'Change' : 'Select'}</span>
             <ChevronDown className="w-4 h-4" />
           </div>
@@ -340,71 +377,52 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
 
       {/* 2. SELECTED CITY INFORMATION BADGES */}
       {currentCityName && (
-        <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
           <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="flex items-center gap-2 text-slate-300">
-              <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span>Time: <strong className="text-white">{estimatedDays}</strong></span>
+            <div className="flex items-center gap-2 text-slate-600">
+              <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <span>Time: <strong className="text-slate-900">{estimatedDays}</strong></span>
             </div>
-            <div className="flex items-center gap-2 text-slate-300">
-              <Truck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span>Delivery Fee: <strong className="text-amber-300">{deliveryFeeInfo.display}</strong></span>
+            <div className="flex items-center gap-2 text-slate-600">
+              <Truck className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <span>Delivery Fee: <strong className="text-slate-900 font-mono">{deliveryFeeInfo.display}</strong></span>
             </div>
           </div>
 
           {selectedCity?.notes && (
-            <p className="text-[11px] text-slate-400 flex items-start gap-1.5 pt-1 border-t border-slate-800/60">
-              <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-slate-500 flex items-start gap-1.5 pt-1 border-t border-slate-200">
+              <Info className="w-3.5 h-3.5 text-blue-600 shrink-0 mt-0.5" />
               <span>{selectedCity.notes}</span>
             </p>
           )}
 
           {isCustomMode && (
-            <p className="text-[11px] text-blue-300 flex items-start gap-1.5 pt-1 border-t border-slate-800/60">
-              <Sparkles className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-blue-800 flex items-start gap-1.5 pt-1 border-t border-slate-200">
+              <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0 mt-0.5" />
               <span>Our team will confirm exact cargo dispatch rates for {currentCityName} on WhatsApp.</span>
             </p>
           )}
         </div>
       )}
 
-      {/* 3. SIMPLIFIED DELIVERY ADDRESS INPUT (ONE FIELD) */}
-      {currentCityName && !isCustomMode && (
-        <div className="space-y-1.5">
-          <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
-            <span>Delivery Address</span>
-            <span className="text-[10px] text-slate-500 font-normal">Complete address</span>
-          </label>
-          <div className="relative">
-            <input
-              type="text"
-              value={standardAddress}
-              onChange={(e) => setStandardAddress(e.target.value)}
-              placeholder="Enter your complete delivery address (House / Shop #, Street, Area / Mohalla, Landmark)"
-              className="w-full bg-slate-900 border border-slate-700/80 focus:border-amber-500 rounded-2xl px-4 py-3 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none transition-colors"
-            />
-          </div>
-        </div>
-      )}
-
       {/* ======================================================== */}
-      {/* CITY SELECTION MODAL / PANEL */}
+      {/* CITY SELECTION MODAL / PANEL                             */}
       {/* ======================================================== */}
       {isCityModalOpen && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-scaleIn">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
             
             {/* Modal Header */}
-            <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+            <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center">
-                  <MapPin className="w-5 h-5" />
+                <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 flex items-center justify-center">
+                  <MapPin className="w-5 h-5 text-slate-700" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white font-serif">
+                  <h3 className="text-base font-bold text-slate-900 font-serif">
                     Select Delivery City
                   </h3>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-500">
                     Choose your destination from available delivery zones
                   </p>
                 </div>
@@ -412,14 +430,14 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
               <button
                 type="button"
                 onClick={() => setIsCityModalOpen(false)}
-                className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Fast Case-Insensitive Search Input */}
-            <div className="p-3.5 border-b border-slate-800 bg-slate-950/40">
+            <div className="p-3.5 border-b border-slate-200 bg-white">
               <div className="relative">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                 <input
@@ -427,14 +445,14 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="🔎 Search city (e.g. Chiniot, Faisalabad, Lahore, Jhang)..."
-                  className="w-full bg-slate-900 border border-slate-800 focus:border-amber-500 rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none transition-colors"
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-slate-900 focus:bg-white rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none transition-colors"
                   autoFocus
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-2.5 text-slate-400 hover:text-white text-xs"
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-900 text-xs cursor-pointer"
                   >
                     Clear
                   </button>
@@ -446,29 +464,28 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
             <div className="p-3 space-y-1.5 overflow-y-auto flex-1 max-h-[50vh]">
               {filteredCities.length > 0 ? (
                 filteredCities.map((city, cIdx) => {
-                  const isSelected = !isCustomMode && selectedCityId === city.id;
-                  const isFree = city.freeDelivery || city.deliveryFeeType === 'free' || city.deliveryFee === 0;
+                  const isSelected = !isCustomMode && (selectedCityId === city.id || selectedCity?.cityName === city.cityName);
 
                   return (
                     <button
                       key={city.id ? `${city.id}-${cIdx}` : `est-city-${city.cityName}-${cIdx}`}
                       type="button"
                       onClick={() => handleSelectCity(city)}
-                      className={`w-full text-left p-3 rounded-2xl transition-all border flex items-center justify-between group ${
+                      className={`w-full text-left p-3 rounded-xl transition-all border flex items-center justify-between group cursor-pointer ${
                         isSelected
-                          ? 'bg-amber-500/10 border-amber-500 text-white shadow-md'
-                          : 'bg-slate-950/60 hover:bg-slate-800/80 border-slate-800/80 text-slate-200 hover:border-slate-700'
+                          ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
+                          : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-800 hover:border-slate-300'
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-                          isSelected ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-800 text-slate-400 group-hover:text-amber-400'
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                          isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600 group-hover:text-slate-900'
                         }`}>
                           <MapPin className="w-4 h-4" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs sm:text-sm font-bold text-white group-hover:text-amber-300 transition-colors">
+                            <span className={`text-xs sm:text-sm font-bold ${isSelected ? 'text-white' : 'text-slate-900'}`}>
                               {city.cityName}
                             </span>
                             {isSelected && (
@@ -476,7 +493,7 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
                             )}
                           </div>
                           {city.areaTown && (
-                            <p className="text-[11px] text-slate-400">
+                            <p className={`text-[11px] ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
                               {city.areaTown}
                             </p>
                           )}
@@ -484,10 +501,12 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
                       </div>
 
                       <div className="text-right shrink-0">
-                        <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider block bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider block ${
+                          isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}>
                           Delivery Available
                         </span>
-                        <span className="text-[10px] text-slate-400 font-mono mt-0.5 block">
+                        <span className={`text-[10px] font-mono mt-0.5 block ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
                           {city.estimatedDays}
                         </span>
                       </div>
@@ -495,76 +514,57 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
                   );
                 })
               ) : (
-                <div className="p-6 text-center text-slate-400 space-y-2">
+                <div className="p-6 text-center text-slate-500 space-y-1">
                   <p className="text-xs">No matching city found for "{searchQuery}".</p>
-                  <p className="text-[11px] text-slate-500">You can add your custom city location below!</p>
+                  <p className="text-[11px] text-slate-400">You can enter your custom delivery city below.</p>
                 </div>
               )}
 
               {/* 3. CUSTOM CITY SECTION ("+ Add Custom City") */}
-              <div className="pt-3 border-t border-slate-800 mt-2">
-                <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-950 to-slate-900 border border-blue-500/30 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-blue-300 uppercase tracking-wider flex items-center gap-1.5">
-                      <Plus className="w-4 h-4 text-blue-400" />
-                      <span>+ Add Custom City (Unlisted Location)</span>
-                    </span>
-                    <span className="text-[10px] text-slate-400">Across Pakistan</span>
+              {deliverySettings.enableCustomCity !== false && (
+                <div className="pt-3 border-t border-slate-200 mt-2">
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                        <Plus className="w-4 h-4 text-slate-700" />
+                        <span>+ Custom City (Unlisted Location)</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500">Across Pakistan</span>
+                    </div>
+
+                    <form onSubmit={handleContinueWithCustomCity} className="space-y-2">
+                      <div>
+                        <input
+                          type="text"
+                          value={customCityName}
+                          onChange={(e) => setCustomCityName(e.target.value)}
+                          placeholder="Enter City Name (e.g. Okara, Mianwali, Gujrat...)"
+                          className="w-full bg-white border border-slate-300 focus:border-slate-900 rounded-xl px-3.5 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none"
+                          required
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={!customCityName.trim()}
+                        className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white font-bold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <span>Confirm Delivery City</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </form>
                   </div>
-
-                  <form onSubmit={handleContinueWithCustomCity} className="space-y-2.5">
-                    <div>
-                      <input
-                        type="text"
-                        value={customCityName}
-                        onChange={(e) => setCustomCityName(e.target.value)}
-                        placeholder="Enter City Name (e.g. Okara, Mianwali, Gujrat...)"
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-400"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <input
-                        type="text"
-                        value={customAddress}
-                        onChange={(e) => setCustomAddress(e.target.value)}
-                        placeholder="Enter Complete Delivery Address"
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-400"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <input
-                        type="text"
-                        value={customLandmark}
-                        onChange={(e) => setCustomLandmark(e.target.value)}
-                        placeholder="Optional Nearby Landmark"
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-400"
-                      />
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={!customCityName.trim()}
-                      className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold text-xs transition-colors flex items-center justify-center gap-2"
-                    >
-                      <span>Continue with Custom City</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  </form>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Modal Footer */}
-            <div className="p-3.5 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+            <div className="p-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
               <span>{activeCities.length} Standard Delivery Zones</span>
               <button
                 type="button"
                 onClick={() => setIsCityModalOpen(false)}
-                className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold transition-colors"
+                className="px-4 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold transition-colors cursor-pointer"
               >
                 Close
               </button>

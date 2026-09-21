@@ -70,6 +70,7 @@ export const STORAGE_KEYS = {
   COUPONS: 'zst_coupons_list',
   PAYMENT_METHODS: 'zst_payment_methods_v1',
   HOW_TO_ORDER_GUIDE: 'zst_how_to_order_guide_v1',
+  SELECTED_DELIVERY_CITY: 'zst_selected_delivery_city_v1',
 };
 
 export const defaultHeroBanners: HeroBannerSlide[] = [
@@ -2746,5 +2747,42 @@ export const openWhatsAppLink = (url: string) => {
     } catch {}
   }
 };
+
+/**
+ * Save selected delivery city seamlessly across Product Detail and Checkout flows
+ */
+export const saveSelectedDeliveryCity = (cityName: string): void => {
+  if (!cityName || !cityName.trim()) return;
+  const cleanCity = cityName.trim();
+  safeSetLocalStorage(STORAGE_KEYS.SELECTED_DELIVERY_CITY, cleanCity);
+  try {
+    const stored = localStorage.getItem('zft_current_customer_profile');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      parsed.city = cleanCity;
+      localStorage.setItem('zft_current_customer_profile', JSON.stringify(parsed));
+    }
+  } catch {}
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('zst_selected_city_updated', { detail: cleanCity }));
+  }
+};
+
+/**
+ * Load selected delivery city across sessions and components
+ */
+export const loadSelectedDeliveryCity = (): string => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.SELECTED_DELIVERY_CITY);
+    if (stored && stored.trim()) return stored.trim();
+    const profStr = localStorage.getItem('zft_current_customer_profile');
+    if (profStr) {
+      const parsed = JSON.parse(profStr);
+      if (parsed.city && parsed.city.trim()) return parsed.city.trim();
+    }
+  } catch {}
+  return '';
+};
+
 
 

@@ -19,7 +19,7 @@ import {
   formatWeightTierRange,
   formatWeightTierFee
 } from '../utils/deliveryFeeCalculator';
-import { loadDeliverySettings, generateNextOrderId, loadPaymentMethods, loadHowToOrderConfig, openWhatsAppLink, safeSetLocalStorage, STORAGE_KEYS, sanitizeAndDeduplicateCities } from '../utils/storage';
+import { loadDeliverySettings, generateNextOrderId, loadPaymentMethods, loadHowToOrderConfig, openWhatsAppLink, safeSetLocalStorage, STORAGE_KEYS, sanitizeAndDeduplicateCities, saveSelectedDeliveryCity, loadSelectedDeliveryCity } from '../utils/storage';
 import { getOrGenerateCustomerId } from '../utils/customerStorage';
 import { getProductPricingDetails, getVariantPricingDetails, getActiveProductPrice } from '../utils/pricingUtils';
 import { fetchPaymentMethodsFromSupabase, uploadMediaToSupabase, uploadPaymentProof, fetchHowToOrderConfigFromSupabase, fetchDeliveryCitiesFromSupabase } from '../services/supabaseService';
@@ -349,10 +349,23 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
   const [customerEmail, setCustomerEmail] = useState('');
 
   // Delivery Address State
-  const [selectedCityId, setSelectedCityId] = useState<string>(
-    activeCities[0]?.cityName || 'Lahore'
-  );
-  const [customCityName, setCustomCityName] = useState('');
+  const [selectedCityId, setSelectedCityId] = useState<string>(() => {
+    const saved = loadSelectedDeliveryCity();
+    if (saved) {
+      const matched = activeCities.find(c => c.cityName?.toLowerCase() === saved.toLowerCase() || c.id === saved);
+      if (matched) return matched.cityName;
+      if (saved === customCityOptionValue || saved === 'Other') return customCityOptionValue;
+      return saved;
+    }
+    return activeCities[0]?.cityName || 'Lahore';
+  });
+  const [customCityName, setCustomCityName] = useState(() => {
+    const saved = loadSelectedDeliveryCity();
+    if (saved && !activeCities.some(c => c.cityName?.toLowerCase() === saved.toLowerCase() || c.id === saved)) {
+      return saved;
+    }
+    return '';
+  });
   const [areaLocality, setAreaLocality] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [postalCode, setPostalCode] = useState('');
@@ -415,8 +428,26 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
       setCurrentStep('cart');
       setPlacedOrder(null);
       setErrors({});
+
+      const saved = loadSelectedDeliveryCity();
+      if (saved) {
+        const matched = activeCities.find(c => c.cityName?.toLowerCase() === saved.toLowerCase() || c.id === saved);
+        if (matched) {
+          setSelectedCityId(matched.cityName);
+        } else if (saved === customCityOptionValue || saved === 'Other') {
+          setSelectedCityId(customCityOptionValue);
+        } else {
+          const exists = activeCities.some(c => c.cityName?.toLowerCase() === saved.toLowerCase());
+          if (exists) {
+            setSelectedCityId(saved);
+          } else {
+            setSelectedCityId(customCityOptionValue);
+            setCustomCityName(saved);
+          }
+        }
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, activeCities]);
 
   // Load configured payment methods instantly from local storage, then sync with Supabase in background
   useEffect(() => {
@@ -1537,7 +1568,13 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                   <div className="relative">
                     <select
                       value={selectedCityId}
-                      onChange={(e) => setSelectedCityId(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedCityId(val);
+                        if (val !== customCityOptionValue) {
+                          saveSelectedDeliveryCity(val);
+                        }
+                      }}
                       className="w-full pl-9 pr-8 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white text-slate-900 focus:border-blue-500 outline-none transition-all cursor-pointer appearance-none"
                     >
                       {activeCities.map((c, idx) => {

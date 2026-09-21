@@ -9,22 +9,19 @@ import {
   Truck, 
   Award, 
   Share2, 
-  ArrowLeft,
-  ChevronRight,
-  Package,
-  Layers,
-  Sparkles,
-  Eye,
-  CheckCircle2,
-  ChevronLeft,
-  Info,
+  ArrowLeft, 
+  ChevronRight, 
+  ChevronLeft, 
+  ChevronDown,
+  Sparkles, 
+  Maximize2, 
+  X, 
+  Shield, 
+  Zap, 
+  CheckCircle,
   FileText,
-  HelpCircle,
-  Clock,
-  Shield,
-  Zap,
-  MapPin,
-  CheckCircle
+  Sliders,
+  RotateCcw
 } from 'lucide-react';
 import { Product, ProductCategory, ProductBrand, BusinessConfig, ProductVariant, PaintShade } from '../types';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -34,11 +31,11 @@ import { PaintShadeSelector } from '../components/PaintShadeSelector';
 import { 
   getActiveProductPrice, 
   getActiveVariants, 
-  hasActiveVariants,
-  formatPakistaniPrice,
-  getProductQuantityConfig,
-  buildProductWhatsAppOrderUrl,
-  parseNumericPrice
+  hasActiveVariants, 
+  formatPakistaniPrice, 
+  getProductQuantityConfig, 
+  buildProductWhatsAppOrderUrl, 
+  parseNumericPrice 
 } from '../utils/pricingUtils';
 import { getActivePaintShades, hasActivePaintShades } from '../utils/paintShadeUtils';
 import { getProductSlug, getCategorySlug } from '../utils/slugUtils';
@@ -77,6 +74,54 @@ interface ProductDetailPageProps {
   onNavigate: (path: string) => void;
 }
 
+// Color Hex map helper for visual swatches while always respecting exact color name
+function getKnownColorHex(colorName: string): string | null {
+  const c = colorName.trim().toLowerCase();
+  const map: Record<string, string> = {
+    'black': '#111827',
+    'matte black': '#1e293b',
+    'jet black': '#0a0a0a',
+    'white': '#ffffff',
+    'off white': '#f8fafc',
+    'ivory': '#fffff0',
+    'grey': '#6b7280',
+    'gray': '#6b7280',
+    'charcoal': '#374151',
+    'charcoal gray': '#374151',
+    'charcoal grey': '#374151',
+    'light grey': '#d1d5db',
+    'silver': '#e2e8f0',
+    'chrome': '#cbd5e1',
+    'gold': '#d97706',
+    'rose gold': '#f43f5e',
+    'bronze': '#92400e',
+    'brass': '#b45309',
+    'blue': '#2563eb',
+    'navy': '#1e3a8a',
+    'navy blue': '#1e3a8a',
+    'royal blue': '#1d4ed8',
+    'sky blue': '#38bdf8',
+    'green': '#16a34a',
+    'emerald': '#059669',
+    'olive': '#556b2f',
+    'red': '#dc2626',
+    'maroon': '#800000',
+    'brown': '#78350f',
+    'beige': '#f5f5dc',
+    'cream': '#fffdd0',
+    'tan': '#d2b48c',
+    'wood': '#854d0e',
+    'oak': '#a16207',
+    'walnut': '#451a03',
+    'yellow': '#eab308',
+    'orange': '#ea580c',
+    'pink': '#ec4899',
+    'purple': '#9333ea'
+  };
+
+  return map[c] || null;
+}
+
 export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
   product,
   categories,
@@ -87,19 +132,48 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
   onBuyNow,
   onNavigate
 }) => {
-  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  // Existing product colors extraction (STRICT: ONLY if colors already exist in product data)
+  const productColors = useMemo<string[]>(() => {
+    const list: string[] = [];
+    if (Array.isArray(product.availableColors) && product.availableColors.length > 0) {
+      product.availableColors.forEach(c => {
+        if (typeof c === 'string' && c.trim() && !list.includes(c.trim())) {
+          list.push(c.trim());
+        }
+      });
+    } else if (Array.isArray((product as any).colors) && (product as any).colors.length > 0) {
+      (product as any).colors.forEach((c: any) => {
+        if (typeof c === 'string' && c.trim() && !list.includes(c.trim())) {
+          list.push(c.trim());
+        }
+      });
+    }
+    return list;
+  }, [product]);
+
+  const hasColors = productColors.length > 0;
+  const [selectedColor, setSelectedColor] = useState<string>(() => (hasColors ? productColors[0] : ''));
+
+  // Variants & Shades
+  const variants = getActiveVariants(product);
+  const hasVariants = hasActiveVariants(product);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | undefined>(() => {
-    const variants = getActiveVariants(product);
     return variants.find(v => v.isDefault) || variants[0];
   });
+
+  const paintShades = getActivePaintShades(product);
+  const hasShades = hasActivePaintShades(product);
   const [selectedShade, setSelectedShade] = useState<PaintShade | undefined>(() => {
-    const shades = getActivePaintShades(product);
-    return shades.find(s => s.isActive) || shades[0];
+    return paintShades.find(s => s.isActive) || paintShades[0];
   });
+
+  // Gallery state
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [addedToast, setAddedToast] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [activeTab, setActiveTab] = useState<'details' | 'specs' | 'features'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'specs' | 'features' | 'shipping'>('details');
 
   // Touch swipe support for mobile gallery
   const touchStartX = useRef<number>(0);
@@ -113,28 +187,29 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
       window.scrollTo({ top: 0, behavior: 'instant' });
     }
     setSelectedImageIndex(0);
-    const availableVariants = getActiveVariants(product);
-    setSelectedVariant(availableVariants.find(v => v.isDefault) || availableVariants[0]);
-    const availableShades = getActivePaintShades(product);
-    setSelectedShade(availableShades.find(s => s.isActive) || availableShades[0]);
+    const availVariants = getActiveVariants(product);
+    setSelectedVariant(availVariants.find(v => v.isDefault) || availVariants[0]);
+    const availShades = getActivePaintShades(product);
+    setSelectedShade(availShades.find(s => s.isActive) || availShades[0]);
+    setSelectedColor(hasColors ? productColors[0] : '');
     setQuantity(qtyConfig.defaultQuantity || 1);
-  }, [product.id]);
+  }, [product.id, hasColors, productColors]);
 
-  // Gallery of images
+  // Normalize all existing images for this product (NO fake images generated)
   const mediaImages = useMemo(() => {
     const imgs = normalizeProductImages(product.images, product.image, product.category, product.name);
     return imgs.length > 0 ? imgs : [resolveProductImage(product)];
   }, [product]);
 
-  // Resolved brand and category
+  // Brand & Category resolution
   const categoryObj = categories.find(c => c.id === product.categoryId || c.name === product.category);
   const brandObj = brands.find(b => b.id === product.brandId || b.name === product.brand);
   const brandName = product.brand || brandObj?.name || 'Zafar Sarwar Traders Genuine';
 
-  // Active pricing based on selected variant
+  // Active pricing calculation
   const activePricing = getActiveProductPrice(product, selectedVariant);
 
-  // Calculated savings if on sale
+  // Savings amount calculation
   const savingsAmount = useMemo(() => {
     if (!activePricing.isOnSale) return null;
     const orig = parseNumericPrice(activePricing.originalPrice);
@@ -145,7 +220,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     return null;
   }, [activePricing]);
 
-  // Total price for current quantity
+  // Total price display for selected quantity
   const totalPriceDisplay = useMemo(() => {
     const eff = parseNumericPrice(activePricing.effectivePrice);
     if (eff > 0 && quantity > 1) {
@@ -153,14 +228,6 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     }
     return null;
   }, [activePricing.effectivePrice, quantity]);
-
-  // Variants list
-  const variants = getActiveVariants(product);
-  const hasVariants = hasActiveVariants(product);
-
-  // Paint shades
-  const paintShades = getActivePaintShades(product);
-  const hasShades = hasActivePaintShades(product);
 
   // Related products from the same category
   const relatedProducts = useMemo(() => {
@@ -178,7 +245,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     onAddToCart(
       product,
       quantity,
-      undefined,
+      hasColors ? selectedColor : undefined,
       undefined,
       undefined,
       selectedVariant?.name,
@@ -193,7 +260,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     onBuyNow(
       product,
       quantity,
-      undefined,
+      hasColors ? selectedColor : undefined,
       undefined,
       undefined,
       selectedVariant?.name,
@@ -232,9 +299,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
         setCopiedLink(true);
         setTimeout(() => setCopiedLink(false), 2000);
       }
-    } catch {
-      // Ignore copy error
-    }
+    } catch {}
   };
 
   const handleScrollToReviews = () => {
@@ -244,31 +309,41 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     }
   };
 
-  // Touch gallery gesture handling
+  // Touch handlers for mobile gallery swipe
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.targetTouches[0].clientX;
   };
-
   const handleTouchMove = (e: React.TouchEvent) => {
     touchEndX.current = e.targetTouches[0].clientX;
   };
-
   const handleTouchEnd = () => {
     if (!touchStartX.current || !touchEndX.current) return;
     const distance = touchStartX.current - touchEndX.current;
-    const minSwipeDistance = 50;
-    if (distance > minSwipeDistance) {
-      // Swiped left -> next image
+    if (distance > 45) {
       setSelectedImageIndex((prev) => (prev + 1 < mediaImages.length ? prev + 1 : 0));
-    } else if (distance < -minSwipeDistance) {
-      // Swiped right -> prev image
+    } else if (distance < -45) {
       setSelectedImageIndex((prev) => (prev - 1 >= 0 ? prev - 1 : mediaImages.length - 1));
     }
     touchStartX.current = 0;
     touchEndX.current = 0;
   };
 
-  // Safe Product JSON-LD structured data using existing real data ONLY
+  // Product description summary snippet
+  const descriptionSnippet = useMemo(() => {
+    if (product.shortDescription && product.shortDescription.trim()) {
+      return product.shortDescription.trim();
+    }
+    if (product.description && product.description.trim()) {
+      const firstParagraph = product.description.split('\n')[0].trim();
+      if (firstParagraph.length > 220) {
+        return firstParagraph.slice(0, 217) + '...';
+      }
+      return firstParagraph;
+    }
+    return null;
+  }, [product]);
+
+  // Schema.org structured data using real product fields
   const productJsonLd = useMemo(() => {
     const slug = getProductSlug(product);
     const prodUrl = `https://zafarsarwartraders.shop/product/${slug}`;
@@ -301,7 +376,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
   }, [product, mediaImages, brandName, activePricing.effectivePrice]);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 pb-28 sm:pb-32 md:pb-20">
+    <div className="min-h-screen bg-slate-50 text-slate-900 pb-28 sm:pb-32 md:pb-24">
       
       {/* Schema.org Product Structured Data */}
       <script
@@ -311,33 +386,31 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
 
       {/* Floating Added To Cart Toast */}
       {addedToast && (
-        <div className="fixed top-20 sm:top-24 left-1/2 -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0 z-50 px-4 py-3 bg-slate-900/95 border border-emerald-500/60 text-white text-xs font-semibold rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-2.5 animate-in fade-in slide-in-from-top-4 duration-200 max-w-[90vw]">
+        <div className="fixed top-20 sm:top-24 left-1/2 -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0 z-50 px-4 py-3 bg-slate-900 text-white text-xs font-semibold rounded-2xl shadow-2xl flex items-center gap-2.5 animate-in fade-in slide-in-from-top-4 duration-200 max-w-[90vw] border border-slate-700">
           <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
             <Check className="w-3 h-3 text-white stroke-[3]" />
           </div>
-          <span className="truncate">Added <strong>{product.name}</strong> to Cart!</span>
+          <span className="truncate">Added <strong>{product.name}</strong> to Cart</span>
         </div>
       )}
 
-      {/* Top Mobile/Desktop Navigation Bar */}
-      <div className="bg-white/95 border-b border-slate-200/90 sticky top-[56px] sm:top-[64px] z-30 backdrop-blur-md shadow-xs">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2 sm:py-2.5 flex items-center justify-between gap-2">
+      {/* Top Header / Breadcrumb Navigation */}
+      <div className="bg-white border-b border-slate-200/80 sticky top-[56px] sm:top-[64px] z-30 shadow-2xs backdrop-blur-md">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-3">
           
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5 min-w-0">
-            {/* Back Button */}
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar min-w-0">
             <button
               type="button"
               onClick={handleBack}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-blue-50 border border-slate-200/90 hover:border-blue-300 text-slate-700 hover:text-blue-600 font-bold text-xs shadow-xs transition-all cursor-pointer shrink-0 active:scale-95"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 hover:text-slate-900 font-semibold text-xs transition-colors cursor-pointer shrink-0 active:scale-95"
               title="Go back"
             >
-              <ArrowLeft className="w-3.5 h-3.5 text-slate-600 group-hover:text-blue-600" />
-              <span className="text-[11px] sm:text-xs">Back</span>
+              <ArrowLeft className="w-3.5 h-3.5 text-slate-600" />
+              <span>Back</span>
             </button>
 
             <div className="h-4 w-px bg-slate-200 shrink-0 hidden sm:block" />
 
-            {/* Breadcrumb Links */}
             <div className="min-w-0">
               <Breadcrumbs
                 items={[
@@ -353,117 +426,163 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Share Button */}
             <button
               type="button"
               onClick={handleShare}
-              className="p-1.5 sm:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 hover:text-blue-600 transition-colors shadow-xs cursor-pointer flex items-center gap-1 text-xs font-semibold"
+              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
               title="Share product link"
             >
               <Share2 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Share</span>
             </button>
             {copiedLink && (
-              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                Copied!
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200">
+                Link Copied!
               </span>
             )}
-
-            {/* Store Link on Desktop */}
-            <button
-              type="button"
-              onClick={() => onNavigate('/store')}
-              className="text-xs font-semibold text-slate-500 hover:text-blue-600 transition-colors shrink-0 hidden md:inline-flex items-center gap-1 cursor-pointer"
-            >
-              <span>All Items</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-3 sm:pt-4">
+      {/* Main Content Layout */}
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6">
         
-        {/* Main Product Container */}
-        <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden p-3.5 sm:p-6 lg:p-10">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 lg:gap-14">
+        {/* ======================================================== */}
+        {/* TOP / PRODUCT AREA                                       */}
+        {/* ======================================================== */}
+        <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-xs p-4 sm:p-6 lg:p-10">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
             
-            {/* ======================================================== */}
-            {/* 1. PRODUCT IMAGE & GALLERY SECTION                      */}
-            {/* ======================================================== */}
-            <div className="lg:col-span-6 space-y-3 sm:space-y-4">
+            {/* ---------------------------------------------------- */}
+            {/* LEFT SIDE: PRODUCT IMAGE GALLERY                     */}
+            {/* ---------------------------------------------------- */}
+            <div className="lg:col-span-7 space-y-4">
               
-              {/* Primary Image Display Canvas */}
-              <div 
-                className="relative w-full h-72 sm:h-96 lg:h-[460px] bg-gradient-to-b from-slate-50 to-slate-100/70 rounded-2xl border border-slate-200/80 p-3 sm:p-6 flex items-center justify-center overflow-hidden select-none group touch-pan-y"
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-              >
-                <img
-                  src={normalizeProductImage(mediaImages[selectedImageIndex] || mediaImages[0], product.category, product.name)}
-                  alt={`${product.name} - ${product.category || 'Sanitaryware & Building Materials'} | Zafar Sarwar Traders Chiniot`}
-                  referrerPolicy="no-referrer"
-                  loading="eager"
-                  decoding="async"
-                  onError={(e) => {
-                    const target = e.currentTarget;
-                    target.onerror = null;
-                    const altList = Array.isArray(product.images)
-                      ? product.images.filter((i: any) => typeof i === 'string' && i.trim().length > 3 && !target.src.includes(i))
-                      : [];
-                    if (altList.length > 0) {
-                      target.src = normalizeProductImage(altList[0], product.category, product.name);
-                      return;
-                    }
-                    handleImageError(e, product.category, product.name);
-                  }}
-                  className="max-h-full max-w-full object-contain filter drop-shadow-md transition-transform duration-300 group-hover:scale-105"
-                />
-
-                {/* Top Left Badges (Sale / Discount) */}
-                <div className="absolute top-2.5 left-2.5 sm:top-3.5 sm:left-3.5 flex flex-col gap-1.5 z-10 pointer-events-none">
-                  {activePricing.isOnSale && (
-                    <ProductSaleBadge pricing={activePricing} size="md" />
-                  )}
-                  {product.badge && (
-                    <span className="px-2.5 py-1 rounded-lg bg-slate-900/90 text-white text-[10px] font-extrabold uppercase tracking-wider shadow-sm">
-                      {product.badge}
-                    </span>
-                  )}
-                </div>
-
-                {/* Top Right Counter Badge on Mobile */}
+              {/* Gallery Wrapper: Vertical Rail on Desktop + Main Large Image Canvas */}
+              <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-4 items-start">
+                
+                {/* Vertical Thumbnails Sidebar (Desktop) / Horizontal Row (Mobile) */}
                 {mediaImages.length > 1 && (
-                  <div className="absolute top-2.5 right-2.5 sm:top-3.5 sm:right-3.5 px-2.5 py-1 rounded-full bg-black/65 backdrop-blur-sm text-white text-[10px] font-mono font-bold tracking-wider z-10">
-                    {selectedImageIndex + 1} / {mediaImages.length}
+                  <div className="flex sm:flex-col gap-2.5 overflow-x-auto sm:overflow-y-auto max-h-[500px] w-full sm:w-20 lg:w-24 shrink-0 pb-1 sm:pb-0 no-scrollbar">
+                    {mediaImages.map((img, idx) => {
+                      const isSelected = selectedImageIndex === idx;
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setSelectedImageIndex(idx)}
+                          className={`relative aspect-square w-16 sm:w-full rounded-xl bg-slate-50 border p-1.5 shrink-0 overflow-hidden cursor-pointer transition-all ${
+                            isSelected
+                              ? 'border-slate-900 ring-2 ring-slate-900/20 shadow-xs opacity-100'
+                              : 'border-slate-200 hover:border-slate-400 opacity-60 hover:opacity-100'
+                          }`}
+                          title={`View image ${idx + 1}`}
+                        >
+                          <img
+                            src={normalizeProductImage(img, product.category, product.name)}
+                            alt={`${product.name} view ${idx + 1}`}
+                            referrerPolicy="no-referrer"
+                            loading="lazy"
+                            decoding="async"
+                            onError={(e) => handleImageError(e, product.category, product.name)}
+                            className="w-full h-full object-contain"
+                          />
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
 
-                {/* Desktop Arrow Controls */}
-                {mediaImages.length > 1 && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedImageIndex((prev) => (prev - 1 >= 0 ? prev - 1 : mediaImages.length - 1))}
-                      className="hidden sm:flex absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/90 hover:bg-white border border-slate-200 text-slate-700 items-center justify-center shadow-md transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
-                      title="Previous image"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedImageIndex((prev) => (prev + 1 < mediaImages.length ? prev + 1 : 0))}
-                      className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/90 hover:bg-white border border-slate-200 text-slate-700 items-center justify-center shadow-md transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
-                      title="Next image"
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </>
-                )}
+                {/* Primary Large Display Canvas */}
+                <div 
+                  className="relative flex-1 w-full min-h-[340px] sm:min-h-[440px] lg:min-h-[520px] max-h-[560px] bg-[#fbfbfb] rounded-2xl border border-slate-200/90 p-4 sm:p-8 flex items-center justify-center overflow-hidden group select-none touch-pan-y"
+                  onTouchStart={handleTouchStart}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                >
+                  <img
+                    src={normalizeProductImage(mediaImages[selectedImageIndex] || mediaImages[0], product.category, product.name)}
+                    alt={`${product.name} - ${product.category || 'Sanitaryware & Building Materials'} | Zafar Sarwar Traders`}
+                    referrerPolicy="no-referrer"
+                    loading="eager"
+                    decoding="async"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      target.onerror = null;
+                      const altList = Array.isArray(product.images)
+                        ? product.images.filter((i: any) => typeof i === 'string' && i.trim().length > 3 && !target.src.includes(i))
+                        : [];
+                      if (altList.length > 0) {
+                        target.src = normalizeProductImage(altList[0], product.category, product.name);
+                        return;
+                      }
+                      handleImageError(e, product.category, product.name);
+                    }}
+                    className="max-h-[460px] max-w-full object-contain filter drop-shadow-sm transition-transform duration-300 group-hover:scale-105 cursor-zoom-in"
+                    onClick={() => setIsZoomModalOpen(true)}
+                  />
+
+                  {/* Top Left Sale / Discount Badges */}
+                  <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10 pointer-events-none">
+                    {activePricing.isOnSale && (
+                      <ProductSaleBadge pricing={activePricing} size="md" />
+                    )}
+                    {product.badge && (
+                      <span className="px-2.5 py-1 rounded-lg bg-slate-900 text-white text-[10px] font-bold uppercase tracking-wider shadow-xs">
+                        {product.badge}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Top Right Image Counter (Mobile & Multi-image) */}
+                  {mediaImages.length > 1 && (
+                    <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-xs text-white text-[10px] font-mono font-semibold tracking-wider z-10">
+                      {selectedImageIndex + 1} / {mediaImages.length}
+                    </div>
+                  )}
+
+                  {/* Desktop Hover Nav Arrows */}
+                  {mediaImages.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedImageIndex((prev) => (prev - 1 >= 0 ? prev - 1 : mediaImages.length - 1));
+                        }}
+                        className="hidden sm:flex absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/95 hover:bg-white border border-slate-200 text-slate-800 items-center justify-center shadow-md transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+                        title="Previous photo"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedImageIndex((prev) => (prev + 1 < mediaImages.length ? prev + 1 : 0));
+                        }}
+                        className="hidden sm:flex absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/95 hover:bg-white border border-slate-200 text-slate-800 items-center justify-center shadow-md transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+                        title="Next photo"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+
+                  {/* Bottom Right Zoom / Lightbox Trigger Button (Inspired by Reference) */}
+                  <button
+                    type="button"
+                    onClick={() => setIsZoomModalOpen(true)}
+                    className="absolute bottom-3 right-3 w-9 h-9 rounded-full bg-white/95 hover:bg-white border border-slate-200 text-slate-800 flex items-center justify-center shadow-md transition-all hover:scale-105 cursor-pointer z-10"
+                    title="Zoom in full view"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                  </button>
+                </div>
+
               </div>
 
-              {/* Mobile Swipe Dot Indicators */}
+              {/* Mobile Dot Indicators */}
               {mediaImages.length > 1 && (
                 <div className="flex sm:hidden items-center justify-center gap-1.5 pt-1">
                   {mediaImages.map((_, idx) => (
@@ -472,107 +591,77 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                       type="button"
                       onClick={() => setSelectedImageIndex(idx)}
                       className={`h-1.5 rounded-full transition-all cursor-pointer ${
-                        selectedImageIndex === idx
-                          ? 'w-6 bg-blue-600'
-                          : 'w-1.5 bg-slate-300'
+                        selectedImageIndex === idx ? 'w-6 bg-slate-900' : 'w-1.5 bg-slate-300'
                       }`}
-                      aria-label={`Go to slide ${idx + 1}`}
+                      aria-label={`Slide ${idx + 1}`}
                     />
                   ))}
                 </div>
               )}
 
-              {/* Image Thumbnails Ribbon */}
-              {mediaImages.length > 1 && (
-                <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto pb-1 no-scrollbar">
-                  {mediaImages.map((img, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setSelectedImageIndex(idx)}
-                      className={`relative w-14 h-14 sm:w-18 sm:h-18 rounded-xl bg-slate-50 border p-1 shrink-0 overflow-hidden cursor-pointer transition-all ${
-                        selectedImageIndex === idx
-                          ? 'border-blue-600 ring-2 ring-blue-600/30 shadow-xs'
-                          : 'border-slate-200 hover:border-slate-300 opacity-70 hover:opacity-100'
-                      }`}
-                    >
-                      <img
-                        src={normalizeProductImage(img, product.category, product.name)}
-                        alt={`${product.name} view ${idx + 1}`}
-                        referrerPolicy="no-referrer"
-                        loading="lazy"
-                        decoding="async"
-                        onError={(e) => handleImageError(e, product.category, product.name)}
-                        className="w-full h-full object-contain"
-                      />
-                    </button>
-                  ))}
+              {/* Verified Trust Badges Footer Bar */}
+              <div className="pt-3 border-t border-slate-100 grid grid-cols-3 gap-2 sm:gap-3 text-center">
+                <div className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-100 flex flex-col items-center justify-center">
+                  <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5 text-slate-800 mb-1" />
+                  <div className="text-[10px] sm:text-xs font-bold text-slate-900 leading-tight">100% Genuine</div>
+                  <div className="text-[9px] text-slate-500">Verified Stock</div>
                 </div>
-              )}
-
-              {/* Trust Badges Bar (Amazon / Shopify Quality) */}
-              <div className="pt-2 sm:pt-3 border-t border-slate-100 grid grid-cols-3 gap-2 sm:gap-3 text-center">
-                <div className="p-2 sm:p-3 rounded-xl bg-slate-50 border border-slate-100/90 flex flex-col items-center justify-center">
-                  <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 mb-1" />
-                  <div className="text-[10px] sm:text-[11px] font-bold text-slate-900 leading-tight">100% Genuine</div>
-                  <div className="text-[8.5px] sm:text-[9.5px] text-slate-500">Verified Stock</div>
+                <div className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-100 flex flex-col items-center justify-center">
+                  <Truck className="w-4 h-4 sm:w-5 sm:h-5 text-slate-800 mb-1" />
+                  <div className="text-[10px] sm:text-xs font-bold text-slate-900 leading-tight">Safe Delivery</div>
+                  <div className="text-[9px] text-slate-500">All Pakistan</div>
                 </div>
-                <div className="p-2 sm:p-3 rounded-xl bg-slate-50 border border-slate-100/90 flex flex-col items-center justify-center">
-                  <Truck className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 mb-1" />
-                  <div className="text-[10px] sm:text-[11px] font-bold text-slate-900 leading-tight">Safe Delivery</div>
-                  <div className="text-[8.5px] sm:text-[9.5px] text-slate-500">All Pakistan</div>
-                </div>
-                <div className="p-2 sm:p-3 rounded-xl bg-slate-50 border border-slate-100/90 flex flex-col items-center justify-center">
-                  <Award className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 mb-1" />
-                  <div className="text-[10px] sm:text-[11px] font-bold text-slate-900 leading-tight">Showroom Quality</div>
-                  <div className="text-[8.5px] sm:text-[9.5px] text-slate-500">Official Brand</div>
+                <div className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-100 flex flex-col items-center justify-center">
+                  <Award className="w-4 h-4 sm:w-5 sm:h-5 text-slate-800 mb-1" />
+                  <div className="text-[10px] sm:text-xs font-bold text-slate-900 leading-tight">Showroom Quality</div>
+                  <div className="text-[9px] text-slate-500">Authorized Stock</div>
                 </div>
               </div>
 
             </div>
 
-            {/* ======================================================== */}
-            {/* 2. PRODUCT INFO, PRICING, VARIANTS & ACTIONS            */}
-            {/* ======================================================== */}
-            <div className="lg:col-span-6 space-y-4 sm:space-y-5">
+            {/* ---------------------------------------------------- */}
+            {/* RIGHT SIDE: PRODUCT INFORMATION & ACTIONS            */}
+            {/* ---------------------------------------------------- */}
+            <div className="lg:col-span-5 space-y-5">
               
-              {/* Brand, Category & Availability Pill */}
-              <div className="space-y-1.5">
+              {/* Category, Brand & Stock Availability Header */}
+              <div className="space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider uppercase">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
                     <span 
-                      className="text-blue-600 hover:text-blue-700 cursor-pointer bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100"
+                      className="text-slate-900 font-bold hover:underline cursor-pointer"
                       onClick={() => categoryObj && onNavigate(`/category/${getCategorySlug(categoryObj)}`)}
                     >
-                      {product.category || 'Building Materials'}
+                      {product.category || 'Store'}
                     </span>
-                    <span className="text-slate-400">•</span>
-                    <span className="text-slate-700 font-semibold">{brandName}</span>
+                    <span>•</span>
+                    <span className="text-slate-700">{brandName}</span>
                   </div>
 
                   {product.stockStatus && (
-                    <div className="text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                    <div className="text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                       <span>{product.stockStatus}</span>
                     </div>
                   )}
                 </div>
 
-                {/* Product Title */}
-                <h1 className="text-xl sm:text-2xl lg:text-3xl font-black font-serif text-slate-900 tracking-tight leading-snug">
+                {/* Main Product Title */}
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-slate-900 tracking-tight leading-snug">
                   {product.name}
                 </h1>
 
-                {/* Rating & SKU Bar */}
-                <div className="flex items-center flex-wrap gap-2 sm:gap-3 pt-0.5">
+                {/* Rating Stars & Reviews Link */}
+                <div className="flex items-center flex-wrap gap-2.5 pt-0.5">
                   <button 
                     type="button"
                     onClick={handleScrollToReviews}
-                    className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
-                    title="View genuine customer reviews"
+                    className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                    title="View customer ratings and reviews"
                   >
-                    <ProductCardRating productId={product.id} starClassName="w-3.5 h-3.5" />
-                    <span className="text-[11px] font-semibold text-blue-600 underline">
+                    <ProductCardRating productId={product.id} starClassName="w-4 h-4" />
+                    <span className="text-xs font-medium text-slate-500 hover:text-slate-900 underline">
                       Reviews
                     </span>
                   </button>
@@ -588,67 +677,108 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                 </div>
               </div>
 
-              {/* ======================================================== */}
-              {/* 3. PRICING & SAVINGS CARD                                */}
-              {/* ======================================================== */}
-              <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-slate-50 to-blue-50/40 border border-slate-200/90 shadow-xs">
+              {/* Price & Savings Display */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-1.5">
                 <div className="flex items-baseline justify-between flex-wrap gap-2">
-                  <div>
-                    {activePricing.isOnSale ? (
-                      <div className="space-y-1">
-                        <div className="flex items-baseline gap-2.5 flex-wrap">
-                          <span className="text-2xl sm:text-3xl font-black text-emerald-600 tracking-tight">
-                            {activePricing.effectivePrice}
-                          </span>
-                          <span className="text-sm sm:text-base font-semibold text-slate-400 line-through">
-                            {activePricing.originalPrice}
-                          </span>
-                          {activePricing.discountPercent && (
-                            <span className="px-2 py-0.5 rounded-md bg-red-500 text-white text-[11px] font-black uppercase tracking-wider shadow-xs">
-                              Save {activePricing.discountPercent}%
-                            </span>
-                          )}
-                        </div>
-                        {savingsAmount && (
-                          <div className="text-xs font-bold text-emerald-700 flex items-center gap-1">
-                            <Sparkles className="w-3 h-3 text-emerald-600" />
-                            <span>You save {savingsAmount} on this order</span>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div>
-                        <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                          {activePricing.effectivePrice || 'Contact Showroom for Price'}
+                  <div className="flex items-baseline gap-3 flex-wrap">
+                    <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+                      {activePricing.effectivePrice || 'Contact Showroom'}
+                    </span>
+                    {activePricing.isOnSale && (
+                      <>
+                        <span className="text-sm sm:text-base font-medium text-slate-400 line-through">
+                          {activePricing.originalPrice}
                         </span>
-                      </div>
+                        {activePricing.discountPercent && (
+                          <span className="px-2 py-0.5 rounded-md bg-red-600 text-white text-[11px] font-black uppercase tracking-wider">
+                            Save {activePricing.discountPercent}%
+                          </span>
+                        )}
+                      </>
                     )}
-
-                    <div className="text-[11px] text-slate-500 font-medium mt-1">
-                      Inclusive of all taxes • Delivery calculated below
-                    </div>
                   </div>
 
                   {totalPriceDisplay && (
-                    <div className="text-right bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
-                      <div className="text-[10px] uppercase font-bold text-slate-400">Total ({quantity} {qtyConfig.unitLabel || 'items'})</div>
-                      <div className="text-sm font-black text-blue-600">{totalPriceDisplay}</div>
+                    <div className="text-right bg-white px-3 py-1 rounded-xl border border-slate-200">
+                      <span className="text-[10px] text-slate-400 font-semibold block uppercase">Total ({quantity} {qtyConfig.unitLabel || 'items'})</span>
+                      <span className="text-xs font-black text-slate-900">{totalPriceDisplay}</span>
                     </div>
                   )}
                 </div>
+
+                {savingsAmount && (
+                  <div className="text-xs font-bold text-emerald-700 flex items-center gap-1 pt-0.5">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>You save {savingsAmount} on this item</span>
+                  </div>
+                )}
+
+                <div className="text-[11px] text-slate-500 font-normal pt-0.5">
+                  Tax included. Delivery fee calculated below based on destination city.
+                </div>
               </div>
 
+              {/* Short Product Description Snippet */}
+              {descriptionSnippet && (
+                <div className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                  {descriptionSnippet}
+                </div>
+              )}
+
               {/* ======================================================== */}
-              {/* 4. PRODUCT VARIANTS / OPTIONS SELECTOR                   */}
+              {/* COLOR SECTION — STRICT CONDITIONAL RENDERING             */}
+              {/* If product has existing colors → Show ONLY those colors  */}
+              {/* If product has NO colors → COMPLETELY HIDE THE SECTION   */}
               {/* ======================================================== */}
-              {hasVariants && variants.length > 0 && (
-                <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 space-y-2.5">
+              {hasColors && (
+                <div className="space-y-2 pt-1 border-t border-slate-100">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-slate-900 uppercase tracking-wider">
-                      {product.variantsConfig?.optionName || 'Select Option'}:
+                    <span className="font-bold text-slate-900">
+                      Color: <span className="font-normal text-slate-600 ml-1">{selectedColor || productColors[0]}</span>
                     </span>
-                    <span className="font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
-                      {selectedVariant?.name}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2.5">
+                    {productColors.map((colorName) => {
+                      const isSelected = selectedColor === colorName;
+                      const hex = getKnownColorHex(colorName);
+
+                      return (
+                        <button
+                          key={colorName}
+                          type="button"
+                          onClick={() => setSelectedColor(colorName)}
+                          className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 border ${
+                            isSelected
+                              ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
+                              : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-800'
+                          }`}
+                          title={`Select ${colorName}`}
+                        >
+                          {hex && (
+                            <span 
+                              className={`w-3.5 h-3.5 rounded-full border shrink-0 ${
+                                isSelected ? 'border-white/60' : 'border-slate-300'
+                              }`} 
+                              style={{ backgroundColor: hex }} 
+                            />
+                          )}
+                          <span>{colorName}</span>
+                          {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Product Variants Selector (Options / Sizes) */}
+              {hasVariants && variants.length > 0 && (
+                <div className="space-y-2 pt-1 border-t border-slate-100">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-900">
+                      {product.variantsConfig?.optionName || 'Option / Size'}:{' '}
+                      <span className="font-normal text-slate-600 ml-1">{selectedVariant?.name}</span>
                     </span>
                   </div>
 
@@ -660,16 +790,16 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                           key={v.id}
                           type="button"
                           onClick={() => setSelectedVariant(v)}
-                          className={`min-h-[42px] px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 ${
+                          className={`min-h-[42px] px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border active:scale-95 ${
                             isSelected
-                              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20 ring-2 ring-blue-600/30'
-                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                              ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                              : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-800'
                           }`}
                         >
-                          {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                          {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                           <span>{v.name}</span>
                           {v.price && (
-                            <span className={`text-[10px] font-mono opacity-80 ${isSelected ? 'text-blue-100' : 'text-slate-500'}`}>
+                            <span className={`text-[10px] font-mono opacity-80 ${isSelected ? 'text-slate-200' : 'text-slate-500'}`}>
                               ({v.price})
                             </span>
                           )}
@@ -680,9 +810,9 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                 </div>
               )}
 
-              {/* Paint Shade Selector */}
+              {/* Paint Shade Selector for paint products */}
               {hasShades && paintShades.length > 0 && (
-                <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 space-y-2">
+                <div className="p-3.5 rounded-2xl bg-white border border-slate-200 space-y-2">
                   <PaintShadeSelector
                     product={product}
                     selectedShade={selectedShade}
@@ -691,20 +821,18 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                 </div>
               )}
 
-              {/* ======================================================== */}
-              {/* 5. QUANTITY & IN-PAGE PURCHASE ACTIONS                  */}
-              {/* ======================================================== */}
-              <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-200/90 space-y-3.5">
+              {/* Quantity Selector & Action Buttons */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-xs font-bold text-slate-800">
-                    Select Quantity {qtyConfig.unitLabel ? `(${qtyConfig.unitLabel})` : ''}:
+                    Quantity {qtyConfig.unitLabel ? `(${qtyConfig.unitLabel})` : ''}:
                   </div>
                   
-                  <div className="flex items-center border border-slate-300 rounded-xl overflow-hidden bg-slate-50 shadow-2xs">
+                  <div className="flex items-center border border-slate-300 rounded-xl overflow-hidden bg-white shadow-2xs">
                     <button
                       type="button"
                       onClick={() => setQuantity(Math.max(qtyConfig.minQuantity || 1, quantity - (qtyConfig.quantityStep || 1)))}
-                      className="min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-700 hover:bg-slate-200 active:bg-slate-300 transition-colors cursor-pointer"
+                      className="min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-700 hover:bg-slate-100 active:bg-slate-200 transition-colors cursor-pointer"
                       disabled={quantity <= (qtyConfig.minQuantity || 1)}
                       title="Decrease quantity"
                     >
@@ -716,7 +844,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                     <button
                       type="button"
                       onClick={() => setQuantity(quantity + (qtyConfig.quantityStep || 1))}
-                      className="min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-700 hover:bg-slate-200 active:bg-slate-300 transition-colors cursor-pointer"
+                      className="min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-700 hover:bg-slate-100 active:bg-slate-200 transition-colors cursor-pointer"
                       title="Increase quantity"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -724,41 +852,41 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                   </div>
                 </div>
 
-                {/* Primary Action Buttons (Desktop and inline mobile) */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleAdd}
-                    className="min-h-[46px] w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs sm:text-sm font-bold shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                  >
-                    <ShoppingBag className="w-4 h-4" />
-                    <span>Add to Cart</span>
-                  </button>
+                {/* Primary Action Buttons: Add to Cart (Black) + Buy Now + WhatsApp */}
+                <div className="space-y-2 pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={handleAdd}
+                      className="min-h-[48px] w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-black text-white text-xs sm:text-sm font-bold shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                    >
+                      <ShoppingBag className="w-4 h-4" />
+                      <span>Add to Cart</span>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={handleBuy}
-                    className="min-h-[46px] w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-black text-white text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95"
-                  >
-                    <Zap className="w-4 h-4 text-amber-400" />
-                    <span>Buy Now</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={handleBuy}
+                      className="min-h-[48px] w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95"
+                    >
+                      <Zap className="w-4 h-4 text-amber-300" />
+                      <span>Buy Now</span>
+                    </button>
+                  </div>
 
                   <button
                     type="button"
                     onClick={handleWhatsApp}
-                    className="min-h-[46px] w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95"
+                    className="min-h-[44px] w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs active:scale-95"
                   >
                     <MessageCircle className="w-4 h-4" />
-                    <span>WhatsApp</span>
+                    <span>Inquire via WhatsApp</span>
                   </button>
                 </div>
               </div>
 
-              {/* ======================================================== */}
-              {/* 6. LIVE DELIVERY ESTIMATOR & CHECKER                    */}
-              {/* ======================================================== */}
-              <div className="rounded-2xl border border-slate-200/90 overflow-hidden bg-white">
+              {/* Delivery Information Section */}
+              <div className="pt-2">
                 <ProductDeliveryEstimator
                   product={product}
                   quantity={quantity}
@@ -771,57 +899,61 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
         </div>
 
         {/* ======================================================== */}
-        {/* 7. PRODUCT DETAILS, SPECIFICATIONS & FEATURES TABS       */}
+        {/* TABBED INFORMATION SECTION (Description, Specs, Features) */}
         {/* ======================================================== */}
-        <div className="mt-6 sm:mt-8 bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden p-4 sm:p-6 lg:p-8 space-y-5">
+        <div className="mt-8 bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-xs p-4 sm:p-6 lg:p-8 space-y-6">
           
-          {/* Section Heading & Mobile Tab Buttons */}
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
-            <h2 className="text-base sm:text-lg font-bold font-serif text-slate-900 flex items-center gap-2">
-              <FileText className="w-4 h-4 text-blue-600" />
-              <span>Product Specifications & Details</span>
-            </h2>
-
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+          {/* Tabs Navigation Header */}
+          <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto no-scrollbar pb-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab('details')}
+              className={`pb-3 px-3 text-xs sm:text-sm font-bold transition-all border-b-2 cursor-pointer whitespace-nowrap ${
+                activeTab === 'details'
+                  ? 'border-slate-900 text-slate-900'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              Description & Overview
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('specs')}
+              className={`pb-3 px-3 text-xs sm:text-sm font-bold transition-all border-b-2 cursor-pointer whitespace-nowrap ${
+                activeTab === 'specs'
+                  ? 'border-slate-900 text-slate-900'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              Specifications & Material
+            </button>
+            {product.features && product.features.length > 0 && (
               <button
                 type="button"
-                onClick={() => setActiveTab('details')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'details'
-                    ? 'bg-white text-blue-600 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                onClick={() => setActiveTab('features')}
+                className={`pb-3 px-3 text-xs sm:text-sm font-bold transition-all border-b-2 cursor-pointer whitespace-nowrap ${
+                  activeTab === 'features'
+                    ? 'border-slate-900 text-slate-900'
+                    : 'border-transparent text-slate-500 hover:text-slate-900'
                 }`}
               >
-                Overview
+                Features & Highlights
               </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('specs')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'specs'
-                    ? 'bg-white text-blue-600 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Specifications
-              </button>
-              {product.features && product.features.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('features')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    activeTab === 'features'
-                      ? 'bg-white text-blue-600 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Features
-                </button>
-              )}
-            </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setActiveTab('shipping')}
+              className={`pb-3 px-3 text-xs sm:text-sm font-bold transition-all border-b-2 cursor-pointer whitespace-nowrap ${
+                activeTab === 'shipping'
+                  ? 'border-slate-900 text-slate-900'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              Shipping & Showroom
+            </button>
           </div>
 
-          {/* Tab 1: Overview & Description */}
+          {/* Tab Content: Details & Full Description */}
           {activeTab === 'details' && (
             <div className="space-y-4">
               {product.description ? (
@@ -834,74 +966,74 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                 </p>
               )}
 
-              {/* Showroom & Quality Guarantee Banner */}
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex items-start gap-3">
-                <Shield className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+              {/* Showroom Verification Banner */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-3">
+                <Shield className="w-5 h-5 text-slate-700 shrink-0 mt-0.5" />
                 <div className="text-xs text-slate-600 space-y-1">
-                  <div className="font-bold text-slate-900">Zafar Sarwar Traders Showroom Guarantee</div>
-                  <div>Every item is quality checked and sourced directly from authorized factory distributors in Pakistan. For bulk contractor discounts or on-site inspections, visit our showroom on Sargodha Road, Chiniot.</div>
+                  <div className="font-bold text-slate-900">Showroom Verification & Guarantee</div>
+                  <div>Every item is verified and sourced directly from authorized manufacturers in Pakistan. For bulk orders, plumbing contractors, or on-site inspections, visit our showroom on Sargodha Road, Chiniot.</div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Tab 2: Technical Specifications Table */}
+          {/* Tab Content: Specifications & Technical Details */}
           {activeTab === 'specs' && (
             <div className="space-y-3">
               <div className="rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100 text-xs">
-                <div className="grid grid-cols-2 p-2.5 bg-slate-50">
+                <div className="grid grid-cols-2 p-3 bg-slate-50">
                   <span className="font-bold text-slate-600">Product Name</span>
                   <span className="text-slate-900 font-semibold">{product.name}</span>
                 </div>
-                <div className="grid grid-cols-2 p-2.5">
+                <div className="grid grid-cols-2 p-3">
                   <span className="font-bold text-slate-600">Category</span>
                   <span className="text-slate-900">{product.category || 'Building Materials'}</span>
                 </div>
-                <div className="grid grid-cols-2 p-2.5 bg-slate-50">
+                <div className="grid grid-cols-2 p-3 bg-slate-50">
                   <span className="font-bold text-slate-600">Brand</span>
                   <span className="text-slate-900">{brandName}</span>
                 </div>
                 {product.sku && (
-                  <div className="grid grid-cols-2 p-2.5">
+                  <div className="grid grid-cols-2 p-3">
                     <span className="font-bold text-slate-600">SKU / Model</span>
                     <span className="text-slate-900 font-mono">{product.sku}</span>
                   </div>
                 )}
                 {(product as any).material && (
-                  <div className="grid grid-cols-2 p-2.5 bg-slate-50">
+                  <div className="grid grid-cols-2 p-3 bg-slate-50">
                     <span className="font-bold text-slate-600">Material</span>
                     <span className="text-slate-900">{(product as any).material}</span>
                   </div>
                 )}
                 {(product as any).finish && (
-                  <div className="grid grid-cols-2 p-2.5">
+                  <div className="grid grid-cols-2 p-3">
                     <span className="font-bold text-slate-600">Surface Finish</span>
                     <span className="text-slate-900">{(product as any).finish}</span>
                   </div>
                 )}
                 {(product as any).size && (
-                  <div className="grid grid-cols-2 p-2.5 bg-slate-50">
+                  <div className="grid grid-cols-2 p-3 bg-slate-50">
                     <span className="font-bold text-slate-600">Dimensions / Size</span>
                     <span className="text-slate-900">{(product as any).size}</span>
                   </div>
                 )}
                 {(product as any).capacity && (
-                  <div className="grid grid-cols-2 p-2.5">
+                  <div className="grid grid-cols-2 p-3">
                     <span className="font-bold text-slate-600">Capacity / Volume</span>
                     <span className="text-slate-900">{(product as any).capacity}</span>
                   </div>
                 )}
                 {product.specs && Object.entries(product.specs).map(([key, val], sIdx) => (
-                  <div key={key} className={`grid grid-cols-2 p-2.5 ${sIdx % 2 === 0 ? 'bg-slate-50' : ''}`}>
+                  <div key={key} className={`grid grid-cols-2 p-3 ${sIdx % 2 === 0 ? 'bg-slate-50' : ''}`}>
                     <span className="font-bold text-slate-600">{key}</span>
                     <span className="text-slate-900">{val}</span>
                   </div>
                 ))}
-                <div className="grid grid-cols-2 p-2.5 bg-slate-50">
+                <div className="grid grid-cols-2 p-3 bg-slate-50">
                   <span className="font-bold text-slate-600">Stock Availability</span>
                   <span className="text-emerald-700 font-bold">{product.stockStatus || 'In Stock'}</span>
                 </div>
-                <div className="grid grid-cols-2 p-2.5">
+                <div className="grid grid-cols-2 p-3">
                   <span className="font-bold text-slate-600">Showroom Location</span>
                   <span className="text-slate-900">Chiniot, Punjab, Pakistan</span>
                 </div>
@@ -909,26 +1041,52 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
             </div>
           )}
 
-          {/* Tab 3: Features List */}
+          {/* Tab Content: Features & Highlights */}
           {activeTab === 'features' && product.features && product.features.length > 0 && (
             <div className="space-y-3">
-              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {product.features.map((feat, idx) => (
-                  <li key={idx} className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-700">
-                    <CheckCircle className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                    <span className="leading-relaxed">{feat}</span>
+                  <li key={idx} className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span className="leading-relaxed font-medium">{feat}</span>
                   </li>
                 ))}
               </ul>
             </div>
           )}
 
+          {/* Tab Content: Shipping & Returns Info */}
+          {activeTab === 'shipping' && (
+            <div className="space-y-4 text-xs text-slate-700 leading-relaxed">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <Truck className="w-4 h-4 text-slate-700" />
+                    <span>Nationwide Delivery</span>
+                  </div>
+                  <p className="text-slate-600">
+                    We deliver across Pakistan including Lahore, Faisalabad, Chiniot, Islamabad, Karachi, Rawalpindi, and all major cities and towns.
+                  </p>
+                </div>
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <RotateCcw className="w-4 h-4 text-slate-700" />
+                    <span>Showroom Support & Replacement</span>
+                  </div>
+                  <p className="text-slate-600">
+                    Items damaged in transit or manufacturing defects are covered with instant verification and direct replacement assistance.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* ======================================================== */}
-        {/* 8. REAL DATABASE PRODUCT REVIEWS & RATINGS SECTION      */}
+        {/* CUSTOMER REVIEWS & RATINGS SECTION (Real Database)       */}
         {/* ======================================================== */}
-        <div id="product-reviews-section" className="pt-6 sm:pt-8 scroll-mt-24">
+        <div id="product-reviews-section" className="pt-8 scroll-mt-24">
           <ProductReviewsSection
             productId={product.id}
             productName={product.name}
@@ -938,13 +1096,13 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
         </div>
 
         {/* ======================================================== */}
-        {/* 9. RELATED PRODUCTS IN SAME CATEGORY                     */}
+        {/* RELATED PRODUCTS IN SAME CATEGORY                         */}
         {/* ======================================================== */}
         {relatedProducts.length > 0 && (
-          <div className="pt-8 sm:pt-12 space-y-4 sm:space-y-6">
+          <div className="pt-10 sm:pt-14 space-y-5">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg sm:text-xl font-bold font-serif text-slate-900">
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900">
                   Related in {product.category || 'Store'}
                 </h2>
                 <p className="text-xs text-slate-500">Popular matching items from our inventory</p>
@@ -952,7 +1110,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
               <button
                 type="button"
                 onClick={() => categoryObj ? onNavigate(`/category/${getCategorySlug(categoryObj)}`) : onNavigate('/store')}
-                className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
+                className="text-xs font-bold text-slate-900 hover:text-blue-600 flex items-center gap-1 cursor-pointer"
               >
                 <span>View More</span>
                 <ChevronRight className="w-4 h-4" />
@@ -967,12 +1125,12 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                   <div
                     key={rel.id}
                     onClick={() => onNavigate(`/product/${relSlug}`)}
-                    className="bg-white rounded-2xl border border-slate-200/90 p-3 sm:p-4 shadow-xs hover:shadow-md hover:border-blue-400 transition-all cursor-pointer flex flex-col justify-between group"
+                    className="bg-white rounded-2xl border border-slate-200/90 p-3 sm:p-4 shadow-2xs hover:shadow-md hover:border-slate-400 transition-all cursor-pointer flex flex-col justify-between group"
                   >
-                    <div className="relative h-32 sm:h-44 bg-slate-50 rounded-xl p-2 sm:p-3 flex items-center justify-center overflow-hidden">
+                    <div className="relative h-36 sm:h-48 bg-[#fbfbfb] rounded-xl p-2 sm:p-3 flex items-center justify-center overflow-hidden">
                       <img
                         src={resolveProductImage(rel)}
-                        alt={`${rel.name} - ${rel.category || 'Sanitaryware & Building Materials'} Chiniot`}
+                        alt={`${rel.name} - ${rel.category || 'Sanitaryware & Building Materials'}`}
                         referrerPolicy="no-referrer"
                         loading="lazy"
                         decoding="async"
@@ -982,7 +1140,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                     </div>
                     <div className="pt-2.5 space-y-1">
                       <div className="flex items-center justify-between gap-1">
-                        <span className="text-[9.5px] sm:text-[10px] font-bold text-blue-600 uppercase truncate">{rel.category}</span>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase truncate">{rel.category}</span>
                         <ProductCardRating productId={rel.id} />
                       </div>
                       <h3 className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-2 leading-snug">
@@ -1002,12 +1160,72 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
       </div>
 
       {/* ======================================================== */}
-      {/* 10. STICKY MOBILE BOTTOM PURCHASE ACTION BAR (AMAZON/SHOPIFY) */}
+      {/* FULLSCREEN IMAGE LIGHTBOX / ZOOM MODAL                   */}
       {/* ======================================================== */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/98 border-t border-slate-200/90 shadow-[0_-8px_30px_rgba(0,0,0,0.12)] px-3 py-2.5 backdrop-blur-md safe-area-bottom">
+      {isZoomModalOpen && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-fadeIn">
+          <div className="relative max-w-4xl w-full max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col">
+            
+            {/* Header */}
+            <div className="p-3 sm:p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-900">{product.name}</span>
+                {mediaImages.length > 1 && (
+                  <span className="text-[11px] text-slate-500 font-mono">({selectedImageIndex + 1} / {mediaImages.length})</span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsZoomModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Image */}
+            <div className="flex-1 p-4 sm:p-8 flex items-center justify-center bg-[#fafafa] overflow-hidden min-h-[300px]">
+              <img
+                src={normalizeProductImage(mediaImages[selectedImageIndex] || mediaImages[0], product.category, product.name)}
+                alt={product.name}
+                referrerPolicy="no-referrer"
+                className="max-h-[70vh] max-w-full object-contain filter drop-shadow-md"
+              />
+            </div>
+
+            {/* Modal Thumbnails (if multiple) */}
+            {mediaImages.length > 1 && (
+              <div className="p-3 bg-white border-t border-slate-200 flex items-center justify-center gap-2 overflow-x-auto no-scrollbar">
+                {mediaImages.map((img, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setSelectedImageIndex(idx)}
+                    className={`w-12 h-12 rounded-lg bg-slate-50 border p-1 overflow-hidden cursor-pointer ${
+                      selectedImageIndex === idx ? 'border-slate-900 ring-2 ring-slate-900/20' : 'border-slate-200 opacity-60 hover:opacity-100'
+                    }`}
+                  >
+                    <img
+                      src={normalizeProductImage(img, product.category, product.name)}
+                      alt={`Thumbnail ${idx + 1}`}
+                      className="w-full h-full object-contain"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* STICKY MOBILE BOTTOM BAR                                 */}
+      {/* ======================================================== */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/98 border-t border-slate-200 shadow-[0_-8px_30px_rgba(0,0,0,0.08)] px-3 py-2.5 backdrop-blur-md safe-area-bottom">
         <div className="max-w-md mx-auto flex items-center gap-2">
           
-          {/* Quick WhatsApp Inquiry Button */}
           <button
             type="button"
             onClick={handleWhatsApp}
@@ -1018,23 +1236,21 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
             <MessageCircle className="w-5 h-5 text-emerald-600" />
           </button>
 
-          {/* Quick Add To Cart Button */}
           <button
             type="button"
             onClick={handleAdd}
-            className="flex-1 min-h-[46px] py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+            className="flex-1 min-h-[46px] py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-black text-white text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
           >
             <ShoppingBag className="w-4 h-4" />
             <span>Add to Cart</span>
           </button>
 
-          {/* Quick Buy Now Button */}
           <button
             type="button"
             onClick={handleBuy}
-            className="flex-1 min-h-[46px] py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-black text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+            className="flex-1 min-h-[46px] py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
           >
-            <Zap className="w-4 h-4 text-amber-400" />
+            <Zap className="w-4 h-4 text-amber-300" />
             <span>Buy Now</span>
           </button>
 
@@ -1044,4 +1260,3 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     </div>
   );
 };
-
