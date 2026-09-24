@@ -1361,6 +1361,17 @@ export default function App() {
           onNavigateToCategories={() => navigateTo('/categories')}
         />
 
+        {/* Premium Featured Products Showcase Carousel */}
+        <FeaturedProductsCarousel
+          products={products}
+          settings={featuredCarouselSettings}
+          wishlistIds={wishlistIds}
+          onSelectProduct={(product) => handleQuickViewProduct(product)}
+          onAddToCart={handleAddToCart}
+          onToggleWishlist={handleToggleWishlist}
+          onNavigateToStore={() => navigateTo('/store')}
+        />
+
         {/* Mobile-Only Horizontal Category Scrolling Bar */}
         <div className="md:hidden">
           <MobileCategoryScroll
@@ -1406,17 +1417,6 @@ export default function App() {
             const slug = generateBrandSlug(brand.name, brand.id);
             navigateTo(`/brand/${slug}`);
           }}
-        />
-
-        {/* Premium Featured Products Showcase Carousel */}
-        <FeaturedProductsCarousel
-          products={products}
-          settings={featuredCarouselSettings}
-          wishlistIds={wishlistIds}
-          onSelectProduct={(product) => handleQuickViewProduct(product)}
-          onAddToCart={handleAddToCart}
-          onToggleWishlist={handleToggleWishlist}
-          onNavigateToStore={() => navigateTo('/store')}
         />
 
         {/* Featured Products & Storefront Catalog */}

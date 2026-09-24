@@ -1762,9 +1762,9 @@ export const saveSmartToolsSettings = async (settings: SmartToolsSettings): Prom
 
 export const defaultFeaturedCarouselSettings: FeaturedCarouselSettings = {
   isEnabled: true,
-  title: 'Curated Masterpieces',
-  subtitle: 'Handpicked Luxury Sanitaryware, Designer Faucets & Architectural Fittings',
-  badgeText: "Editor's Choice",
+  title: 'Featured Products',
+  subtitle: 'Explore our selected products',
+  badgeText: 'OUR COLLECTION',
   productIds: [],
   autoplay: true,
   autoplayIntervalSeconds: 5
