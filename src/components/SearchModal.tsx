@@ -103,7 +103,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                     {matchedCategories.map((cat) => (
                       <button
                         key={cat.id}
-                        onClick={() => { onSelectCategory(cat.id); onClose(); }}
+                        onClick={() => onSelectCategory(cat.id)}
                         className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-blue-500/50 text-left flex items-center justify-between"
                       >
                         <div>
@@ -127,7 +127,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                     {matchedProducts.map((prod) => (
                       <div
                         key={prod.id}
-                        onClick={() => { onSelectProduct(prod); onClose(); }}
+                        onClick={() => onSelectProduct(prod)}
                         className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-blue-500/50 flex items-center justify-between gap-3 cursor-pointer group"
                       >
                         <div className="flex items-center gap-3">

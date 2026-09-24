@@ -181,13 +181,15 @@ export const Footer: React.FC<FooterProps> = ({
                   </a>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Phone className="w-4 h-4 text-amber-400 shrink-0" />
-                <a href={`tel:${config.phone}`} className="hover:text-white font-light">{config.phone}</a>
-              </div>
-              <div className="flex items-center gap-2">
-                <Mail className="w-4 h-4 text-amber-400 shrink-0" />
-                <a href={`mailto:${config.email}`} className="hover:text-white font-light">{config.email}</a>
+              <div className="pt-2 border-t border-slate-800/80">
+                <button
+                  type="button"
+                  onClick={(e) => handleLinkClick('/contact', e)}
+                  className="text-xs text-amber-400 hover:text-amber-300 font-semibold transition-colors flex items-center gap-1.5 cursor-pointer text-left"
+                >
+                  <Phone className="w-3.5 h-3.5 shrink-0" />
+                  <span>View All Contact & Helpline Numbers →</span>
+                </button>
               </div>
             </div>
           </div>

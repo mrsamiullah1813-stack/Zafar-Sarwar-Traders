@@ -117,8 +117,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   }, []);
 
   const targetWhatsAppNumber = (config?.whatsapp || config?.phone || '923108002863').replace(/[^0-9]/g, '');
-  const displayPhone = config?.phone || config?.whatsapp || '+92 310 8002863';
-  const telHref = 'tel:' + (config?.phone || config?.whatsapp || '+923108002863').replace(/\s+/g, '');
 
   const handleWhatsAppClick = () => {
     const text = encodeURIComponent(`Hello ${config.name}, I would like to inquire about sanitaryware, tiles and pricing.`);
@@ -267,13 +265,15 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             )}
 
-            <a
-              href={telHref}
-              className="flex items-center gap-1.5 text-white font-bold hover:text-blue-400 transition-colors pl-2 border-l border-slate-700"
+            <button
+              type="button"
+              onClick={(e) => handleNavClick('/contact', e)}
+              className="flex items-center gap-1.5 text-white font-bold hover:text-blue-400 transition-colors pl-2 border-l border-slate-700 cursor-pointer text-xs"
+              title="View All Business Contact Details"
             >
               <Phone className="w-3 h-3 text-blue-400" />
-              <span>{displayPhone}</span>
-            </a>
+              <span>Contacts</span>
+            </button>
           </div>
 
         </div>

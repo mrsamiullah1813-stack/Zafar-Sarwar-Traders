@@ -1,4 +1,4 @@
-import { BusinessConfig, Product, ProductCategory, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, CartItem, CustomerOrder, CheckoutSettings, DeliverySettings, CityDeliveryInfo, ThemeOption, ThemeSettings, AnnouncementBarSettings, AnnouncementItem, HeroSettings, HeroBannerSlide, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig, PricingTypographySettings, defaultPricingTypography, Coupon, CouponValidationResult, AppliedCouponState, PaymentMethodConfig, HowToOrderConfig, HowToOrderStep } from '../types';
+import { BusinessConfig, Product, ProductCategory, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, CartItem, CustomerOrder, CheckoutSettings, DeliverySettings, CityDeliveryInfo, ThemeOption, ThemeSettings, AnnouncementBarSettings, AnnouncementItem, HeroSettings, HeroBannerSlide, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig, PricingTypographySettings, defaultPricingTypography, Coupon, CouponValidationResult, AppliedCouponState, PaymentMethodConfig, HowToOrderConfig, HowToOrderStep, FeaturedCarouselSettings } from '../types';
 import { initialBusinessConfig, productCategories, featuredProducts, galleryItems, productBrands, defaultStatCounters } from '../data/storeData';
 import { broadcastNewOrderPlaced } from './orderNotificationUtils';
 import { generateCityTiersForBaseFee, generateHeavyCityTiersForBaseFee } from './deliveryFeeCalculator';
@@ -71,6 +71,7 @@ export const STORAGE_KEYS = {
   PAYMENT_METHODS: 'zst_payment_methods_v1',
   HOW_TO_ORDER_GUIDE: 'zst_how_to_order_guide_v1',
   SELECTED_DELIVERY_CITY: 'zst_selected_delivery_city_v1',
+  FEATURED_CAROUSEL: 'zst_featured_carousel_v1',
 };
 
 export const defaultHeroBanners: HeroBannerSlide[] = [
@@ -1759,6 +1760,49 @@ export const saveSmartToolsSettings = async (settings: SmartToolsSettings): Prom
   }
 };
 
+export const defaultFeaturedCarouselSettings: FeaturedCarouselSettings = {
+  isEnabled: true,
+  title: 'Curated Masterpieces',
+  subtitle: 'Handpicked Luxury Sanitaryware, Designer Faucets & Architectural Fittings',
+  badgeText: "Editor's Choice",
+  productIds: [],
+  autoplay: true,
+  autoplayIntervalSeconds: 5
+};
+
+export const loadFeaturedCarouselSettings = (): FeaturedCarouselSettings => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.FEATURED_CAROUSEL);
+    if (saved !== null) {
+      return { ...defaultFeaturedCarouselSettings, ...JSON.parse(saved) };
+    }
+  } catch (e) {
+    console.error('Error loading featured carousel settings', e);
+  }
+  return defaultFeaturedCarouselSettings;
+};
+
+export const saveFeaturedCarouselSettings = async (settings: FeaturedCarouselSettings): Promise<{ success: boolean; error?: string }> => {
+  try {
+    safeSetLocalStorage(STORAGE_KEYS.FEATURED_CAROUSEL, settings);
+    saveToServerCMS(STORAGE_KEYS.FEATURED_CAROUSEL, settings);
+    try {
+      window.dispatchEvent(new CustomEvent('zst_featured_carousel_updated', { detail: settings }));
+    } catch {}
+
+    if (isSupabaseConfigured) {
+      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.FEATURED_CAROUSEL, settings);
+      if (res && res.success === false) {
+        console.warn('Supabase saveFeaturedCarouselSettings notice:', res.error);
+      }
+    }
+    return { success: true };
+  } catch (e: any) {
+    console.error('Error saving featured carousel settings', e);
+    return { success: false, error: e?.message || String(e) };
+  }
+};
+
 export const loadFittingBuilderConfig = (): FittingBuilderConfig => {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.FITTING_BUILDER);
@@ -1928,6 +1972,7 @@ export const syncWithServerCMS = async (callbacks: {
   setHeroSettings?: (hs: HeroSettings) => void;
   setSmartToolsSettings?: (st: SmartToolsSettings) => void;
   setPricingTypography?: (pt: PricingTypographySettings) => void;
+  setFeaturedCarouselSettings?: (fcs: FeaturedCarouselSettings) => void;
   customerId?: string;
 }) => {
   await initializeSupabaseRuntime();
@@ -2039,7 +2084,8 @@ export const syncWithServerCMS = async (callbacks: {
       smartToolsResult,
       couponsResult,
       howToOrderResult,
-      paymentMethodsResult
+      paymentMethodsResult,
+      featuredCarouselResult
     ] = await Promise.allSettled([
       fetchOrdersFromSupabase(callbacks.customerId),
       fetchDeliveryCitiesFromSupabase(),
@@ -2057,7 +2103,8 @@ export const syncWithServerCMS = async (callbacks: {
       fetchSiteSettingFromSupabase<SmartToolsSettings>(STORAGE_KEYS.SMART_TOOLS),
       fetchSiteSettingFromSupabase<Coupon[]>(STORAGE_KEYS.COUPONS),
       fetchHowToOrderConfigFromSupabase(),
-      fetchPaymentMethodsFromSupabase()
+      fetchPaymentMethodsFromSupabase(),
+      fetchSiteSettingFromSupabase<FeaturedCarouselSettings>(STORAGE_KEYS.FEATURED_CAROUSEL)
     ]);
 
     // Orders
@@ -2312,6 +2359,19 @@ export const syncWithServerCMS = async (callbacks: {
         window.dispatchEvent(new CustomEvent('zst_payment_methods_updated', { detail: normalized }));
       } catch {}
       console.log(`[Sync] Payment methods synced from Supabase: ${normalized.length}`);
+    }
+
+    // Featured Products Carousel
+    if (featuredCarouselResult.status === 'fulfilled' && featuredCarouselResult.value && typeof featuredCarouselResult.value === 'object') {
+      const mergedCarousel: FeaturedCarouselSettings = { ...defaultFeaturedCarouselSettings, ...featuredCarouselResult.value };
+      if (callbacks.setFeaturedCarouselSettings) callbacks.setFeaturedCarouselSettings(mergedCarousel);
+      safeSetLocalStorage(STORAGE_KEYS.FEATURED_CAROUSEL, mergedCarousel);
+      try {
+        window.dispatchEvent(new CustomEvent('zst_featured_carousel_updated', { detail: mergedCarousel }));
+      } catch {}
+    } else {
+      const fallbackCarousel = loadFeaturedCarouselSettings();
+      if (callbacks.setFeaturedCarouselSettings) callbacks.setFeaturedCarouselSettings(fallbackCarousel);
     }
 
     console.log('✅ [Database & Backend Sync] Fast parallel synchronization complete!');

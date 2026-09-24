@@ -3,7 +3,7 @@ import {
   customerReviews, 
   faqItems 
 } from './data/storeData';
-import { BusinessConfig, Product, ProductCategory, GalleryItem, Review, ProductBrand, StatCounter, AiDesignerConfig, CartItem, CheckoutSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, SmartToolId, ProductVariant, PaintShade, FittingBuilderConfig } from './types';
+import { BusinessConfig, Product, ProductCategory, GalleryItem, Review, ProductBrand, StatCounter, AiDesignerConfig, CartItem, CheckoutSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, SmartToolId, ProductVariant, PaintShade, FittingBuilderConfig, FeaturedCarouselSettings } from './types';
 import { getActiveProductPrice } from './utils/pricingUtils';
 import { 
   loadStoredConfig, 
@@ -43,6 +43,8 @@ import {
   saveThemeSettings,
   loadHeroSettings,
   saveHeroSettings,
+  loadFeaturedCarouselSettings,
+  saveFeaturedCarouselSettings,
   getActiveTheme,
   setActiveTheme
 } from './utils/storage';
@@ -75,6 +77,7 @@ import { SmartConstructionBuilderEntryCard } from './components/SmartConstructio
 import { AboutSection } from './components/AboutSection';
 import { CategoriesSection } from './components/CategoriesSection';
 import { BrandsSection } from './components/BrandsSection';
+import { FeaturedProductsCarousel } from './components/FeaturedProductsCarousel';
 import { FeaturedProductsSection } from './components/FeaturedProductsSection';
 import { StatsSection } from './components/StatsSection';
 import { WhyChooseUs } from './components/WhyChooseUs';
@@ -157,6 +160,7 @@ export default function App() {
   const [smartToolsSettings, setSmartToolsSettings] = useState<SmartToolsSettings>(() => loadSmartToolsSettings());
   const [activeToolId, setActiveToolId] = useState<SmartToolId | 'hub' | null>(null);
   const [heroSettings, setHeroSettings] = useState<HeroSettings>(() => loadHeroSettings());
+  const [featuredCarouselSettings, setFeaturedCarouselSettings] = useState<FeaturedCarouselSettings>(() => loadFeaturedCarouselSettings());
   const [themeSettings, setThemeSettings] = useState<ThemeSettings>(() => loadThemeSettings());
   const [activeTheme, setActiveThemeState] = useState<string>(() => getActiveTheme(loadThemeSettings().defaultTheme));
   const [themeModalOpen, setThemeModalOpen] = useState(false);
@@ -388,6 +392,7 @@ export default function App() {
     const handleConfigUpdated = () => setConfig(loadStoredConfig());
     const handleCheckoutSettingsUpdated = () => setCheckoutSettings(loadCheckoutSettings());
     const handleHeroSettingsUpdated = () => setHeroSettings(loadHeroSettings());
+    const handleFeaturedCarouselUpdated = () => setFeaturedCarouselSettings(loadFeaturedCarouselSettings());
     const handleThemeSettingsUpdated = () => setThemeSettings(loadThemeSettings());
     const handleSmartToolsUpdated = () => setSmartToolsSettings(loadSmartToolsSettings());
 
@@ -398,6 +403,7 @@ export default function App() {
     window.addEventListener('zst_config_updated', handleConfigUpdated);
     window.addEventListener('zst_checkout_settings_updated', handleCheckoutSettingsUpdated);
     window.addEventListener('zst_hero_settings_updated', handleHeroSettingsUpdated);
+    window.addEventListener('zst_featured_carousel_updated', handleFeaturedCarouselUpdated);
     window.addEventListener('zst_theme_updated', handleThemeSettingsUpdated);
     window.addEventListener('zst_smart_tools_updated', handleSmartToolsUpdated);
 
@@ -409,6 +415,7 @@ export default function App() {
       window.removeEventListener('zst_config_updated', handleConfigUpdated);
       window.removeEventListener('zst_checkout_settings_updated', handleCheckoutSettingsUpdated);
       window.removeEventListener('zst_hero_settings_updated', handleHeroSettingsUpdated);
+      window.removeEventListener('zst_featured_carousel_updated', handleFeaturedCarouselUpdated);
       window.removeEventListener('zst_theme_updated', handleThemeSettingsUpdated);
       window.removeEventListener('zst_smart_tools_updated', handleSmartToolsUpdated);
     };
@@ -637,6 +644,7 @@ export default function App() {
       setSmartToolsSettings,
       setThemeSettings,
       setHeroSettings,
+      setFeaturedCarouselSettings,
       setCheckoutSettings,
       setOrders: setCustomerOrders,
       customerId: customerProfile?.customerId
@@ -964,6 +972,8 @@ export default function App() {
 
   const handleQuickViewProduct = (prod: Product, _skipPush: boolean = false) => {
     trackProductView(prod.id, prod.name);
+    setSelectedProduct(prod);
+    setSearchModalOpen(false);
     const slug = getProductSlug(prod);
     navigateTo(`/product/${slug}`);
   };
@@ -1221,7 +1231,7 @@ export default function App() {
     // 5. Product Detail Page
     if (currentPath.startsWith('/product/')) {
       const slug = currentPath.slice('/product/'.length);
-      const product = findProductBySlug(slug, products);
+      const product = findProductBySlug(slug, products) || (selectedProduct && (getProductSlug(selectedProduct) === slug || selectedProduct.id === slug) ? selectedProduct : undefined);
       if (product) {
         return (
           <ProductDetailPage
@@ -1396,6 +1406,17 @@ export default function App() {
             const slug = generateBrandSlug(brand.name, brand.id);
             navigateTo(`/brand/${slug}`);
           }}
+        />
+
+        {/* Premium Featured Products Showcase Carousel */}
+        <FeaturedProductsCarousel
+          products={products}
+          settings={featuredCarouselSettings}
+          wishlistIds={wishlistIds}
+          onSelectProduct={(product) => handleQuickViewProduct(product)}
+          onAddToCart={handleAddToCart}
+          onToggleWishlist={handleToggleWishlist}
+          onNavigateToStore={() => navigateTo('/store')}
         />
 
         {/* Featured Products & Storefront Catalog */}
@@ -1704,13 +1725,13 @@ export default function App() {
         categories={categories}
         brands={brands}
         onSelectProduct={(prod) => {
-          handleQuickViewProduct(prod);
           setSearchModalOpen(false);
+          handleQuickViewProduct(prod);
         }}
         onSelectCategory={(cat) => {
+          setSearchModalOpen(false);
           const catId = typeof cat === 'string' ? cat : (cat as any)?.id || '';
           handleSelectCategory(catId);
-          setSearchModalOpen(false);
         }}
         onClose={handleCloseSearch}
       />
@@ -1754,6 +1775,10 @@ export default function App() {
           heroSettings={heroSettings}
           smartToolsSettings={smartToolsSettings}
           fittingBuilderConfig={fittingBuilderConfig}
+          featuredCarouselSettings={featuredCarouselSettings}
+          onSaveFeaturedCarouselSettings={(fcs) => {
+            setFeaturedCarouselSettings(fcs);
+          }}
           onSaveProducts={handleSaveProductsState}
           onSaveCategories={handleSaveCategoriesState}
           onSaveBrands={handleSaveBrandsState}

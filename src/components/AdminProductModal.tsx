@@ -138,17 +138,73 @@ export const AdminProductModal: React.FC<AdminProductModalProps> = ({
       }
 
       // Populate sale states
-      const isProductSaleOn = Boolean(product.saleEnabled || product.saleConfig?.saleEnabled);
+      const isProductSaleOn = Boolean(
+        product.saleEnabled ||
+        product.saleConfig?.saleEnabled ||
+        (product.specs as any)?._sale_enabled ||
+        (product.specs as any)?._sale_config?.saleEnabled
+      );
       setSaleEnabled(isProductSaleOn);
-      setSalePrice(String(product.salePrice ?? product.saleConfig?.salePrice ?? ''));
-      setSaleStartDate(product.saleStartDate ?? product.saleConfig?.saleStartDate ?? '');
-      setSaleEndDate(product.saleEndDate ?? product.saleConfig?.saleEndDate ?? '');
-      setSaleLabel(product.saleLabel ?? product.saleConfig?.saleLabel ?? 'SALE');
-      setSaleBadgeColor(product.saleBadgeColor ?? product.saleConfig?.saleBadgeColor ?? 'red');
-      setSaleMessage(product.saleMessage ?? product.saleConfig?.saleMessage ?? '');
-      setShowSaleCountdown(product.showSaleCountdown ?? product.saleConfig?.showCountdown ?? true);
-      setShowDiscountPercentage(product.showDiscountPercentage ?? product.saleConfig?.showDiscountPercentage ?? true);
-      setShowSavingsAmount(product.showSavingsAmount ?? product.saleConfig?.showSavings ?? true);
+      setSalePrice(String(
+        product.salePrice ??
+        product.saleConfig?.salePrice ??
+        (product.specs as any)?._sale_price ??
+        (product.specs as any)?._sale_config?.salePrice ??
+        ''
+      ));
+      setSaleStartDate(
+        product.saleStartDate ??
+        product.saleConfig?.saleStartDate ??
+        (product.specs as any)?._sale_start_date ??
+        (product.specs as any)?._sale_config?.saleStartDate ??
+        ''
+      );
+      setSaleEndDate(
+        product.saleEndDate ??
+        product.saleConfig?.saleEndDate ??
+        (product.specs as any)?._sale_end_date ??
+        (product.specs as any)?._sale_config?.saleEndDate ??
+        ''
+      );
+      setSaleLabel(
+        product.saleLabel ??
+        product.saleConfig?.saleLabel ??
+        (product.specs as any)?._sale_label ??
+        (product.specs as any)?._sale_config?.saleLabel ??
+        'SALE'
+      );
+      setSaleBadgeColor(
+        product.saleBadgeColor ??
+        product.saleConfig?.saleBadgeColor ??
+        (product.specs as any)?._sale_badge_color ??
+        (product.specs as any)?._sale_config?.saleBadgeColor ??
+        'red'
+      );
+      setSaleMessage(
+        product.saleMessage ??
+        product.saleConfig?.saleMessage ??
+        (product.specs as any)?._sale_message ??
+        (product.specs as any)?._sale_config?.saleMessage ??
+        ''
+      );
+      setShowSaleCountdown(
+        product.showSaleCountdown ??
+        product.saleConfig?.showCountdown ??
+        (product.specs as any)?._show_sale_countdown ??
+        true
+      );
+      setShowDiscountPercentage(
+        product.showDiscountPercentage ??
+        product.saleConfig?.showDiscountPercentage ??
+        (product.specs as any)?._show_discount_percentage ??
+        true
+      );
+      setShowSavingsAmount(
+        product.showSavingsAmount ??
+        product.saleConfig?.showSavings ??
+        (product.specs as any)?._show_savings_amount ??
+        true
+      );
 
       // Populate variant states
       const isProductVariantsOn = Boolean(product.variantsEnabled || product.variantsConfig?.variantsEnabled);

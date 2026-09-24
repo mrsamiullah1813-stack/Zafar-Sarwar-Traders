@@ -2031,6 +2031,17 @@ export const defaultAdminVoiceSettings: AdminVoiceSettings = {
   }
 };
 
+export interface FeaturedCarouselSettings {
+  isEnabled: boolean;
+  title: string;
+  subtitle: string;
+  badgeText: string;
+  productIds: string[];
+  autoplay: boolean;
+  autoplayIntervalSeconds: number;
+}
+
+
 
 
 

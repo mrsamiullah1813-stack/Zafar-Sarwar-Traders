@@ -70,7 +70,8 @@ import { AdminAiAssistantManager } from './AdminAiAssistantManager';
 import { AdminAnnouncementManager } from './AdminAnnouncementManager';
 import { AdminHeroManager } from './AdminHeroManager';
 import { AdminConstructionBuilderManager } from './AdminConstructionBuilderManager';
-import { Megaphone, Palette, HardHat, Volume2 } from 'lucide-react';
+import { Megaphone, Palette, HardHat, Volume2, LayoutGrid } from 'lucide-react';
+import { AdminFeaturedCarouselManager } from './AdminFeaturedCarouselManager';
 import { AdminThemeManager } from './AdminThemeManager';
 import { AdminPricingAppearanceManager } from './AdminPricingAppearanceManager';
 import { AdminSmartToolsManager } from './AdminSmartToolsManager';
@@ -80,8 +81,8 @@ import { AdminVoiceSettingsManager } from './AdminVoiceSettingsManager';
 import { speakAdminVoice } from '../utils/adminVoice';
 import { PatternLock } from './PatternLock';
 import { getPatternLockStatus, savePatternLock, togglePatternLock } from '../services/patternLockService';
-import { Product, ProductCategory, ProductVideo, BusinessConfig, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, ThemeSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig } from '../types';
-import { getAdminPin, setAdminPin, loadPlannerConfig, savePlannerConfig, loadBuildMaterialEstimatorConfig, saveBuildMaterialEstimatorConfig, loadAiAssistantConfig, saveAiAssistantConfig, loadThemeSettings, saveThemeSettings, loadHeroSettings, saveHeroSettings, loadSmartToolsSettings, saveSmartToolsSettings, loadFittingBuilderConfig, saveFittingBuilderConfig, loadAnnouncementSettings, saveAnnouncementSettings, deleteProductFromStorage, saveStoredProducts, saveStoredProductSingle, deleteCategoryFromStorage, saveStoredCategories, saveStoredCategorySingle, deleteBrandFromStorage, saveStoredBrands, saveStoredBrandSingle } from '../utils/storage';
+import { Product, ProductCategory, ProductVideo, BusinessConfig, GalleryItem, ProductBrand, StatCounter, AiDesignerConfig, AiAssistantConfig, ContactPerson, ThemeSettings, HeroSettings, BuildMaterialEstimatorConfig, SmartToolsSettings, FittingBuilderConfig, FeaturedCarouselSettings } from '../types';
+import { getAdminPin, setAdminPin, loadPlannerConfig, savePlannerConfig, loadBuildMaterialEstimatorConfig, saveBuildMaterialEstimatorConfig, loadAiAssistantConfig, saveAiAssistantConfig, loadThemeSettings, saveThemeSettings, loadHeroSettings, saveHeroSettings, loadSmartToolsSettings, saveSmartToolsSettings, loadFittingBuilderConfig, saveFittingBuilderConfig, loadAnnouncementSettings, saveAnnouncementSettings, loadFeaturedCarouselSettings, saveFeaturedCarouselSettings, deleteProductFromStorage, saveStoredProducts, saveStoredProductSingle, deleteCategoryFromStorage, saveStoredCategories, saveStoredCategorySingle, deleteBrandFromStorage, saveStoredBrands, saveStoredBrandSingle } from '../utils/storage';
 import { resetToHome } from '../utils/navigationHistory';
 import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
 
@@ -96,6 +97,7 @@ interface AdminDashboardProps {
   heroSettings?: HeroSettings;
   smartToolsSettings?: SmartToolsSettings;
   fittingBuilderConfig?: FittingBuilderConfig;
+  featuredCarouselSettings?: FeaturedCarouselSettings;
   onSaveProducts: (products: Product[]) => Promise<{ success: boolean; error?: string }> | void;
   onSaveCategories: (categories: ProductCategory[]) => Promise<{ success: boolean; error?: string }> | void;
   onSaveBrands: (brands: ProductBrand[]) => Promise<{ success: boolean; error?: string }> | void;
@@ -106,6 +108,7 @@ interface AdminDashboardProps {
   onSaveHeroSettings?: (hs: HeroSettings) => void;
   onSaveSmartToolsSettings?: (st: SmartToolsSettings) => void;
   onSaveFittingBuilderConfig?: (fc: FittingBuilderConfig) => void;
+  onSaveFeaturedCarouselSettings?: (fcs: FeaturedCarouselSettings) => void;
   onLogout: () => void;
   onClose: () => void;
 }
@@ -131,16 +134,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onSaveHeroSettings,
   onSaveSmartToolsSettings,
   onSaveFittingBuilderConfig,
+  featuredCarouselSettings,
+  onSaveFeaturedCarouselSettings,
   onLogout,
   onClose
 }) => {
-  const [activeTab, setActiveTab] = useState<'analytics' | 'hero' | 'announcements' | 'orders' | 'payments' | 'customers' | 'coupons' | 'delivery' | 'storage_health' | 'products' | 'categories' | 'brands' | 'contacts' | 'statistics' | 'banners_seo' | 'pricing_appearance' | 'gallery' | 'smart_tools' | 'construction_builder' | 'planner' | 'estimator' | 'ai_assistant' | 'themes' | 'voice_settings'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'hero' | 'featured_carousel' | 'announcements' | 'orders' | 'payments' | 'customers' | 'coupons' | 'delivery' | 'storage_health' | 'products' | 'categories' | 'brands' | 'contacts' | 'statistics' | 'banners_seo' | 'pricing_appearance' | 'gallery' | 'smart_tools' | 'construction_builder' | 'planner' | 'estimator' | 'ai_assistant' | 'themes' | 'voice_settings'>('analytics');
   const [plannerConfig, setPlannerConfig] = useState<AiDesignerConfig>(loadPlannerConfig());
   const [estimatorConfig, setEstimatorConfig] = useState<BuildMaterialEstimatorConfig>(loadBuildMaterialEstimatorConfig());
   const [fittingConfigState, setFittingConfigState] = useState<FittingBuilderConfig>(fittingBuilderConfig || loadFittingBuilderConfig());
   const [aiAssistantConfig, setAiAssistantConfig] = useState<AiAssistantConfig>(loadAiAssistantConfig());
   const [themeSettings, setThemeSettings] = useState<ThemeSettings>(loadThemeSettings());
   const [heroSettingsState, setHeroSettingsState] = useState<HeroSettings>(heroSettings || loadHeroSettings());
+  const [carouselSettingsState, setCarouselSettingsState] = useState<FeaturedCarouselSettings>(featuredCarouselSettings || loadFeaturedCarouselSettings());
   const [smartToolsSettingsState, setSmartToolsSettingsState] = useState<SmartToolsSettings>(smartToolsSettings || loadSmartToolsSettings());
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -990,6 +996,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('featured_carousel')}
+              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all ${
+                activeTab === 'featured_carousel'
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-950'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <LayoutGrid className="w-4 h-4 text-emerald-400" />
+                <span>Featured Carousel</span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-[10px] text-emerald-300 font-mono font-bold">
+                Showcase
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('announcements')}
               className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all ${
                 activeTab === 'announcements'
@@ -1382,6 +1405,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               }}
               onUpdateProducts={(updatedProds) => {
                 onSaveProducts(updatedProds);
+              }}
+              showToast={showToast}
+            />
+          )}
+
+          {/* TAB: FEATURED PRODUCTS CAROUSEL */}
+          {activeTab === 'featured_carousel' && (
+            <AdminFeaturedCarouselManager
+              products={products}
+              categories={categories}
+              settings={carouselSettingsState}
+              onSaveSettings={async (newSettings) => {
+                setCarouselSettingsState(newSettings);
+                const res = await saveFeaturedCarouselSettings(newSettings);
+                if (onSaveFeaturedCarouselSettings) onSaveFeaturedCarouselSettings(newSettings);
+                return res;
               }}
               showToast={showToast}
             />

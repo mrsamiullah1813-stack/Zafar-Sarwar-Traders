@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MapPin, Phone, MessageCircle, Mail, Clock, Send, CheckCircle2, UserCheck } from 'lucide-react';
+import { MapPin, Phone, MessageCircle, Mail, Clock, Send, CheckCircle2, UserCheck, Truck } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { BusinessConfig, ContactPerson } from '../types';
 
@@ -76,8 +76,10 @@ export const ContactPage: React.FC<ContactPageProps> = ({ config, contacts = [],
                     <Phone className="w-4 h-4 text-blue-600" />
                   </div>
                   <div>
-                    <div className="font-bold text-slate-900">Phone & WhatsApp</div>
-                    <div className="text-slate-600 mt-0.5">{config?.phone || '+92 310 8002863'}</div>
+                    <div className="font-bold text-slate-900">Phone & Helpline</div>
+                    <a href={`tel:${(config?.phone || '+92 310 8002863').replace(/\s+/g, '')}`} className="text-blue-600 font-bold hover:underline block mt-0.5">
+                      {config?.phone || '+92 310 8002863'}
+                    </a>
                     <div className="text-slate-500 text-[11px] mt-0.5">Quick response within business hours</div>
                   </div>
                 </div>
@@ -88,11 +90,11 @@ export const ContactPage: React.FC<ContactPageProps> = ({ config, contacts = [],
                   </div>
                   <div>
                     <div className="font-bold text-slate-900">WhatsApp Instant Ordering</div>
-                    <div className="text-slate-600 mt-0.5">+{cleanPhone}</div>
+                    <div className="text-slate-600 mt-0.5 font-mono">+{cleanPhone}</div>
                     <button
                       type="button"
                       onClick={handleWhatsAppInquiry}
-                      className="mt-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors inline-flex items-center gap-1.5"
+                      className="mt-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
                     >
                       <MessageCircle className="w-3.5 h-3.5" />
                       <span>Chat on WhatsApp</span>
@@ -100,13 +102,57 @@ export const ContactPage: React.FC<ContactPageProps> = ({ config, contacts = [],
                   </div>
                 </div>
 
+                {config?.deliveryPhone && (
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-9 h-9 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center shrink-0">
+                      <Truck className="w-4 h-4 text-sky-600" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900">Delivery Helpline</div>
+                      <a href={`tel:${config.deliveryPhone.replace(/\s+/g, '')}`} className="text-blue-600 font-bold hover:underline block mt-0.5">
+                        {config.deliveryPhone}
+                      </a>
+                    </div>
+                  </div>
+                )}
+
+                {config?.supportWhatsapp && config.supportWhatsapp !== config.whatsapp && (
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-9 h-9 rounded-xl bg-teal-50 border border-teal-100 flex items-center justify-center shrink-0">
+                      <MessageCircle className="w-4 h-4 text-teal-600" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900">Support Helpline WhatsApp</div>
+                      <a href={`https://wa.me/${config.supportWhatsapp.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-teal-600 font-bold hover:underline block mt-0.5 font-mono">
+                        {config.supportWhatsapp}
+                      </a>
+                    </div>
+                  </div>
+                )}
+
+                {config?.salesWhatsapp && config.salesWhatsapp !== config.whatsapp && (
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0">
+                      <Phone className="w-4 h-4 text-indigo-600" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900">Wholesale Sales Line</div>
+                      <a href={`https://wa.me/${config.salesWhatsapp.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-indigo-600 font-bold hover:underline block mt-0.5 font-mono">
+                        {config.salesWhatsapp}
+                      </a>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-start gap-3.5">
                   <div className="w-9 h-9 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center shrink-0">
                     <Mail className="w-4 h-4 text-purple-600" />
                   </div>
                   <div>
                     <div className="font-bold text-slate-900">Email Address</div>
-                    <div className="text-slate-600 mt-0.5">{config?.email || 'support@zafarsarwartraders.shop'}</div>
+                    <a href={`mailto:${config?.email || 'support@zafarsarwartraders.shop'}`} className="text-purple-600 font-semibold hover:underline block mt-0.5">
+                      {config?.email || 'support@zafarsarwartraders.shop'}
+                    </a>
                   </div>
                 </div>
 
@@ -126,8 +172,8 @@ export const ContactPage: React.FC<ContactPageProps> = ({ config, contacts = [],
                   </div>
                   <div>
                     <div className="font-bold text-slate-900">Showroom Hours</div>
-                    <div className="text-slate-600 mt-0.5">Sat – Thu: 8:30 AM – 8:30 PM</div>
-                    <div className="text-slate-600 mt-0.5">Friday: 2:30 PM – 8:30 PM</div>
+                    <div className="text-slate-600 mt-0.5">{config?.hoursWeekday || 'Monday – Saturday: 8:00 AM – 9:00 PM'}</div>
+                    <div className="text-slate-600 mt-0.5">{config?.hoursSunday || 'Sunday: 10:00 AM – 6:00 PM'}</div>
                   </div>
                 </div>
               </div>
@@ -147,11 +193,23 @@ export const ContactPage: React.FC<ContactPageProps> = ({ config, contacts = [],
                         <div className="font-bold text-slate-800">{person.fullName}</div>
                         <div className="text-slate-500">{person.designation} {person.department ? `(${person.department})` : ''}</div>
                       </div>
-                      {person.mobileNumber && (
-                        <a href={`tel:${person.mobileNumber}`} className="text-blue-600 font-bold hover:underline">
-                          {person.mobileNumber}
-                        </a>
-                      )}
+                      <div className="flex flex-col items-end gap-1">
+                        {person.mobileNumber && (
+                          <a href={`tel:${person.mobileNumber.replace(/\s+/g, '')}`} className="text-blue-600 font-bold hover:underline">
+                            {person.mobileNumber}
+                          </a>
+                        )}
+                        {person.whatsappNumber && person.whatsappNumber !== person.mobileNumber && (
+                          <a href={`https://wa.me/${person.whatsappNumber.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-emerald-600 text-[11px] font-semibold hover:underline">
+                            WA: {person.whatsappNumber}
+                          </a>
+                        )}
+                        {person.email && (
+                          <a href={`mailto:${person.email}`} className="text-purple-600 text-[11px] hover:underline">
+                            {person.email}
+                          </a>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

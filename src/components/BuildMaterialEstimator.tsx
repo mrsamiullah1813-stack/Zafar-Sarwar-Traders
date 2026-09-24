@@ -162,7 +162,7 @@ export const BuildMaterialEstimator: React.FC<BuildMaterialEstimatorProps> = ({
       `Estimated Requirement: ${result.minEstimatedBags.toLocaleString()} – ${result.maxEstimatedBags.toLocaleString()} Bags (50kg each)\n` +
       `Recommended Planning Buffer: ${result.recommendedBags.toLocaleString()} Bags\n\n` +
       `*Notice: Ye sirf ek estimated calculation hai. Final quantity ke liye approved structural drawings aur qualified engineer ki calculation ko priority dein.\n\n` +
-      `Official Supplier: Zafar Sarwar Traders (+92 310 8002863)`;
+      `Official Supplier: Zafar Sarwar Traders`;
 
     navigator.clipboard.writeText(text);
     setCopied(true);

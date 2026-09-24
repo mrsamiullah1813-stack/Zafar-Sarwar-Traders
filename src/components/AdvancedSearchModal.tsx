@@ -4,7 +4,7 @@ import { Product, ProductCategory, ProductBrand } from '../types';
 import { filterProducts, parseNaturalLanguageQuery, getNumericPrice, getInstantSearchSuggestions } from '../utils/searchUtils';
 import { ProductSaleBadge } from './ProductSaleBadge';
 import { ProductCardRating } from './ProductCardRating';
-import { getProductPricingDetails } from '../utils/pricingUtils';
+import { getProductPricingDetails, getActiveProductPrice } from '../utils/pricingUtils';
 import { trackSearchQuery } from '../utils/analyticsStorage';
 import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
 
@@ -225,10 +225,8 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
                     onClick={() => {
                       if (s.type === 'product' || s.type === 'variant') {
                         onSelectProduct(s.target);
-                        onClose();
                       } else if (s.type === 'category' && onSelectCategory) {
                         onSelectCategory(s.target);
-                        onClose();
                       } else {
                         setSearchQuery(s.title);
                         setShowSuggestions(false);
@@ -458,7 +456,7 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
             {filteredResults.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {filteredResults.map(product => {
-                  const pricing = getProductPricingDetails(product);
+                  const pricing = getActiveProductPrice(product);
                   const hasMatchedVariants = Boolean(product.matchedVariants && product.matchedVariants.length > 0);
                   const hasOptions = Boolean(product.allDisplayOptions && product.allDisplayOptions.length > 0);
 
@@ -470,7 +468,7 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
                       {/* IMAGE */}
                       <div 
                         className="relative h-44 sm:h-52 w-full bg-gradient-to-b from-slate-50 to-slate-100/70 p-3 sm:p-4 flex items-center justify-center overflow-hidden cursor-pointer"
-                        onClick={() => { onSelectProduct(product); onClose(); }}
+                        onClick={() => onSelectProduct(product)}
                       >
                         <img
                           src={resolveProductImage(product)}
@@ -517,7 +515,7 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
                             <ProductCardRating productId={product.id} />
                           </div>
                           <h4 
-                            onClick={() => { onSelectProduct(product); onClose(); }}
+                            onClick={() => onSelectProduct(product)}
                             className="text-xs font-bold text-slate-900 line-clamp-2 hover:text-blue-600 transition-colors cursor-pointer mt-0.5"
                           >
                             {product.name}
@@ -549,7 +547,7 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
                         {/* PRICE & BUTTONS */}
                         <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                           <div>
-                            {pricing.isSaleActive ? (
+                            {(pricing.isSaleActive || pricing.isOnSale) ? (
                               <div className="flex flex-col">
                                 <div className="flex items-baseline gap-1.5">
                                   <span className="text-sm font-black text-rose-600 font-mono">
@@ -576,7 +574,7 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
 
                           <div className="flex items-center gap-1">
                             <button
-                              onClick={() => { onSelectProduct(product); onClose(); }}
+                              onClick={() => onSelectProduct(product)}
                               className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
                               title="Quick View"
                             >

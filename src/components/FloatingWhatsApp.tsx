@@ -12,7 +12,6 @@ export const FloatingWhatsApp: React.FC<FloatingWhatsAppProps> = ({ config }) =>
 
   const rawPhone = config.whatsapp || config.phone || '923108002863';
   const targetNumber = rawPhone.replace(/[^0-9]/g, '');
-  const displayPhone = config.whatsapp || config.phone || '+92 310 8002863';
 
   const handleSend = () => {
     const defaultText = `Hello ${config.name || 'Zafar Sarwar Traders'}, I am interested in your luxury sanitaryware, plumbing, and building materials.`;
@@ -45,7 +44,7 @@ export const FloatingWhatsApp: React.FC<FloatingWhatsAppProps> = ({ config }) =>
               <div>
                 <h4 className="text-white font-bold text-xs font-serif">{config.name}</h4>
                 <p className="text-emerald-400 text-[10px] font-semibold flex items-center gap-1">
-                  <span>{displayPhone}</span> • <span>Online</span>
+                  <span>Showroom Support</span> • <span>Online</span>
                 </p>
               </div>
             </div>
@@ -79,10 +78,10 @@ export const FloatingWhatsApp: React.FC<FloatingWhatsAppProps> = ({ config }) =>
 
             <button
               onClick={handleSend}
-              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950 transition-all"
+              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950 transition-all cursor-pointer"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>Start WhatsApp Chat ({displayPhone})</span>
+              <span>Start WhatsApp Chat</span>
             </button>
           </div>
         </div>
@@ -91,8 +90,9 @@ export const FloatingWhatsApp: React.FC<FloatingWhatsAppProps> = ({ config }) =>
       {/* Floating Action Button */}
       <button
         onClick={() => setOpen(!open)}
-        className="relative group p-4 rounded-full bg-gradient-to-tr from-emerald-600 via-teal-500 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-2xl shadow-emerald-950/90 hover:scale-110 active:scale-95 transition-all duration-300 border border-emerald-400/40 flex items-center justify-center"
-        title={`Chat on WhatsApp (${displayPhone})`}
+        className="relative group p-4 rounded-full bg-gradient-to-tr from-emerald-600 via-teal-500 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-2xl shadow-emerald-950/90 hover:scale-110 active:scale-95 transition-all duration-300 border border-emerald-400/40 flex items-center justify-center cursor-pointer"
+        title="Chat on WhatsApp"
+        aria-label="Chat on WhatsApp"
       >
         <span className="absolute -top-1 -right-1 flex h-4 w-4">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>

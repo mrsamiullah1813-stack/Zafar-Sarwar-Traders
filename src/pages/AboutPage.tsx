@@ -105,9 +105,8 @@ export const AboutPage: React.FC<AboutPageProps> = ({ config, stats = [], onNavi
             <div className="flex items-start gap-3">
               <Phone className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
               <div>
-                <div className="font-bold text-white mb-1">Helpline & WhatsApp</div>
-                <div>{config?.phone || '+92 310 8002863'}</div>
-                <div>{config?.email || 'support@zafarsarwartraders.shop'}</div>
+                <div className="font-bold text-white mb-1">Helpline & WhatsApp Support</div>
+                <div className="text-slate-300 text-xs">All official phone numbers, WhatsApp lines, and support emails are centralized on our Contacts page.</div>
               </div>
             </div>
           </div>

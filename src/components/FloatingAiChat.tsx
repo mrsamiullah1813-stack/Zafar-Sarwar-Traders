@@ -307,7 +307,7 @@ export const FloatingAiChat: React.FC<FloatingAiChatProps> = ({
           {
             id: `asst-${Date.now()}`,
             sender: 'assistant',
-            text: `**ZAFAR SARWAR TRADERS SHOWROOM**\n📍 **Address**: ${config.address}\n📞 **Phone / WhatsApp**: ${config.phone}\n✉️ **Email**: ${config.email}\n⏰ **Business Hours**: ${config.hoursWeekday} | ${config.hoursSunday}\n\nOur showroom features live water test benches for rain showers and faucets, custom paint color mixing, and bulk CPVC/UPVC pipe yards.`,
+            text: `**ZAFAR SARWAR TRADERS SHOWROOM**\n📍 **Address**: ${config.address}\n⏰ **Business Hours**: ${config.hoursWeekday} | ${config.hoursSunday}\n\nOur showroom features live water test benches for rain showers and faucets, custom paint color mixing, and bulk CPVC/UPVC pipe yards. All business contact numbers, WhatsApp lines, and support emails are available on our Contacts page.`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             suggestedReplies: ['Order on WhatsApp', 'Browse Products', 'Bathroom Planner']
           }
@@ -326,7 +326,7 @@ export const FloatingAiChat: React.FC<FloatingAiChatProps> = ({
         {
           id: `asst-${Date.now()}`,
           sender: 'assistant',
-          text: `Opening WhatsApp chat with our official sales team (+92 310 8002863). You can send us your architectural floor plan or product list for instant itemized quotations!`,
+          text: `Opening WhatsApp chat with our official sales team. You can send us your architectural floor plan or product list for instant itemized quotations!`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           suggestedReplies: ['Browse Products', 'Bathroom Planner', 'Contact Us']
         }
@@ -817,7 +817,7 @@ export const FloatingAiChat: React.FC<FloatingAiChatProps> = ({
                                 className="w-full py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-md"
                               >
                                 <MessageSquare className="w-3.5 h-3.5" />
-                                <span>Chat Directly on WhatsApp (+92 310 8002863)</span>
+                                <span>Chat Directly on WhatsApp</span>
                               </button>
                             </div>
                           )}
