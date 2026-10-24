@@ -7,15 +7,18 @@ import {
   Star, 
   Flame, 
   Check, 
-  Eye 
+  Eye,
+  Edit
 } from 'lucide-react';
 import { Product, FeaturedCarouselSettings } from '../types';
-import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
+import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
 import { getProductPricingDetails } from '../utils/pricingUtils';
 
 interface FeaturedProductsCarouselProps {
   products: Product[];
   settings: FeaturedCarouselSettings;
+  isAdmin?: boolean;
+  onEditProduct?: (product: Product) => void;
   wishlistIds?: string[];
   onSelectProduct: (product: Product) => void;
   onAddToCart: (product: Product, quantity?: number) => void;
@@ -26,6 +29,8 @@ interface FeaturedProductsCarouselProps {
 export const FeaturedProductsCarousel: React.FC<FeaturedProductsCarouselProps> = ({
   products,
   settings,
+  isAdmin,
+  onEditProduct,
   wishlistIds = [],
   onSelectProduct,
   onAddToCart,
@@ -369,24 +374,41 @@ export const FeaturedProductsCarousel: React.FC<FeaturedProductsCarouselProps> =
                       )}
                     </div>
 
-                    {/* Right: Wishlist Icon Button */}
-                    {onToggleWishlist && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onToggleWishlist(product.id);
-                        }}
-                        aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
-                        className={`pointer-events-auto p-2 rounded-xl backdrop-blur-md transition-all active:scale-90 cursor-pointer ${
-                          isWishlisted 
-                            ? 'bg-rose-50 text-rose-600 border border-rose-200' 
-                            : 'bg-white/90 text-stone-400 hover:text-rose-600 hover:bg-white border border-[#E5DED4] shadow-xs'
-                        }`}
-                      >
-                        <Heart className={`w-4 h-4 ${isWishlisted ? 'fill-rose-500 text-rose-500' : ''}`} />
-                      </button>
-                    )}
+                    {/* Right: Admin Edit & Wishlist Icon Buttons */}
+                    <div className="flex items-center gap-1.5 pointer-events-auto">
+                      {isAdmin && onEditProduct && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditProduct(product);
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md transition-all active:scale-95 cursor-pointer z-30"
+                          title="Edit Product"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                          <span>Edit Product</span>
+                        </button>
+                      )}
+
+                      {onToggleWishlist && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleWishlist(product.id);
+                          }}
+                          aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
+                          className={`p-2 rounded-xl backdrop-blur-md transition-all active:scale-90 cursor-pointer ${
+                            isWishlisted 
+                              ? 'bg-rose-50 text-rose-600 border border-rose-200' 
+                              : 'bg-white/90 text-stone-400 hover:text-rose-600 hover:bg-white border border-[#E5DED4] shadow-xs'
+                          }`}
+                        >
+                          <Heart className={`w-4 h-4 ${isWishlisted ? 'fill-rose-500 text-rose-500' : ''}`} />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* PRODUCT IMAGE SHOWCASE AREA (WARM PODIUM DISPLAY) */}
@@ -397,7 +419,7 @@ export const FeaturedProductsCarousel: React.FC<FeaturedProductsCarouselProps> =
                         : 'p-4 sm:p-5 h-[190px] sm:h-[210px] bg-gradient-to-b from-[#FAF8F5] to-[#F2EDE6]'
                     }`}>
                       <img
-                        src={normalizeProductImage(product.image, product.category, product.name)}
+                        src={resolveProductImage(product)}
                         alt={product.name}
                         loading="lazy"
                         decoding="async"
@@ -501,6 +523,24 @@ export const FeaturedProductsCarousel: React.FC<FeaturedProductsCarouselProps> =
                       </button>
 
                     </div>
+
+                    {/* Admin Dedicated Edit Product Button */}
+                    {isAdmin && onEditProduct && (
+                      <div className="pt-2 mt-2 border-t border-[#EAE3D8]">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditProduct(product);
+                          }}
+                          className="w-full py-1.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer z-30"
+                          title="Edit Product"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                          <span>Edit Product</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                 </div>

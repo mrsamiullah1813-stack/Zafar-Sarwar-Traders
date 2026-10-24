@@ -282,23 +282,25 @@ export function mapDbProductToProduct(row: any): Product {
     }
   }
 
-  let resolvedSalePrice = rawSpecs._raw_sale_price || rawSpecs._sale_price || rawSpecs._sale_config?.salePrice || row.sale_price_text || (row.sale_price !== null && row.sale_price !== undefined ? String(row.sale_price) : (row.discount_price !== null && row.discount_price !== undefined ? String(row.discount_price) : (row.discounted_price !== null && row.discounted_price !== undefined ? String(row.discounted_price) : undefined)));
+  let resolvedSalePrice = row.salePrice || rawSpecs._raw_sale_price || rawSpecs._sale_price || row.saleConfig?.salePrice || rawSpecs._sale_config?.salePrice || row.sale_price_text || (row.sale_price !== null && row.sale_price !== undefined ? String(row.sale_price) : (row.discount_price !== null && row.discount_price !== undefined ? String(row.discount_price) : (row.discounted_price !== null && row.discounted_price !== undefined ? String(row.discounted_price) : undefined)));
 
   const isSaleEnabled = Boolean(
+    row.saleEnabled ??
     row.sale_enabled ??
     row.is_on_sale ??
     row.sale_active ??
     row.on_sale ??
     row.is_sale ??
     row.discount_enabled ??
+    row.saleConfig?.saleEnabled ??
     rawSpecs._sale_enabled ??
     rawSpecs._sale_config?.saleEnabled ??
-    (resolvedSalePrice && parseNumericPrice(resolvedSalePrice) > 0 && rawSpecs._sale_enabled !== false)
+    (resolvedSalePrice && parseNumericPrice(resolvedSalePrice) > 0 && rawSpecs._sale_enabled !== false && row.saleEnabled !== false)
   );
 
   // Parse Variants & Dynamic Pricing
   let parsedVariantsList: ProductVariant[] = [];
-  const rawVariantsSource = row.variants || rawSpecs._variants_list || rawSpecs._variants_config?.variants;
+  const rawVariantsSource = row.variantsList || row.variantsConfig?.variants || row.variants || rawSpecs._variants_list || rawSpecs._variants_config?.variants;
   if (Array.isArray(rawVariantsSource)) {
     parsedVariantsList = rawVariantsSource.map((v: any, idx: number) => {
       if (typeof v === 'string') {
@@ -333,13 +335,17 @@ export function mapDbProductToProduct(row: any): Product {
   }
 
   const isVariantsEnabled = Boolean(
+    row.variantsEnabled ??
+    row.variantsConfig?.variantsEnabled ??
     row.variants_enabled ??
     rawSpecs._variants_enabled ??
     rawSpecs._variants_config?.variantsEnabled ??
-    (parsedVariantsList.length > 0 && (rawSpecs._variants_enabled === true || row.variants_enabled === true))
+    (parsedVariantsList.length > 0 && (rawSpecs._variants_enabled === true || row.variants_enabled === true || row.variantsEnabled === true))
   );
 
   const optionName = String(
+    row.optionName ||
+    row.variantsConfig?.optionName ||
     row.option_name ||
     rawSpecs._option_name ||
     rawSpecs._variants_config?.optionName ||
@@ -348,7 +354,7 @@ export function mapDbProductToProduct(row: any): Product {
 
   // Paint Shade System Parsing
   let parsedShadesList: PaintShade[] = [];
-  const rawShades = row.shades || rawSpecs._shades_list || rawSpecs._paint_shades_config?.shades || [];
+  const rawShades = row.shadesList || row.paintShadesConfig?.shades || row.shades || rawSpecs._shades_list || rawSpecs._paint_shades_config?.shades || [];
   if (Array.isArray(rawShades)) {
     parsedShadesList = rawShades.map((s: any, idx: number) => {
       if (!s) return null;
@@ -380,13 +386,17 @@ export function mapDbProductToProduct(row: any): Product {
   }
 
   const isShadesEnabled = Boolean(
+    row.shadesEnabled ??
+    row.paintShadesConfig?.shadesEnabled ??
     row.shades_enabled ??
     rawSpecs._shades_enabled ??
     rawSpecs._paint_shades_config?.shadesEnabled ??
-    (parsedShadesList.length > 0 && (rawSpecs._shades_enabled === true || row.shades_enabled === true))
+    (parsedShadesList.length > 0 && (rawSpecs._shades_enabled === true || row.shades_enabled === true || row.shadesEnabled === true))
   );
 
   const shadesTitle = String(
+    row.shadesTitle ||
+    row.paintShadesConfig?.shadesTitle ||
     row.shades_title ||
     rawSpecs._shades_title ||
     rawSpecs._paint_shades_config?.shadesTitle ||
@@ -394,6 +404,8 @@ export function mapDbProductToProduct(row: any): Product {
   );
 
   const shadeSheetUrl = String(
+    row.shadeSheetUrl ||
+    row.paintShadesConfig?.shadeSheetUrl ||
     row.shade_sheet_url ||
     rawSpecs._shade_sheet_url ||
     rawSpecs._paint_shades_config?.shadeSheetUrl ||
@@ -510,6 +522,7 @@ export function mapDbProductToProduct(row: any): Product {
     reviewsCount: Number(row.reviews_count ?? row.reviewsCount ?? rawSpecs._reviews_count ?? 12),
     reviews_count: Number(row.reviews_count ?? row.reviewsCount ?? rawSpecs._reviews_count ?? 12),
     displayOrder: Number(row.display_order ?? row.displayOrder ?? rawSpecs._display_order ?? 0),
+    slug: row.slug || rawSpecs._slug || undefined,
     deliveryConfig: rawSpecs._delivery_config || row.delivery_config || undefined
   };
 }

@@ -20,6 +20,7 @@ import {
   saveStoredStats,
   getIsAdminLoggedIn,
   setIsAdminLoggedIn,
+  getAdminAuthToken,
   loadPlannerConfig,
   savePlannerConfig,
   loadBuildMaterialEstimatorConfig,
@@ -215,9 +216,10 @@ export default function App() {
   const isFullyAuthenticated = (): boolean => {
     try {
       const hasToken = getIsAdminLoggedIn();
+      const authToken = getAdminAuthToken();
       const hasPin = sessionStorage.getItem('zst_admin_time_pin_verified') === 'true';
       const hasPattern = sessionStorage.getItem('zst_admin_pattern_verified') === 'true';
-      return Boolean(hasToken && hasPin && hasPattern);
+      return Boolean(hasToken && (authToken || hasPin || hasPattern));
     } catch {
       return false;
     }
@@ -1180,6 +1182,8 @@ export default function App() {
           brands={brands}
           config={config}
           isAdmin={isAdmin}
+          onEditProduct={handleOpenEditProduct}
+          onDeleteProduct={handleDeleteProduct}
           onNavigate={navigateTo}
           onQuickView={handleQuickViewProduct}
           onAddToCart={handleAddToCart}
@@ -1212,6 +1216,8 @@ export default function App() {
             brands={brands}
             config={config}
             isAdmin={isAdmin}
+            onEditProduct={handleOpenEditProduct}
+            onDeleteProduct={handleDeleteProduct}
             onNavigate={navigateTo}
             onQuickView={handleQuickViewProduct}
             onAddToCart={handleAddToCart}
@@ -1241,6 +1247,7 @@ export default function App() {
             brands={brands}
             config={config}
             isAdmin={isAdmin}
+            onEditProduct={handleOpenEditProduct}
             onNavigate={navigateTo}
             onAddToCart={handleAddToCart}
             onBuyNow={handleBuyNow}
@@ -1279,6 +1286,8 @@ export default function App() {
             categories={categories}
             config={config}
             isAdmin={isAdmin}
+            onEditProduct={handleOpenEditProduct}
+            onDeleteProduct={handleDeleteProduct}
             onNavigate={navigateTo}
             onQuickView={handleQuickViewProduct}
             onAddToCart={handleAddToCart}
@@ -1365,6 +1374,8 @@ export default function App() {
         <FeaturedProductsCarousel
           products={products}
           settings={featuredCarouselSettings}
+          isAdmin={isAdmin}
+          onEditProduct={handleOpenEditProduct}
           wishlistIds={wishlistIds}
           onSelectProduct={(product) => handleQuickViewProduct(product)}
           onAddToCart={handleAddToCart}

@@ -381,6 +381,32 @@ export const AdminCustomersManager: React.FC<AdminCustomersManagerProps> = ({ on
                       <span>Total Amount:</span>
                       <span className="text-emerald-400">Rs. {(order.grandTotal ?? 0).toLocaleString()}</span>
                     </div>
+
+                    {(() => {
+                      const pm = (order.paymentMethodName || order.paymentType || '').toLowerCase();
+                      const isCod = Boolean(
+                        order.isCodAdvanceRequired ||
+                        pm.includes('cash on delivery') ||
+                        pm.includes('cod') ||
+                        order.paymentType === 'cod' ||
+                        (!order.paymentMethodName && !order.paymentType)
+                      );
+                      if (!isCod) return null;
+                      const tot = Math.max(0, Math.round(Number(order.grandTotal ?? order.subtotal ?? 0)));
+                      const adv = (order.codAdvanceAmountRequired && order.codAdvanceAmountRequired > 0)
+                        ? order.codAdvanceAmountRequired
+                        : Math.round(tot * 0.3);
+                      const rem = (order.codRemainingBalance !== undefined && order.codRemainingBalance !== null && order.codRemainingBalance >= 0)
+                        ? order.codRemainingBalance
+                        : Math.max(0, tot - adv);
+
+                      return (
+                        <div className="flex items-center justify-between text-[11px] font-mono text-slate-300 bg-amber-950/25 px-2.5 py-1.5 rounded-lg border border-amber-500/25">
+                          <span className="text-amber-300 font-semibold">30% Adv: Rs. {adv.toLocaleString()}</span>
+                          <span className="text-emerald-400 font-semibold">COD Bal: Rs. {rem.toLocaleString()}</span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))
               )}

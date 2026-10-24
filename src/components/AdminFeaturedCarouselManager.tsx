@@ -18,7 +18,7 @@ import {
   LayoutGrid
 } from 'lucide-react';
 import { Product, ProductCategory, FeaturedCarouselSettings } from '../types';
-import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
+import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
 import { getProductPricingDetails } from '../utils/pricingUtils';
 import { defaultFeaturedCarouselSettings } from '../utils/storage';
 
@@ -399,7 +399,7 @@ export const AdminFeaturedCarouselManager: React.FC<AdminFeaturedCarouselManager
 
                     <div className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 p-1 flex items-center justify-center shrink-0 overflow-hidden">
                       <img
-                        src={normalizeProductImage(prod.image, prod.category, prod.name)}
+                        src={resolveProductImage(prod)}
                         alt={prod.name}
                         onError={(e) => handleImageError(e, prod.category, prod.name)}
                         className="w-full h-full object-contain mix-blend-screen"
@@ -518,7 +518,7 @@ export const AdminFeaturedCarouselManager: React.FC<AdminFeaturedCarouselManager
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 p-1 flex items-center justify-center shrink-0 overflow-hidden">
                     <img
-                      src={normalizeProductImage(product.image, product.category, product.name)}
+                      src={resolveProductImage(product)}
                       alt={product.name}
                       onError={(e) => handleImageError(e, product.category, product.name)}
                       className="w-full h-full object-contain"

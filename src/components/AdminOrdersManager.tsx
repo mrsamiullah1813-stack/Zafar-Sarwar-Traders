@@ -838,13 +838,64 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
     }
   };
 
+  const getOrderPaymentBreakdown = (order: CustomerOrder) => {
+    const method = (order.paymentMethodName || order.paymentType || '').toLowerCase();
+    const methodId = (order.paymentMethodId || '').toLowerCase();
+
+    // Check if the order was placed with Cash on Delivery
+    const isCOD = Boolean(
+      order.isCodAdvanceRequired ||
+      order.paymentType === 'cod' ||
+      methodId === 'cod' ||
+      method.includes('cash on delivery') ||
+      method.includes('cod') ||
+      (!order.paymentMethodName && !order.paymentType && !order.paymentProofUrl && !(order as any).payment_proof_url)
+    );
+
+    const orderTotal = Math.max(0, Math.round(Number(order.grandTotal ?? order.subtotal ?? 0)));
+
+    // 30% advance deposit calculation (uses stored value if available, otherwise calculates exact 30%)
+    const advanceAmount = (order.codAdvanceAmountRequired && order.codAdvanceAmountRequired > 0)
+      ? order.codAdvanceAmountRequired
+      : (order.advanceAmountRequired && order.advanceAmountRequired > 0)
+        ? order.advanceAmountRequired
+        : Math.round(orderTotal * 0.3);
+
+    // Remaining Cash on Delivery calculation (70% balance or total minus advance)
+    const remainingCod = (order.codRemainingBalance !== undefined && order.codRemainingBalance !== null && order.codRemainingBalance >= 0)
+      ? order.codRemainingBalance
+      : (order.remainingCodAmount !== undefined && order.remainingCodAmount !== null && order.remainingCodAmount >= 0)
+        ? order.remainingCodAmount
+        : Math.max(0, orderTotal - advanceAmount);
+
+    const advancePaid = Number(order.codAdvanceAmountPaid || order.advancePaidAmount || 0);
+    const isAdvanceVerified = Boolean(
+      order.codAdvanceVerified ||
+      order.paymentStatus === 'Payment Verified' ||
+      order.status === 'Confirmed' ||
+      order.status === 'Delivered'
+    );
+
+    return {
+      isCOD,
+      orderTotal,
+      advancePercentage: order.codAdvancePercentage || order.advancePercentage || 30,
+      advanceAmount,
+      remainingCod,
+      advancePaid,
+      isAdvanceVerified,
+    };
+  };
+
   const getPaymentBadge = (order: CustomerOrder) => {
-    if (order.isCodAdvanceRequired) {
+    const breakdown = getOrderPaymentBreakdown(order);
+
+    if (breakdown.isCOD) {
       if (order.paymentStatus === 'Payment Verified' || order.codAdvanceVerified || order.status === 'Payment Verified') {
         return (
           <span className="px-2.5 py-1 rounded-full bg-emerald-950/90 border border-emerald-500/50 text-emerald-300 text-xs font-bold flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Advance Verified (Bal: Rs. {(order.codRemainingBalance || 0).toLocaleString('en-PK')})</span>
+            <span>Advance Verified (COD Bal: Rs. {breakdown.remainingCod.toLocaleString('en-PK')})</span>
           </span>
         );
       }
@@ -861,10 +912,16 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
         return (
           <span className="px-2.5 py-1 rounded-full bg-amber-950/90 border border-amber-500/50 text-amber-300 text-xs font-bold flex items-center gap-1.5 animate-pulse">
             <Clock className="w-3.5 h-3.5 text-amber-400" />
-            <span>Advance Under Review (Rs. {(order.codAdvanceAmountPaid || order.codAdvanceAmountRequired || 0).toLocaleString('en-PK')})</span>
+            <span>Advance Under Review (Rs. {(breakdown.advancePaid || breakdown.advanceAmount).toLocaleString('en-PK')})</span>
           </span>
         );
       }
+      return (
+        <span className="px-2.5 py-1 rounded-full bg-amber-950/60 border border-amber-500/40 text-amber-300 text-xs font-bold flex items-center gap-1.5">
+          <DollarSign className="w-3.5 h-3.5 text-amber-400" />
+          <span>COD (30% Adv: Rs. {breakdown.advanceAmount.toLocaleString('en-PK')})</span>
+        </span>
+      );
     }
 
     if (order.paymentStatus === 'Payment Verified' || order.status === 'Payment Verified') {
@@ -1302,58 +1359,108 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                     </div>
                   </div>
 
-                  {/* Order Summary Total & COD Advance Summary */}
-                  <div className="flex flex-col sm:flex-row justify-end items-stretch sm:items-start gap-3 pt-1">
-                    {order.isCodAdvanceRequired && (
-                      <div className="w-full sm:w-80 bg-amber-950/40 p-3.5 rounded-xl border border-amber-500/40 text-xs space-y-1.5">
-                        <div className="flex items-center gap-1.5 text-amber-300 font-bold border-b border-amber-500/30 pb-1.5">
-                          <ShieldCheck className="w-4 h-4 text-amber-400" />
-                          <span>COD Advance Protection Applied</span>
-                        </div>
-                        <div className="flex justify-between text-slate-300">
-                          <span>Advance Required / Transferred:</span>
-                          <span className="font-mono font-bold text-amber-300">
-                            PKR {(order.codAdvanceAmountPaid || order.codAdvanceAmountRequired || 0).toLocaleString('en-PK')}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-slate-300">
-                          <span>Remaining COD to Collect:</span>
-                          <span className="font-mono font-bold text-emerald-400">
-                            PKR {(order.codRemainingBalance || 0).toLocaleString('en-PK')}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-[11px] text-slate-400 pt-1 border-t border-amber-500/20">
-                          <span>Advance Status:</span>
-                          <span className="font-semibold text-amber-200">
-                            {order.codAdvanceVerified ? '✅ Advance Verified' : '⏳ Proof Under Review'}
-                          </span>
-                        </div>
-                      </div>
-                    )}
+                  {/* Order Summary Total & COD Advance / Payment Breakdown */}
+                  {(() => {
+                    const breakdown = getOrderPaymentBreakdown(order);
+                    return (
+                      <div className="flex flex-col sm:flex-row justify-end items-stretch sm:items-start gap-3 pt-1">
+                        {breakdown.isCOD ? (
+                          <div className="w-full sm:w-80 bg-gradient-to-br from-amber-950/50 via-slate-950 to-slate-950 p-3.5 rounded-xl border border-amber-500/40 text-xs space-y-2">
+                            <div className="flex items-center justify-between border-b border-amber-500/30 pb-1.5">
+                              <div className="flex items-center gap-1.5 text-amber-300 font-bold">
+                                <ShieldCheck className="w-4 h-4 text-amber-400" />
+                                <span>Payment Breakdown</span>
+                              </div>
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-900/60 text-amber-200 border border-amber-500/30 font-bold">
+                                Cash on Delivery
+                              </span>
+                            </div>
 
-                    <div className="w-full sm:w-72 bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-xs space-y-1.5 self-end">
-                      <div className="flex justify-between text-slate-400">
-                        <span>Subtotal:</span>
-                        <span className="font-mono text-slate-200">PKR {order.subtotal?.toLocaleString('en-PK')}</span>
-                      </div>
-                      {order.appliedCouponCode && (
-                        <div className="flex justify-between text-amber-400 font-semibold">
-                          <span>Coupon ({order.appliedCouponCode}{order.couponDiscountPercentage ? ` - ${order.couponDiscountPercentage}%` : ''}):</span>
-                          <span className="font-mono">-PKR {order.couponDiscountAmount?.toLocaleString('en-PK') || 0}</span>
+                            <div className="space-y-1.5 pt-0.5">
+                              <div className="flex justify-between items-center text-slate-300">
+                                <span className="text-slate-400">Order Total:</span>
+                                <span className="font-mono font-bold text-white">
+                                  Rs. {breakdown.orderTotal.toLocaleString('en-PK')}
+                                </span>
+                              </div>
+
+                              <div className="flex justify-between items-center bg-amber-900/30 px-2.5 py-1.5 rounded-lg border border-amber-500/30">
+                                <span className="text-amber-200 font-semibold">30% Advance Required:</span>
+                                <span className="font-mono font-extrabold text-amber-300">
+                                  Rs. {breakdown.advanceAmount.toLocaleString('en-PK')}
+                                </span>
+                              </div>
+
+                              <div className="flex justify-between items-center bg-emerald-950/40 px-2.5 py-1.5 rounded-lg border border-emerald-500/30">
+                                <span className="text-emerald-200 font-semibold">Remaining Cash on Delivery:</span>
+                                <span className="font-mono font-extrabold text-emerald-400">
+                                  Rs. {breakdown.remainingCod.toLocaleString('en-PK')}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex justify-between items-center text-[11px] text-slate-400 pt-1 border-t border-amber-500/20">
+                              <span>Advance Status:</span>
+                              <span className={`font-semibold ${breakdown.isAdvanceVerified ? 'text-emerald-300' : 'text-amber-300'}`}>
+                                {breakdown.isAdvanceVerified ? '✅ Advance Verified' : (order.paymentProofUrl || (order as any).payment_proof_url ? '⏳ Proof Under Review' : '🕒 Awaiting Advance')}
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="w-full sm:w-80 bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-xs space-y-2">
+                            <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                              <div className="flex items-center gap-1.5 text-blue-400 font-bold">
+                                <CreditCard className="w-4 h-4 text-blue-400" />
+                                <span>Payment Details</span>
+                              </div>
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 font-bold">
+                                Full Payment
+                              </span>
+                            </div>
+                            <div className="space-y-1.5 pt-0.5">
+                              <div className="flex justify-between text-slate-300">
+                                <span className="text-slate-400">Payment Method:</span>
+                                <span className="font-bold text-white truncate max-w-[150px]">{order.paymentMethodName || 'Direct Transfer'}</span>
+                              </div>
+                              <div className="flex justify-between text-slate-300">
+                                <span className="text-slate-400">Order Total:</span>
+                                <span className="font-mono font-bold text-emerald-400">Rs. {breakdown.orderTotal.toLocaleString('en-PK')}</span>
+                              </div>
+                              {order.transactionReference && (
+                                <div className="flex justify-between text-slate-300 text-[11px]">
+                                  <span className="text-slate-400">Txn Ref:</span>
+                                  <span className="font-mono text-cyan-300 font-bold">{order.transactionReference}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="w-full sm:w-72 bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-xs space-y-1.5 self-end">
+                          <div className="flex justify-between text-slate-400">
+                            <span>Subtotal:</span>
+                            <span className="font-mono text-slate-200">PKR {order.subtotal?.toLocaleString('en-PK')}</span>
+                          </div>
+                          {order.appliedCouponCode && (
+                            <div className="flex justify-between text-amber-400 font-semibold">
+                              <span>Coupon ({order.appliedCouponCode}{order.couponDiscountPercentage ? ` - ${order.couponDiscountPercentage}%` : ''}):</span>
+                              <span className="font-mono">-PKR {order.couponDiscountAmount?.toLocaleString('en-PK') || 0}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between text-slate-400">
+                            <span>Delivery Fee:</span>
+                            <span className="font-mono text-slate-200">
+                              {order.deliveryCharges === 0 ? <span className="text-emerald-400 font-bold">FREE</span> : `PKR ${order.deliveryCharges}`}
+                            </span>
+                          </div>
+                          <div className="pt-2 border-t border-slate-800 flex justify-between font-extrabold text-sm text-white">
+                            <span>Grand Total:</span>
+                            <span className="font-mono text-emerald-400 text-base">PKR {order.grandTotal?.toLocaleString('en-PK')}</span>
+                          </div>
                         </div>
-                      )}
-                      <div className="flex justify-between text-slate-400">
-                        <span>Delivery Fee:</span>
-                        <span className="font-mono text-slate-200">
-                          {order.deliveryCharges === 0 ? <span className="text-emerald-400 font-bold">FREE</span> : `PKR ${order.deliveryCharges}`}
-                        </span>
                       </div>
-                      <div className="pt-2 border-t border-slate-800 flex justify-between font-extrabold text-sm text-white">
-                        <span>Grand Total:</span>
-                        <span className="font-mono text-emerald-400 text-base">PKR {order.grandTotal?.toLocaleString('en-PK')}</span>
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
 
                   {/* Payment Info & Proof Verification Bar */}
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 text-xs">
@@ -1366,14 +1473,18 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                         </div>
                       </div>
 
-                      {order.isCodAdvanceRequired && (
-                        <div className="pl-3 border-l border-slate-800">
-                          <span className="text-slate-400 text-[11px] block">Advance Verification:</span>
-                          <span className={`font-bold text-xs ${order.codAdvanceVerified ? 'text-emerald-400' : 'text-amber-400'}`}>
-                            {order.codAdvanceVerified ? 'Verified' : 'Under Review'}
-                          </span>
-                        </div>
-                      )}
+                      {(() => {
+                        const breakdown = getOrderPaymentBreakdown(order);
+                        if (!breakdown.isCOD) return null;
+                        return (
+                          <div className="pl-3 border-l border-slate-800">
+                            <span className="text-slate-400 text-[11px] block">Advance Verification:</span>
+                            <span className={`font-bold text-xs ${breakdown.isAdvanceVerified ? 'text-emerald-400' : 'text-amber-400'}`}>
+                              {breakdown.isAdvanceVerified ? 'Verified' : 'Under Review'}
+                            </span>
+                          </div>
+                        );
+                      })()}
 
                       {order.transactionReference && (
                         <div className="pl-3 border-l border-slate-800">
@@ -1879,58 +1990,118 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
               </div>
             </div>
 
-            {/* Payment & Verification Section */}
-            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-              <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider block flex items-center justify-between">
-                <span>Payment Verification & Proof Receipt</span>
-                {getPaymentBadge(editingOrder)}
-              </span>
+            {/* Payment Details & Verification Section */}
+            {(() => {
+              const editingOrderBreakdown = getOrderPaymentBreakdown(editingOrder);
+              return (
+                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider block flex items-center justify-between">
+                    <span>Payment Breakdown & Verification</span>
+                    {getPaymentBadge(editingOrder)}
+                  </span>
 
-              {editingOrder.isCodAdvanceRequired && (
-                <div className="bg-amber-950/40 p-3.5 rounded-xl border border-amber-500/40 text-xs space-y-2">
-                  <div className="flex items-center gap-2 text-amber-300 font-bold">
-                    <ShieldCheck className="w-4 h-4 text-amber-400" />
-                    <span>COD Advance Protection Applied</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-300">
-                    <div className="flex justify-between bg-slate-950/80 p-2 rounded-lg border border-amber-500/20">
-                      <span>Advance Required / Paid:</span>
-                      <span className="font-mono font-bold text-amber-300">
-                        PKR {(editingOrder.codAdvanceAmountPaid || editingOrder.codAdvanceAmountRequired || 0).toLocaleString('en-PK')}
-                      </span>
+                  {/* COD 30% Advance + 70% Remaining Cash on Delivery Breakdown */}
+                  {editingOrderBreakdown.isCOD ? (
+                    <div className="bg-gradient-to-br from-amber-950/50 via-slate-950 to-slate-950 p-4 rounded-xl border border-amber-500/40 text-xs space-y-3">
+                      <div className="flex items-center justify-between border-b border-amber-500/30 pb-2">
+                        <div className="flex items-center gap-2 text-amber-300 font-bold">
+                          <ShieldCheck className="w-4 h-4 text-amber-400" />
+                          <span>Cash on Delivery (COD) Payment Breakdown</span>
+                        </div>
+                        <span className="text-[10px] font-mono uppercase px-2.5 py-0.5 rounded bg-amber-900/60 text-amber-200 border border-amber-500/30 font-bold">
+                          30% Advance + 70% COD
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-0.5">
+                        <div className="bg-slate-950/90 p-3 rounded-xl border border-slate-800">
+                          <span className="text-[11px] text-slate-400 block mb-1">Order Final Total</span>
+                          <span className="font-mono font-extrabold text-white text-base">
+                            Rs. {editingOrderBreakdown.orderTotal.toLocaleString('en-PK')}
+                          </span>
+                          <span className="text-[10px] text-slate-500 block mt-0.5">Total Order Value</span>
+                        </div>
+
+                        <div className="bg-amber-950/40 p-3 rounded-xl border border-amber-500/30">
+                          <span className="text-[11px] text-amber-200 block mb-1 font-semibold">30% Advance Required</span>
+                          <span className="font-mono font-extrabold text-amber-300 text-base">
+                            Rs. {editingOrderBreakdown.advanceAmount.toLocaleString('en-PK')}
+                          </span>
+                          <span className="text-[10px] text-amber-400/80 block mt-0.5">Deposit prior to dispatch</span>
+                        </div>
+
+                        <div className="bg-emerald-950/40 p-3 rounded-xl border border-emerald-500/30">
+                          <span className="text-[11px] text-emerald-200 block mb-1 font-semibold">Remaining Cash on Delivery</span>
+                          <span className="font-mono font-extrabold text-emerald-400 text-base">
+                            Rs. {editingOrderBreakdown.remainingCod.toLocaleString('en-PK')}
+                          </span>
+                          <span className="text-[10px] text-emerald-400/80 block mt-0.5">Collect 70% at doorstep</span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300 pt-2 border-t border-amber-500/20">
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-400">Payment Method:</span>
+                          <strong className="text-white font-mono bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                            Cash on Delivery
+                          </strong>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-400">Advance Status:</span>
+                          <span className={`font-bold ${editingOrderBreakdown.isAdvanceVerified ? 'text-emerald-300' : 'text-amber-300'}`}>
+                            {editingOrderBreakdown.isAdvanceVerified 
+                              ? '✅ Advance Verified' 
+                              : (editingOrder.paymentProofUrl || (editingOrder as any).payment_proof_url ? '⏳ Proof Under Review' : '🕒 Awaiting 30% Advance Deposit')}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex justify-between bg-slate-950/80 p-2 rounded-lg border border-amber-500/20">
-                      <span>Remaining Balance (COD):</span>
-                      <span className="font-mono font-bold text-emerald-400">
-                        PKR {(editingOrder.codRemainingBalance || 0).toLocaleString('en-PK')}
-                      </span>
+                  ) : (
+                    /* Non-COD orders: Online / Bank Transfer */
+                    <div className="bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 text-xs space-y-2">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                        <span className="text-slate-400">Payment Structure:</span>
+                        <span className="font-bold text-blue-400 uppercase font-mono text-[11px]">Full Payment</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-300 pt-1">
+                        <div>
+                          <span className="text-[11px] text-slate-400 block mb-0.5">Order Final Total</span>
+                          <span className="font-mono font-extrabold text-emerald-400 text-sm">
+                            Rs. {editingOrderBreakdown.orderTotal.toLocaleString('en-PK')}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[11px] text-slate-400 block mb-0.5">Payment Method</span>
+                          <span className="font-bold text-white text-sm">
+                            {editingOrder.paymentMethodName || 'Bank / Online Payment'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 mb-1">Payment Method</label>
+                      <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white font-bold">
+                        {editingOrder.paymentMethodName || (editingOrderBreakdown.isCOD ? 'Cash on Delivery' : 'Direct Transfer')}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 mb-1">Transaction / Reference ID</label>
+                      <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-cyan-300 font-mono font-bold">
+                        {editingOrder.transactionReference || 'Not provided'}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 mb-1">Payment Method</label>
-                  <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white font-bold">
-                    {editingOrder.paymentMethodName || 'Cash on Delivery'}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 mb-1">Transaction / Reference ID</label>
-                  <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-cyan-300 font-mono font-bold">
-                    {editingOrder.transactionReference || 'Not provided'}
-                  </div>
-                </div>
-              </div>
 
               {(editingOrder.paymentProofUrl || (editingOrder as any).payment_proof_url) ? (
                 <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                       <ImageIcon className="w-4 h-4 text-blue-400" />
-                      <span>{editingOrder.isCodAdvanceRequired ? 'Customer Advance Proof Screenshot' : 'Customer Payment Receipt Screenshot'}</span>
+                      <span>{editingOrderBreakdown.isCOD ? 'Customer Advance Proof Screenshot' : 'Customer Payment Receipt Screenshot'}</span>
                     </span>
                     <button
                       onClick={() => setViewingProofOrder(editingOrder)}
@@ -1962,7 +2133,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                       className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
                     >
                       <ShieldCheck className="w-4 h-4" />
-                      <span>{editingOrder.isCodAdvanceRequired ? 'Approve Advance & Confirm Order' : 'Approve & Verify Payment'}</span>
+                      <span>{editingOrderBreakdown.isCOD ? 'Approve Advance & Confirm Order' : 'Approve & Verify Payment'}</span>
                     </button>
 
                     <button
@@ -1983,6 +2154,8 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                 </div>
               )}
             </div>
+              );
+            })()}
 
             {/* Delivery Estimation & Delay Configuration */}
             <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
@@ -2098,63 +2271,80 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
             </div>
 
             {/* Order & Payment Summary Badges */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-              <div>
-                <span className="text-[11px] text-slate-500 block">Total Order Value:</span>
-                <span className="font-mono font-extrabold text-emerald-400 text-sm">
-                  PKR {viewingProofOrder.grandTotal?.toLocaleString('en-PK')}
-                </span>
-              </div>
+            {(() => {
+              const proofBreakdown = getOrderPaymentBreakdown(viewingProofOrder);
+              return (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                    <div>
+                      <span className="text-[11px] text-slate-500 block">Total Order Value:</span>
+                      <span className="font-mono font-extrabold text-white text-sm">
+                        Rs. {proofBreakdown.orderTotal.toLocaleString('en-PK')}
+                      </span>
+                    </div>
 
-              <div>
-                <span className="text-[11px] text-slate-500 block">Payment Type:</span>
-                <span className="font-bold text-white">
-                  {viewingProofOrder.isCodAdvanceRequired ? 'COD Advance Protection' : (viewingProofOrder.paymentMethodName || 'Direct Transfer')}
-                </span>
-              </div>
+                    <div>
+                      <span className="text-[11px] text-slate-500 block">Payment Type:</span>
+                      <span className="font-bold text-white">
+                        {proofBreakdown.isCOD ? 'Cash on Delivery' : (viewingProofOrder.paymentMethodName || 'Direct Transfer')}
+                      </span>
+                    </div>
 
-              <div>
-                <span className="text-[11px] text-slate-500 block">Txn Reference:</span>
-                <span className="font-mono text-cyan-300 font-bold">
-                  {viewingProofOrder.transactionReference || 'N/A'}
-                </span>
-              </div>
+                    <div>
+                      <span className="text-[11px] text-slate-500 block">Txn Reference:</span>
+                      <span className="font-mono text-cyan-300 font-bold">
+                        {viewingProofOrder.transactionReference || 'N/A'}
+                      </span>
+                    </div>
 
-              <div>
-                <span className="text-[11px] text-slate-500 block">Current Status:</span>
-                {getPaymentBadge(viewingProofOrder)}
-              </div>
-            </div>
-
-            {/* COD Advance Protection Highlight (if applicable) */}
-            {viewingProofOrder.isCodAdvanceRequired && (
-              <div className="bg-amber-950/40 p-4 rounded-xl border border-amber-500/40 text-xs space-y-2">
-                <div className="flex items-center gap-2 text-amber-300 font-bold">
-                  <ShieldCheck className="w-4 h-4 text-amber-400" />
-                  <span>Cash on Delivery Advance Protection Details</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                  <div className="bg-slate-950/80 p-2.5 rounded-lg border border-amber-500/20">
-                    <span className="text-[10px] text-slate-400 block">Advance Amount Transferred:</span>
-                    <span className="font-mono font-bold text-amber-300 text-sm">
-                      PKR {(viewingProofOrder.codAdvanceAmountPaid || viewingProofOrder.codAdvanceAmountRequired || 0).toLocaleString('en-PK')}
-                    </span>
+                    <div>
+                      <span className="text-[11px] text-slate-500 block">Current Status:</span>
+                      {getPaymentBadge(viewingProofOrder)}
+                    </div>
                   </div>
-                  <div className="bg-slate-950/80 p-2.5 rounded-lg border border-amber-500/20">
-                    <span className="text-[10px] text-slate-400 block">Remaining Balance (COD):</span>
-                    <span className="font-mono font-bold text-emerald-400 text-sm">
-                      PKR {(viewingProofOrder.codRemainingBalance || 0).toLocaleString('en-PK')}
-                    </span>
-                  </div>
-                  <div className="bg-slate-950/80 p-2.5 rounded-lg border border-amber-500/20">
-                    <span className="text-[10px] text-slate-400 block">Advance Channel:</span>
-                    <span className="font-bold text-slate-200 text-xs truncate block">
-                      {viewingProofOrder.paymentMethodName || 'Online Account'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
+
+                  {/* COD 30% Advance + 70% Remaining Payment Breakdown */}
+                  {proofBreakdown.isCOD && (
+                    <div className="bg-gradient-to-br from-amber-950/50 via-slate-950 to-slate-950 p-4 rounded-xl border border-amber-500/40 text-xs space-y-3">
+                      <div className="flex items-center justify-between border-b border-amber-500/30 pb-2">
+                        <div className="flex items-center gap-2 text-amber-300 font-bold">
+                          <ShieldCheck className="w-4 h-4 text-amber-400" />
+                          <span>Cash on Delivery Payment Breakdown</span>
+                        </div>
+                        <span className="text-[10px] font-mono uppercase px-2.5 py-0.5 rounded bg-amber-900/60 text-amber-200 border border-amber-500/30 font-bold">
+                          30% Advance + 70% COD
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-0.5">
+                        <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800">
+                          <span className="text-[11px] text-slate-400 block mb-1">Order Final Total:</span>
+                          <span className="font-mono font-extrabold text-white text-base">
+                            Rs. {proofBreakdown.orderTotal.toLocaleString('en-PK')}
+                          </span>
+                          <span className="text-[10px] text-slate-500 block mt-0.5">Full Order Value</span>
+                        </div>
+                        <div className="bg-amber-950/40 p-3 rounded-xl border border-amber-500/30">
+                          <span className="text-[11px] text-amber-200 block mb-1 font-semibold">30% Advance Required:</span>
+                          <span className="font-mono font-extrabold text-amber-300 text-base">
+                            Rs. {proofBreakdown.advanceAmount.toLocaleString('en-PK')}
+                          </span>
+                          <span className="text-[10px] text-amber-400/80 block mt-0.5">
+                            {proofBreakdown.advancePaid > 0 ? `Transferred: Rs. ${proofBreakdown.advancePaid.toLocaleString('en-PK')}` : 'Deposit required prior to dispatch'}
+                          </span>
+                        </div>
+                        <div className="bg-emerald-950/40 p-3 rounded-xl border border-emerald-500/30">
+                          <span className="text-[11px] text-emerald-200 block mb-1 font-semibold">Remaining Cash on Delivery:</span>
+                          <span className="font-mono font-extrabold text-emerald-400 text-base">
+                            Rs. {proofBreakdown.remainingCod.toLocaleString('en-PK')}
+                          </span>
+                          <span className="text-[10px] text-emerald-400/80 block mt-0.5">Collect 70% at doorstep</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {/* Receipt Image Display */}
             {(() => {
@@ -2262,7 +2452,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                 >
                   <ShieldCheck className="w-4 h-4" />
                   <span>
-                    {viewingProofOrder.isCodAdvanceRequired 
+                    {getOrderPaymentBreakdown(viewingProofOrder).isCOD 
                       ? 'Approve Advance Payment & Confirm Order' 
                       : 'Verify & Approve Payment'}
                   </span>

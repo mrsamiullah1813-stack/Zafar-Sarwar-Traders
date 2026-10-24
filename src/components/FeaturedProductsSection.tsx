@@ -24,7 +24,7 @@ import { ProductSaleBadge } from './ProductSaleBadge';
 import { SaleCountdownTimer } from './SaleCountdownTimer';
 import { ProductCardRating } from './ProductCardRating';
 import { getProductPricingDetails, getProductVariantDisplaySummary, hasActiveVariants, getActiveProductPrice, buildProductWhatsAppOrderUrl } from '../utils/pricingUtils';
-import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
+import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
 
 interface FeaturedProductsProps {
   products: Product[];
@@ -287,7 +287,7 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                   {/* Image Box */}
                   <div className="relative h-38 sm:h-60 w-full bg-gradient-to-b from-slate-50 to-slate-100/60 overflow-hidden flex items-center justify-center p-2.5 sm:p-3">
                     <img
-                      src={normalizeProductImage(product.image, product.category, product.name)}
+                      src={resolveProductImage(product)}
                       alt={`${product.name} - Luxury Sanitaryware & Bathroom Fittings Pakistan | Zafar Sarwar Traders`}
                       loading="lazy"
                       decoding="async"
@@ -368,24 +368,28 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                     {isAdmin && onEditProduct && (
                       <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 z-20 flex items-center gap-1.5">
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             onEditProduct(product);
                           }}
-                          className="p-1.5 rounded-lg bg-blue-600 text-white shadow hover:bg-blue-500 transition-colors"
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold shadow-md transition-all active:scale-95 cursor-pointer"
+                          title="Edit Product"
                         >
-                          <Edit className="w-3 h-3" />
+                          <Edit className="w-3.5 h-3.5" />
+                          <span>Edit Product</span>
                         </button>
                         {onDeleteProduct && (
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               if (confirm('Are you sure you want to delete this product?')) onDeleteProduct(product.id);
                             }}
-                            className="p-1.5 rounded-lg bg-rose-600 text-white shadow hover:bg-rose-500 transition-colors"
+                            className="p-1.5 rounded-lg bg-rose-600 text-white shadow hover:bg-rose-500 transition-colors cursor-pointer"
                             title="Delete Product"
                           >
-                            <Trash2 className="w-3 h-3" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
                       </div>
@@ -485,6 +489,24 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                         <span>Buy Now</span>
                       </button>
                     </div>
+
+                    {/* Admin Quick Edit Button */}
+                    {isAdmin && onEditProduct && (
+                      <div className="pt-2 border-t border-blue-100">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditProduct(product);
+                          }}
+                          className="w-full py-1.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+                          title="Edit Product"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                          <span>Edit Product</span>
+                        </button>
+                      </div>
+                    )}
 
                   </div>
 

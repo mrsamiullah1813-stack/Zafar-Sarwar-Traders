@@ -24,7 +24,7 @@ export function getProductSlug(product: Product): string {
   if (product.slug && product.slug.trim()) {
     return slugify(product.slug);
   }
-  const nameSlug = slugify(product.name);
+  const nameSlug = slugify(product.name || (product as any).title);
   if (nameSlug) return nameSlug;
   return slugify(product.id) || product.id;
 }
@@ -39,23 +39,31 @@ export function findProductBySlug(arg1: Product[] | string, arg2: string | Produ
 
   if (!products || !slug) return undefined;
   const decodedSlug = decodeURIComponent(slug).toLowerCase().trim();
+  const cleanDecodedSlug = slugify(decodedSlug);
   
-  // 1. Direct slug match
-  const directMatch = products.find(p => p.slug && p.slug.toLowerCase().trim() === decodedSlug);
+  // 1. Direct slug match (both raw and normalized)
+  const directMatch = products.find(p => {
+    if (!p.slug) return false;
+    const s = p.slug.toLowerCase().trim();
+    return s === decodedSlug || slugify(s) === decodedSlug || slugify(s) === cleanDecodedSlug;
+  });
   if (directMatch) return directMatch;
 
-  // 2. Generated name slug match
-  const nameSlugMatch = products.find(p => slugify(p.name) === decodedSlug);
+  // 2. Generated name or title slug match
+  const nameSlugMatch = products.find(p => {
+    const raw = p.name || (p as any).title;
+    return slugify(raw) === decodedSlug || slugify(raw) === cleanDecodedSlug;
+  });
   if (nameSlugMatch) return nameSlugMatch;
 
   // 3. ID match
-  const idMatch = products.find(p => p.id.toLowerCase() === decodedSlug);
+  const idMatch = products.find(p => p.id.toLowerCase() === decodedSlug || slugify(p.id) === cleanDecodedSlug);
   if (idMatch) return idMatch;
 
   // 4. Partial or contains match
   return products.find(p => {
-    const s = slugify(p.name);
-    return s.includes(decodedSlug) || decodedSlug.includes(s) || decodedSlug.endsWith(`-${p.id.toLowerCase()}`);
+    const s = slugify(p.name || (p as any).title);
+    return s.includes(cleanDecodedSlug) || cleanDecodedSlug.includes(s) || cleanDecodedSlug.endsWith(`-${slugify(p.id)}`);
   });
 }
 

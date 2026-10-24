@@ -25,7 +25,7 @@ import { getProductPricingDetails, getVariantPricingDetails, getActiveProductPri
 import { fetchPaymentMethodsFromSupabase, uploadMediaToSupabase, uploadPaymentProof, fetchHowToOrderConfigFromSupabase, fetchDeliveryCitiesFromSupabase } from '../services/supabaseService';
 import { CouponPromoBox } from './CouponPromoBox';
 import { pushNavigationState, replaceNavigationState, navigateBackSafe, addNavigationListener, resetToHome } from '../utils/navigationHistory';
-import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
+import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
 
 type CheckoutStep = 'cart' | 'customer' | 'address' | 'payment_method' | 'payment_instructions' | 'payment_proof' | 'confirmation';
 
@@ -1317,7 +1317,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                       return (
                         <div key={idx} className="pt-2.5 first:pt-0 flex items-center gap-3">
                           <img
-                            src={normalizeProductImage(p.images?.[0] || p.image, p.category, p.name)}
+                            src={resolveProductImage(p)}
                             alt={p.name}
                             onError={(e) => handleImageError(e, p.category, p.name)}
                             className="w-14 h-14 rounded-xl object-cover border border-slate-200 bg-white shrink-0"

@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import { Product, BusinessConfig, ProductVariant, PaintShade, AppliedCouponState } from '../types';
 import { getProductSlug } from '../utils/slugUtils';
-import { normalizeProductImage, normalizeProductImages, handleImageError } from '../utils/imageUtils';
+import { normalizeProductImage, normalizeProductImages, resolveProductImage, handleImageError } from '../utils/imageUtils';
 import { VideoPlayer } from './VideoPlayer';
 import { ProductDeliveryEstimator, DeliveryDetailsPayload } from './ProductDeliveryEstimator';
 import { ProductSaleBadge } from './ProductSaleBadge';
@@ -252,11 +252,12 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
     .filter(s => Boolean((s.referenceImage || s.image) && (s.referenceImage || s.image)!.trim() !== ''))
     .map(s => ({ url: (s.referenceImage || s.image)!, label: `Shade ${s.code}` }));
 
+  const primaryResolvedImg = resolveProductImage(product);
   const rawList: string[] = [
-    product.image,
-    ...(product.images && Array.isArray(product.images) ? product.images.filter(img => img && img !== product.image) : []),
-    ...variantImages.map(v => v.url).filter(u => u !== product.image && !(product.images || []).includes(u)),
-    ...shadeImages.map(s => s.url).filter(u => u !== product.image && !(product.images || []).includes(u))
+    primaryResolvedImg,
+    ...(product.images && Array.isArray(product.images) ? product.images.filter(img => img && img !== primaryResolvedImg && img !== product.image) : []),
+    ...variantImages.map(v => v.url).filter(u => u !== primaryResolvedImg && !(product.images || []).includes(u)),
+    ...shadeImages.map(s => s.url).filter(u => u !== primaryResolvedImg && !(product.images || []).includes(u))
   ];
   const galleryImages: string[] = normalizeProductImages(rawList, product.image, product.category, product.name);
 

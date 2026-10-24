@@ -13,6 +13,7 @@ import {
   ArrowUpRight
 } from 'lucide-react';
 import { ProductCategory, BusinessConfig } from '../types';
+import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
 
 interface CategoriesSectionProps {
   categories: ProductCategory[];
@@ -164,8 +165,9 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
               >
                 <div className="relative h-32 sm:h-48 w-full overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200/60">
                   <img
-                    src={cat.image || 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80'}
+                    src={normalizeProductImage(cat.image, cat.name)}
                     alt={`${cat.name} - Luxury Sanitaryware & Building Materials | Zafar Sarwar Traders Pakistan`}
+                    onError={(e) => handleImageError(e, cat.name)}
                     loading="lazy"
                     decoding="async"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"

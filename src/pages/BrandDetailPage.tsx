@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { Search, ShoppingBag, Eye, MessageCircle, Check, ArrowLeft, PackageCheck, Award, ShieldCheck } from 'lucide-react';
+import { Search, ShoppingBag, Eye, MessageCircle, Check, ArrowLeft, PackageCheck, Award, ShieldCheck, Edit, Trash2 } from 'lucide-react';
 import { ProductBrand, Product, ProductCategory, BusinessConfig } from '../types';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ProductSaleBadge } from '../components/ProductSaleBadge';
 import { ProductCardRating } from '../components/ProductCardRating';
 import { getProductPricingDetails, buildProductWhatsAppOrderUrl } from '../utils/pricingUtils';
 import { getProductSlug } from '../utils/slugUtils';
-import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
+import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
 
 interface BrandDetailPageProps {
   brand: ProductBrand;
@@ -15,6 +15,8 @@ interface BrandDetailPageProps {
   categories: ProductCategory[];
   config: BusinessConfig;
   isAdmin?: boolean;
+  onEditProduct?: (product: Product) => void;
+  onDeleteProduct?: (productId: string) => void;
   onQuickView: (product: Product) => void;
   onAddToCart: (product: Product, quantity?: number) => void;
   onBuyNow: (product: Product, quantity?: number) => void;
@@ -28,6 +30,8 @@ export const BrandDetailPage: React.FC<BrandDetailPageProps> = ({
   categories,
   config,
   isAdmin,
+  onEditProduct,
+  onDeleteProduct,
   onQuickView,
   onAddToCart,
   onBuyNow,
@@ -140,7 +144,12 @@ export const BrandDetailPage: React.FC<BrandDetailPageProps> = ({
             {/* Logo */}
             <div className="w-20 h-20 rounded-2xl bg-white p-2.5 flex items-center justify-center shrink-0 shadow-lg">
               {brand.logo ? (
-                <img src={brand.logo} alt={brand.name} className="max-h-full max-w-full object-contain" />
+                <img
+                  src={normalizeProductImage(brand.logo, brand.name)}
+                  alt={brand.name}
+                  onError={(e) => handleImageError(e, brand.name)}
+                  className="max-h-full max-w-full object-contain"
+                />
               ) : (
                 <Award className="w-10 h-10 text-blue-600" />
               )}
@@ -226,7 +235,7 @@ export const BrandDetailPage: React.FC<BrandDetailPageProps> = ({
                     onClick={() => onNavigate(`/product/${productSlug}`)}
                   >
                     <img
-                      src={normalizeProductImage(product.image || product.images?.[0], product.category, product.name)}
+                      src={resolveProductImage(product)}
                       alt={product.name}
                       onError={(e) => handleImageError(e, product.category, product.name)}
                       className="max-h-full max-w-full object-contain filter group-hover:scale-105 transition-transform duration-300"
@@ -236,6 +245,37 @@ export const BrandDetailPage: React.FC<BrandDetailPageProps> = ({
                     {pricing.isOnSale && (
                       <div className="absolute top-2 left-2 sm:top-3 sm:left-3">
                         <ProductSaleBadge pricing={pricing} size="sm" />
+                      </div>
+                    )}
+
+                    {/* Admin Floating Edit Button */}
+                    {isAdmin && onEditProduct && (
+                      <div className="absolute top-2 left-2 sm:top-3 sm:left-3 z-20 flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditProduct(product);
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold shadow-md transition-all active:scale-95 cursor-pointer"
+                          title="Edit Product"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                          <span>Edit Product</span>
+                        </button>
+                        {onDeleteProduct && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm('Are you sure you want to delete this product?')) onDeleteProduct(product.id);
+                            }}
+                            className="p-1.5 rounded-lg bg-rose-600 text-white shadow hover:bg-rose-500 transition-colors cursor-pointer"
+                            title="Delete Product"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     )}
 

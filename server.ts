@@ -7,6 +7,7 @@ import fsPromises from "fs/promises";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { handleTtsGet, handleTtsPost, handleTtsVoicesGet } from "./server/aiVoiceService.ts";
+import { generateDynamicSitemapXml, updateSitemapFiles, CANONICAL_DOMAIN } from "./server/sitemapGenerator.ts";
 
 // Initialize Supabase DB Client for server proxy with exhaustive environment variable fallbacks
 const rawSupabaseUrl = (
@@ -230,6 +231,43 @@ async function startServer() {
 
   app.use("/uploads", express.static(UPLOADS_DIR));
   app.use("/uploads", express.static(PUBLIC_UPLOADS_DIR));
+  app.use("/uploads", express.static(DIST_UPLOADS_DIR));
+  
+  // Fallback for missing local uploads: fetch and cache on local disk from Supabase storage if available
+  app.get("/uploads/:filename", async (req, res) => {
+    if (req.query.local === "1") {
+      return res.status(404).end();
+    }
+    const filename = req.params.filename;
+    const cleanFilename = path.basename(filename).split("?")[0];
+    const baseSupa = normalizedSupabaseUrl || "https://hdbqzhyaluwbktogbfvu.supabase.co";
+    const candidateBuckets = ["project%20media", "hero-media", "product-media", "showroom-gallery"];
+
+    for (const bucket of candidateBuckets) {
+      try {
+        const remoteUrl = `${baseSupa}/storage/v1/object/public/${bucket}/uploads/${encodeURIComponent(cleanFilename)}`;
+        const response = await fetch(remoteUrl);
+        if (response.status === 402) {
+          // Egress quota restricted on Supabase project; stop trying additional buckets
+          break;
+        }
+        const contentType = response.headers.get("content-type") || "";
+        if (response.ok && contentType.startsWith("image/")) {
+          const arrayBuf = await response.arrayBuffer();
+          const buf = Buffer.from(arrayBuf);
+          try {
+            await fsPromises.writeFile(path.join(UPLOADS_DIR, cleanFilename), buf);
+            await fsPromises.writeFile(path.join(PUBLIC_UPLOADS_DIR, cleanFilename), buf);
+          } catch {}
+          res.setHeader("Content-Type", contentType);
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          return res.send(buf);
+        }
+      } catch {}
+    }
+
+    return res.status(404).end();
+  });
   app.use("/assets", express.static(path.join(process.cwd(), "public", "assets")));
   app.use("/src/assets", express.static(path.join(process.cwd(), "src", "assets")));
 
@@ -249,6 +287,15 @@ async function startServer() {
     console.log("ℹ️ Initializing fresh cms_store_data.json on first save.");
   }
 
+  const triggerSitemapSync = () => {
+    generateDynamicSitemapXml(dbClient, cmsDataStore)
+      .then(xml => updateSitemapFiles(xml))
+      .catch(err => console.warn("[Sitemap AutoSync Warning]", err));
+  };
+
+  // Perform initial sitemap generation on boot
+  triggerSitemapSync();
+
   let saveTimer: NodeJS.Timeout | null = null;
   const persistDataStoreToDisk = () => {
     if (saveTimer) clearTimeout(saveTimer);
@@ -256,6 +303,8 @@ async function startServer() {
       saveTimer = setTimeout(async () => {
         try {
           await fsPromises.writeFile(CMS_FILE_PATH, JSON.stringify(cmsDataStore, null, 2), "utf-8");
+          // Keep disk sitemaps automatically fresh when data changes
+          triggerSitemapSync();
         } catch (err) {
           console.error("Error persisting cms_store_data.json to disk:", err);
         }
@@ -264,162 +313,26 @@ async function startServer() {
     });
   };
 
-  // Production Sitemap Endpoint for Google Search Console & Search Engines
+  // Production Dynamic XML Sitemap Endpoint for Google Search Console & Search Engines
   app.get("/sitemap.xml", async (req, res) => {
-    const rawHost = (req.headers["x-forwarded-host"] as string) || req.headers.host || "zafarsarwartraders.shop";
-    const host = rawHost.split(",")[0].trim().split(":")[0].toLowerCase();
-    const isLocalOrPreview = host === "localhost" || host === "127.0.0.1" || host.endsWith(".run.app") || host.endsWith(".aistudio.google");
-    const canonicalOrigin = isLocalOrPreview
-      ? `${(req.headers["x-forwarded-proto"] as string) || "http"}://${host}`
-      : "https://zafarsarwartraders.shop";
-
-    const today = new Date().toISOString().split("T")[0];
-
-    const escapeXml = (str: string) =>
-      str.replace(/[<>&'"]/g, (c) => {
-        switch (c) {
-          case '<': return '&lt;';
-          case '>': return '&gt;';
-          case '&': return '&amp;';
-          case '\'': return '&apos;';
-          case '"': return '&quot;';
-          default: return c;
-        }
-      });
-
-    const slugify = (text: string): string => {
-      if (!text) return '';
-      return text
-        .toString()
-        .toLowerCase()
-        .trim()
-        .replace(/\s+/g, '-')
-        .replace(/[^\w\u0600-\u06FF\-]+/g, '')
-        .replace(/\-\-+/g, '-')
-        .replace(/^-+/, '')
-        .replace(/-+$/, '');
-    };
-
-    // Base canonical routes
-    const staticUrls = [
-      { path: '/', priority: '1.0', changefreq: 'daily' },
-      { path: '/store', priority: '0.95', changefreq: 'daily' },
-      { path: '/products', priority: '0.9', changefreq: 'daily' },
-      { path: '/categories', priority: '0.9', changefreq: 'weekly' },
-      { path: '/brands', priority: '0.85', changefreq: 'weekly' },
-      { path: '/smart-tools', priority: '0.8', changefreq: 'monthly' },
-      { path: '/delivery', priority: '0.8', changefreq: 'monthly' },
-      { path: '/about', priority: '0.75', changefreq: 'monthly' },
-      { path: '/contact', priority: '0.75', changefreq: 'monthly' },
-    ];
-
-    let products: any[] = [];
-    let categories: any[] = [];
-    let brands: any[] = [];
-
-    if (dbClient) {
-      try {
-        const [prodRes, catRes, brandRes] = await Promise.all([
-          dbClient.from("products").select("id, name, slug, hidden, is_hidden, updated_at"),
-          dbClient.from("categories").select("id, name, slug, is_active, updated_at"),
-          dbClient.from("brands").select("id, name, slug, is_active, updated_at")
-        ]);
-        if (prodRes.data) products = prodRes.data;
-        if (catRes.data) categories = catRes.data;
-        if (brandRes.data) brands = brandRes.data;
-      } catch (err) {
-        console.warn("[Sitemap] Error querying Supabase, using CMS store fallback:", err);
-      }
-    }
-
-    // Fallback to cmsDataStore if dbClient returned empty or was unavailable
-    if (products.length === 0 && cmsDataStore.zst_products_v1) {
-      products = cmsDataStore.zst_products_v1;
-    }
-    if (categories.length === 0 && cmsDataStore.zst_categories_v1) {
-      categories = cmsDataStore.zst_categories_v1;
-    }
-    if (brands.length === 0 && cmsDataStore.zst_brands_v1) {
-      brands = cmsDataStore.zst_brands_v1;
-    }
-
-    const urls: { loc: string; lastmod: string; changefreq: string; priority: string }[] = [];
-
-    // 1. Static Canonical Pages
-    for (const s of staticUrls) {
-      urls.push({
-        loc: `${canonicalOrigin}${s.path}`,
-        lastmod: today,
-        changefreq: s.changefreq,
-        priority: s.priority
-      });
-    }
-
-    // 2. Dynamic Categories
-    const seenCatSlugs = new Set<string>();
-    for (const cat of categories) {
-      if (cat.isActive === false || cat.is_active === false) continue;
-      const slug = cat.slug || slugify(cat.name) || slugify(cat.id);
-      if (slug && !seenCatSlugs.has(slug)) {
-        seenCatSlugs.add(slug);
-        const modDate = (cat.updated_at || cat.updatedAt) ? new Date(cat.updated_at || cat.updatedAt).toISOString().split('T')[0] : today;
-        urls.push({
-          loc: `${canonicalOrigin}/category/${encodeURIComponent(slug)}`,
-          lastmod: modDate,
-          changefreq: 'weekly',
-          priority: '0.85'
-        });
-      }
-    }
-
-    // 3. Dynamic Brands
-    const seenBrandSlugs = new Set<string>();
-    for (const brand of brands) {
-      if (brand.isActive === false || brand.is_active === false) continue;
-      const slug = brand.slug || slugify(brand.name) || slugify(brand.id);
-      if (slug && !seenBrandSlugs.has(slug)) {
-        seenBrandSlugs.add(slug);
-        const modDate = (brand.updated_at || brand.updatedAt) ? new Date(brand.updated_at || brand.updatedAt).toISOString().split('T')[0] : today;
-        urls.push({
-          loc: `${canonicalOrigin}/brand/${encodeURIComponent(slug)}`,
-          lastmod: modDate,
-          changefreq: 'weekly',
-          priority: '0.80'
-        });
-      }
-    }
-
-    // 4. Dynamic Products
-    const seenProductSlugs = new Set<string>();
-    for (const prod of products) {
-      if (prod.isHidden || prod.hidden || prod.is_hidden) continue;
-      const slug = prod.slug || slugify(prod.name) || slugify(prod.id);
-      if (slug && !seenProductSlugs.has(slug)) {
-        seenProductSlugs.add(slug);
-        const modDate = (prod.updated_at || prod.updatedAt) ? new Date(prod.updated_at || prod.updatedAt).toISOString().split('T')[0] : today;
-        urls.push({
-          loc: `${canonicalOrigin}/product/${encodeURIComponent(slug)}`,
-          lastmod: modDate,
-          changefreq: 'daily',
-          priority: '0.80'
-        });
-      }
-    }
-
-    const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
-${urls.map(u => `  <url>
-    <loc>${escapeXml(u.loc)}</loc>
-    <lastmod>${u.lastmod}</lastmod>
-    <changefreq>${u.changefreq}</changefreq>
-    <priority>${u.priority}</priority>
-  </url>`).join('\n')}
+    try {
+      const sitemapXml = await generateDynamicSitemapXml(dbClient, cmsDataStore);
+      res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=3600");
+      return res.send(sitemapXml);
+    } catch (err: any) {
+      console.error("[Sitemap Generation Error]", err);
+      const fallbackXml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${CANONICAL_DOMAIN}/</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
 </urlset>`;
-
-    res.header("Content-Type", "application/xml; charset=utf-8");
-    return res.send(sitemapXml);
+      res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      return res.status(500).send(fallbackXml);
+    }
   });
 
   // Production Robots.txt Endpoint
@@ -1123,22 +1036,46 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
   }
 
   app.get("/api/db/categories", async (req, res) => {
-    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
-      const { data, error } = await dbClient.from("categories").select("*").order("display_order", { ascending: true });
-      if (error) return res.status(500).json({ success: false, error: error.message });
-      return res.json({ success: true, data });
+      if (dbClient) {
+        const { data, error } = await dbClient.from("categories").select("*").order("display_order", { ascending: true });
+        if (!error && Array.isArray(data) && data.length > 0) {
+          return res.json({ success: true, data });
+        }
+      }
+      if (Array.isArray(cmsDataStore["zst_categories_v1"]) && cmsDataStore["zst_categories_v1"].length > 0) {
+        return res.json({ success: true, fallback: "cms", data: cmsDataStore["zst_categories_v1"] });
+      }
+      return res.json({ success: true, data: [] });
     } catch (err: any) {
+      if (Array.isArray(cmsDataStore["zst_categories_v1"])) {
+        return res.json({ success: true, fallback: "cms", data: cmsDataStore["zst_categories_v1"] });
+      }
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
   });
 
   app.post("/api/db/categories/upsert", requireAdminAuth, async (req, res) => {
-    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { categories, category } = req.body;
       const list = Array.isArray(categories) ? categories : (category ? [category] : (req.body.id ? [req.body] : []));
       if (list.length === 0) return res.json({ success: true });
+
+      // Always persist to server CMS disk store first
+      if (Array.isArray(categories)) {
+        cmsDataStore["zst_categories_v1"] = categories;
+      } else {
+        const existing = Array.isArray(cmsDataStore["zst_categories_v1"]) ? [...cmsDataStore["zst_categories_v1"]] : [];
+        for (const item of list) {
+          const idx = existing.findIndex((c: any) => String(c.id) === String(item.id));
+          if (idx >= 0) existing[idx] = item;
+          else existing.push(item);
+        }
+        cmsDataStore["zst_categories_v1"] = existing;
+      }
+      await persistDataStoreToDisk();
+
+      if (!dbClient) return res.json({ success: true, persistedLocally: true });
 
       const usedSlugs = new Set<string>();
 
@@ -1175,19 +1112,27 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
       });
 
       const result = await robustUpsert("categories", payloads, { onConflict: "id" });
-      if (!result.success) return res.status(500).json({ success: false, error: result.error });
+      if (!result.success) {
+        console.warn("[Supabase API] Categories upsert notice (saved locally to CMS):", result.error);
+        return res.json({ success: true, persistedLocally: true, warning: result.error });
+      }
       return res.json({ success: true });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err?.message || String(err) });
+      return res.json({ success: true, persistedLocally: true, warning: err?.message || String(err) });
     }
   });
 
   app.delete("/api/db/categories/:id", requireAdminAuth, async (req, res) => {
-    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { id } = req.params;
-      const { error } = await dbClient.from("categories").delete().eq("id", id);
-      if (error) return res.status(500).json({ success: false, error: error.message });
+      if (Array.isArray(cmsDataStore["zst_categories_v1"])) {
+        cmsDataStore["zst_categories_v1"] = cmsDataStore["zst_categories_v1"].filter((c: any) => String(c.id) !== String(id));
+        await persistDataStoreToDisk();
+      }
+      if (dbClient) {
+        const { error } = await dbClient.from("categories").delete().eq("id", id);
+        if (error) console.warn("[Supabase API] Category delete notice (deleted locally):", error.message);
+      }
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
@@ -1195,22 +1140,45 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
   });
 
   app.get("/api/db/brands", async (req, res) => {
-    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
-      const { data, error } = await dbClient.from("brands").select("*").order("display_order", { ascending: true });
-      if (error) return res.status(500).json({ success: false, error: error.message });
-      return res.json({ success: true, data });
+      if (dbClient) {
+        const { data, error } = await dbClient.from("brands").select("*").order("display_order", { ascending: true });
+        if (!error && Array.isArray(data) && data.length > 0) {
+          return res.json({ success: true, data });
+        }
+      }
+      if (Array.isArray(cmsDataStore["zst_brands_v1"]) && cmsDataStore["zst_brands_v1"].length > 0) {
+        return res.json({ success: true, fallback: "cms", data: cmsDataStore["zst_brands_v1"] });
+      }
+      return res.json({ success: true, data: [] });
     } catch (err: any) {
+      if (Array.isArray(cmsDataStore["zst_brands_v1"])) {
+        return res.json({ success: true, fallback: "cms", data: cmsDataStore["zst_brands_v1"] });
+      }
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
   });
 
   app.post("/api/db/brands/upsert", requireAdminAuth, async (req, res) => {
-    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { brands, brand } = req.body;
       const list = Array.isArray(brands) ? brands : (brand ? [brand] : (req.body.id ? [req.body] : []));
       if (list.length === 0) return res.json({ success: true });
+
+      if (Array.isArray(brands)) {
+        cmsDataStore["zst_brands_v1"] = brands;
+      } else {
+        const existing = Array.isArray(cmsDataStore["zst_brands_v1"]) ? [...cmsDataStore["zst_brands_v1"]] : [];
+        for (const item of list) {
+          const idx = existing.findIndex((b: any) => String(b.id) === String(item.id));
+          if (idx >= 0) existing[idx] = item;
+          else existing.push(item);
+        }
+        cmsDataStore["zst_brands_v1"] = existing;
+      }
+      await persistDataStoreToDisk();
+
+      if (!dbClient) return res.json({ success: true, persistedLocally: true });
 
       const usedSlugs = new Set<string>();
 
@@ -1243,19 +1211,27 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
       });
 
       const result = await robustUpsert("brands", payloads, { onConflict: "id" });
-      if (!result.success) return res.status(500).json({ success: false, error: result.error });
+      if (!result.success) {
+        console.warn("[Supabase API] Brands upsert notice (saved locally to CMS):", result.error);
+        return res.json({ success: true, persistedLocally: true, warning: result.error });
+      }
       return res.json({ success: true });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err?.message || String(err) });
+      return res.json({ success: true, persistedLocally: true, warning: err?.message || String(err) });
     }
   });
 
   app.delete("/api/db/brands/:id", requireAdminAuth, async (req, res) => {
-    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { id } = req.params;
-      const { error } = await dbClient.from("brands").delete().eq("id", id);
-      if (error) return res.status(500).json({ success: false, error: error.message });
+      if (Array.isArray(cmsDataStore["zst_brands_v1"])) {
+        cmsDataStore["zst_brands_v1"] = cmsDataStore["zst_brands_v1"].filter((b: any) => String(b.id) !== String(id));
+        await persistDataStoreToDisk();
+      }
+      if (dbClient) {
+        const { error } = await dbClient.from("brands").delete().eq("id", id);
+        if (error) console.warn("[Supabase API] Brand delete notice (deleted locally):", error.message);
+      }
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
@@ -1406,22 +1382,47 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
   }
 
   app.get("/api/db/products", async (req, res) => {
-    if (!dbClient) return res.status(500).json({ success: false, configured: false, error: "Database client not configured on server" });
     try {
-      const { data, error } = await dbClient.from("products").select("*").order("display_order", { ascending: true }).order("created_at", { ascending: false });
-      if (error) return res.status(500).json({ success: false, configured: true, error: error.message });
-      return res.json({ success: true, configured: true, data });
+      if (dbClient) {
+        const { data, error } = await dbClient.from("products").select("*").order("display_order", { ascending: true }).order("created_at", { ascending: false });
+        if (!error && Array.isArray(data) && data.length > 0) {
+          return res.json({ success: true, configured: true, data });
+        }
+      }
+      if (Array.isArray(cmsDataStore["zst_products_v1"]) && cmsDataStore["zst_products_v1"].length > 0) {
+        return res.json({ success: true, configured: true, fallback: "cms", data: cmsDataStore["zst_products_v1"] });
+      }
+      return res.json({ success: true, configured: Boolean(dbClient), data: [] });
     } catch (err: any) {
+      if (Array.isArray(cmsDataStore["zst_products_v1"])) {
+        return res.json({ success: true, configured: true, fallback: "cms", data: cmsDataStore["zst_products_v1"] });
+      }
       return res.status(500).json({ success: false, configured: true, error: err?.message || String(err) });
     }
   });
 
   app.post("/api/db/products/upsert", requireAdminAuth, async (req, res) => {
-    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { products } = req.body;
       const list = Array.isArray(products) ? products : (req.body.product ? [req.body.product] : []);
       if (list.length === 0) return res.json({ success: true });
+
+      // Always persist to server CMS disk store first so updates never fail even if Supabase is restricted
+      if (Array.isArray(products) && products.length > 1) {
+        cmsDataStore["zst_products_v1"] = products;
+      } else {
+        const existing = Array.isArray(cmsDataStore["zst_products_v1"]) ? [...cmsDataStore["zst_products_v1"]] : [];
+        for (const item of list) {
+          const idx = existing.findIndex((p: any) => String(p.id) === String(item.id));
+          if (idx >= 0) existing[idx] = item;
+          else existing.unshift(item);
+        }
+        cmsDataStore["zst_products_v1"] = existing;
+      }
+      await persistDataStoreToDisk();
+      aiCatalogCache = null;
+
+      if (!dbClient) return res.json({ success: true, persistedLocally: true });
 
       const payloads = list.map((p: any) => mapServerProductToDb(p));
 
@@ -1436,11 +1437,9 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
 
         payloads.forEach((p: any) => {
           if (p.brand_id && !validBrandIds.has(String(p.brand_id))) {
-            console.log(`[Supabase API] Unlinked brand_id "${p.brand_id}" set to null (persisted in specs._brand_id) to fulfill DB FK constraint`);
             p.brand_id = null;
           }
           if (p.category_id && !validCatIds.has(String(p.category_id))) {
-            console.log(`[Supabase API] Unlinked category_id "${p.category_id}" set to null (persisted in specs._category_id) to fulfill DB FK constraint`);
             p.category_id = null;
           }
         });
@@ -1450,26 +1449,28 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
 
       const result = await robustUpsert("products", payloads, { onConflict: "id" });
       if (!result.success) {
-        console.error("[Supabase API] Product upsert failed after robust schema negotiation:", result.error);
-        return res.status(500).json({ success: false, error: result.error });
+        console.warn("[Supabase API] Product upsert notice (saved locally to CMS):", result.error);
+        return res.json({ success: true, persistedLocally: true, warning: result.error });
       }
-
-      // Invalidate AI catalog cache on product update
-      aiCatalogCache = null;
 
       return res.json({ success: true });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err?.message || String(err) });
+      return res.json({ success: true, persistedLocally: true, warning: err?.message || String(err) });
     }
   });
 
   app.delete("/api/db/products/:id", requireAdminAuth, async (req, res) => {
-    if (!dbClient) return res.status(500).json({ success: false, error: "Database client not configured on server" });
     try {
       const { id } = req.params;
-      const { error } = await dbClient.from("products").delete().eq("id", id);
-      if (error) return res.status(500).json({ success: false, error: error.message });
+      if (Array.isArray(cmsDataStore["zst_products_v1"])) {
+        cmsDataStore["zst_products_v1"] = cmsDataStore["zst_products_v1"].filter((p: any) => String(p.id) !== String(id));
+        await persistDataStoreToDisk();
+      }
       aiCatalogCache = null;
+      if (dbClient) {
+        const { error } = await dbClient.from("products").delete().eq("id", id);
+        if (error) console.warn("[Supabase API] Product delete notice (deleted locally):", error.message);
+      }
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
@@ -1662,8 +1663,10 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
       }
 
       // Check cmsDataStore or site_settings for banners
-      const cmsHero = cmsDataStore?.zst_hero_settings;
-      const cmsBanners = cmsDataStore?.zst_hero_banners || (cmsHero && cmsHero.banners);
+      const cmsHero = cmsDataStore?.zst_hero_settings_v1 || cmsDataStore?.zst_hero_settings;
+      const cmsBanners = (cmsHero && Array.isArray(cmsHero.banners) && cmsHero.banners.length > 0)
+        ? cmsHero.banners
+        : cmsDataStore?.zst_hero_banners;
 
       if (heroData) {
         if (cmsBanners && Array.isArray(cmsBanners) && cmsBanners.length > 0) {
@@ -1690,6 +1693,7 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
       if (!settings) return res.status(400).json({ success: false, error: "Settings required" });
 
       // Always save to in-memory store and disk
+      cmsDataStore.zst_hero_settings_v1 = settings;
       cmsDataStore.zst_hero_settings = settings;
       if (Array.isArray(settings.banners)) {
         cmsDataStore.zst_hero_banners = settings.banners;
@@ -4664,53 +4668,63 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
       if (dbClient) {
         try {
           let availableBuckets: string[] = [];
+          let supabaseRestricted = false;
           try {
             const { data: bList, error: bListErr } = await dbClient.storage.listBuckets();
-            if (!bListErr && bList && bList.length > 0) {
+            if (bListErr && (String(bListErr.message).includes("exceed_egress_quota") || String(bListErr.message).includes("restricted") || (bListErr as any).status === 402)) {
+              supabaseRestricted = true;
+            } else if (!bListErr && bList && bList.length > 0) {
               availableBuckets = bList.map((b: any) => b.name);
             }
           } catch (listErr) {
             console.warn("Storage listBuckets query notice:", listErr);
           }
 
-          const targetBuckets = Array.from(new Set([
-            bucketName.replace(/\s+/g, "-"),
-            bucketName,
-            "showroom-gallery",
-            "gallery",
-            "product-media",
-            "project-media",
-            "media",
-            "public",
-            ...availableBuckets
-          ]));
+          if (!supabaseRestricted) {
+            const targetBuckets = Array.from(new Set([
+              bucketName.replace(/\s+/g, "-"),
+              bucketName,
+              "showroom-gallery",
+              "gallery",
+              "product-media",
+              "project-media",
+              "media",
+              "public",
+              ...availableBuckets
+            ]));
 
-          const storagePath = `uploads/${finalFileName}`;
+            const storagePath = `uploads/${finalFileName}`;
 
-          for (const b of targetBuckets) {
-            try {
-              const { error: uploadError } = await dbClient.storage
-                .from(b)
-                .upload(storagePath, buffer, {
-                  contentType: mimeType,
-                  upsert: true
-                });
-
-              if (!uploadError) {
-                const { data: publicData } = dbClient.storage.from(b).getPublicUrl(storagePath);
-                if (publicData?.publicUrl) {
-                  console.log(`✅ [Supabase Upload] Successfully stored in bucket "${b}":`, publicData.publicUrl);
-                  return res.json({
-                    success: true,
-                    url: publicData.publicUrl,
-                    localUrl: localPublicUrl,
-                    fileName: finalFileName,
-                    bucket: b
+            for (const b of targetBuckets) {
+              try {
+                const { error: uploadError } = await dbClient.storage
+                  .from(b)
+                  .upload(storagePath, buffer, {
+                    contentType: mimeType,
+                    upsert: true
                   });
+
+                if (uploadError && (String(uploadError.message).includes("exceed_egress_quota") || String(uploadError.message).includes("restricted") || (uploadError as any).status === 402)) {
+                  break;
                 }
+
+                if (!uploadError) {
+                  const { data: publicData } = dbClient.storage.from(b).getPublicUrl(storagePath);
+                  if (publicData?.publicUrl) {
+                    console.log(`✅ [Supabase Upload] Stored in bucket "${b}":`, publicData.publicUrl);
+                    return res.json({
+                      success: true,
+                      url: localPublicUrl,
+                      supabaseUrl: publicData.publicUrl,
+                      localUrl: localPublicUrl,
+                      fileName: finalFileName,
+                      bucket: b
+                    });
+                  }
+                }
+              } catch (bErr) {
+                // Try next candidate bucket
               }
-            } catch (bErr) {
-              // Try next candidate bucket
             }
           }
         } catch (supabaseUploadErr) {
@@ -4726,8 +4740,9 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
 
       return res.json({
         success: true,
-        url: dataUriFallback,
+        url: localPublicUrl || dataUriFallback,
         localUrl: localPublicUrl,
+        dataUri: dataUriFallback,
         fileName: finalFileName
       });
     } catch (err: any) {

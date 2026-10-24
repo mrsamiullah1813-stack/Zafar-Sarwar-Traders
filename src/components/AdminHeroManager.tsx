@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Product, HeroSettings, ProductCategory, ProductBrand, HeroBannerSlide } from '../types';
 import { saveHeroSettings, defaultHeroBanners } from '../utils/storage';
+import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
 import { uploadMediaToSupabase } from '../services/supabaseService';
 import { HeroSection } from './HeroSection';
 
@@ -535,12 +536,10 @@ export const AdminHeroManager: React.FC<AdminHeroManagerProps> = ({
                   {/* Banner Image Preview */}
                   <div className="relative w-28 sm:w-40 aspect-[16/7] rounded-xl overflow-hidden border border-slate-700 bg-slate-800 shrink-0 shadow-md">
                     <img
-                      src={banner.imageUrl}
+                      src={normalizeProductImage(banner.imageUrl)}
                       alt={banner.title || 'Banner'}
                       className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.src = 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=600&q=80';
-                      }}
+                      onError={(e) => handleImageError(e)}
                     />
                     <div className="absolute top-1 left-1 bg-black/60 backdrop-blur-xs text-white font-mono text-[9px] font-bold px-1.5 py-0.5 rounded">
                       #{index + 1}
@@ -665,9 +664,10 @@ export const AdminHeroManager: React.FC<AdminHeroManagerProps> = ({
                 {bannerForm.imageUrl ? (
                   <div className="relative aspect-[21/8] rounded-2xl overflow-hidden border border-slate-700 bg-slate-950 mb-3 shadow-inner">
                     <img
-                      src={bannerForm.imageUrl}
+                      src={normalizeProductImage(bannerForm.imageUrl)}
                       alt="Banner Preview"
                       className="w-full h-full object-cover"
+                      onError={(e) => handleImageError(e)}
                     />
                     <button
                       type="button"
@@ -735,9 +735,10 @@ export const AdminHeroManager: React.FC<AdminHeroManagerProps> = ({
                 {bannerForm.mobileImageUrl ? (
                   <div className="relative aspect-[16/9] w-48 rounded-xl overflow-hidden border border-slate-700 bg-slate-950 mb-3 shadow-inner">
                     <img
-                      src={bannerForm.mobileImageUrl}
+                      src={normalizeProductImage(bannerForm.mobileImageUrl)}
                       alt="Mobile Banner Preview"
                       className="w-full h-full object-cover"
+                      onError={(e) => handleImageError(e)}
                     />
                     <button
                       type="button"

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { Product, ProductVariant, PaintShade, ProductVideo } from '../types';
 import { VideoPlayer } from './VideoPlayer';
-import { normalizeProductImage, getCategoryFallbackImage, handleImageError } from '../utils/imageUtils';
+import { normalizeProductImage, resolveProductImage, getCategoryFallbackImage, handleImageError } from '../utils/imageUtils';
 
 export interface ProductMediaItem {
   id: string;
@@ -54,7 +54,7 @@ export function compileProductMediaList(
   const seenUrls = new Set<string>();
 
   // 1. Primary Product Image
-  const normalizedPrimary = normalizeProductImage(product.image, product.category, product.name);
+  const normalizedPrimary = resolveProductImage(product);
   if (normalizedPrimary && normalizedPrimary.trim() !== '') {
     seenUrls.add(normalizedPrimary);
     items.push({

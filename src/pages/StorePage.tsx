@@ -19,7 +19,9 @@ import {
   CheckCircle2,
   Layers,
   Award,
-  Zap
+  Zap,
+  Edit,
+  Trash2
 } from 'lucide-react';
 import { Product, ProductCategory, ProductBrand, BusinessConfig } from '../types';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -33,7 +35,7 @@ import {
 } from '../utils/pricingUtils';
 import { hasActivePaintShades, getActivePaintShades } from '../utils/paintShadeUtils';
 import { getProductSlug, getCategorySlug, getBrandSlug } from '../utils/slugUtils';
-import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
+import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
 import { updateSeoMetadata } from '../utils/seoUtils';
 
 interface StorePageProps {
@@ -42,6 +44,8 @@ interface StorePageProps {
   brands: ProductBrand[];
   config: BusinessConfig;
   isAdmin?: boolean;
+  onEditProduct?: (product: Product) => void;
+  onDeleteProduct?: (productId: string) => void;
   initialCategory?: string;
   initialBrand?: string;
   initialSearch?: string;
@@ -58,6 +62,8 @@ export const StorePage: React.FC<StorePageProps> = ({
   brands,
   config,
   isAdmin,
+  onEditProduct,
+  onDeleteProduct,
   initialCategory,
   initialBrand,
   initialSearch,
@@ -634,7 +640,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                         onClick={() => onNavigate(`/product/${productSlug}`)}
                       >
                         <img
-                          src={normalizeProductImage(product.image || product.images?.[0], product.category, product.name)}
+                          src={resolveProductImage(product)}
                           alt={`${product.name} - ${product.category || 'Sanitaryware & Building Materials'} Chiniot`}
                           onError={(e) => handleImageError(e, product.category, product.name)}
                           className="max-h-full max-w-full object-contain filter group-hover:scale-105 transition-transform duration-300"
@@ -677,6 +683,37 @@ export const StorePage: React.FC<StorePageProps> = ({
                         >
                           <Eye className="w-4 h-4" />
                         </button>
+
+                        {/* Admin Floating Edit Button */}
+                        {isAdmin && onEditProduct && (
+                          <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEditProduct(product);
+                              }}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold shadow-md transition-all active:scale-95 cursor-pointer"
+                              title="Edit Product"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                              <span>Edit Product</span>
+                            </button>
+                            {onDeleteProduct && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (confirm('Are you sure you want to delete this product?')) onDeleteProduct(product.id);
+                                }}
+                                className="p-1.5 rounded-lg bg-rose-600 text-white shadow hover:bg-rose-500 transition-colors cursor-pointer"
+                                title="Delete Product"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Body Content */}
@@ -746,6 +783,24 @@ export const StorePage: React.FC<StorePageProps> = ({
                             <MessageCircle className="w-3.5 h-3.5" />
                           </button>
                         </div>
+
+                        {/* Admin Dedicated Edit Action Button */}
+                        {isAdmin && onEditProduct && (
+                          <div className="pt-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEditProduct(product);
+                              }}
+                              className="w-full py-1.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+                              title="Edit Product"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                              <span>Edit Product</span>
+                            </button>
+                          </div>
+                        )}
 
                       </div>
 

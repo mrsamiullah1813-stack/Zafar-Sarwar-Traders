@@ -4,7 +4,7 @@ import { BusinessConfig, CartItem, CheckoutSettings, DeliverySettings } from '..
 import { getActiveProductPrice } from '../utils/pricingUtils';
 import { loadDeliverySettings } from '../utils/storage';
 import { calculateCityDeliveryFee } from '../utils/deliveryFeeCalculator';
-import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
+import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -210,7 +210,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               return (
                 <div key={index} className="pt-4 first:pt-0 flex gap-3 items-start group">
                   <img
-                    src={normalizeProductImage(p.images?.[0] || p.image, p.category, p.name)}
+                    src={resolveProductImage(p)}
                     alt={p.name}
                     className="w-16 h-16 rounded-xl object-cover border border-slate-200 bg-slate-50 shrink-0 mt-0.5"
                     onError={(e) => handleImageError(e, p.category, p.name)}

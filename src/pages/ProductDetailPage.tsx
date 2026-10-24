@@ -19,6 +19,7 @@ import {
   Shield, 
   Zap, 
   CheckCircle,
+  Edit,
   FileText,
   Sliders,
   RotateCcw
@@ -51,6 +52,7 @@ interface ProductDetailPageProps {
   allProducts: Product[];
   config: BusinessConfig;
   isAdmin?: boolean;
+  onEditProduct?: (product: Product) => void;
   onAddToCart: (
     product: Product,
     quantity: number,
@@ -128,6 +130,8 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
   brands,
   allProducts,
   config,
+  isAdmin,
+  onEditProduct,
   onAddToCart,
   onBuyNow,
   onNavigate
@@ -639,12 +643,25 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                     <span className="text-slate-700">{brandName}</span>
                   </div>
 
-                  {product.stockStatus && (
-                    <div className="text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      <span>{product.stockStatus}</span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {isAdmin && onEditProduct && (
+                      <button
+                        type="button"
+                        onClick={() => onEditProduct(product)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm transition-all active:scale-95 cursor-pointer"
+                        title="Edit Product"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        <span>Edit Product</span>
+                      </button>
+                    )}
+                    {product.stockStatus && (
+                      <div className="text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>{product.stockStatus}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Main Product Title */}

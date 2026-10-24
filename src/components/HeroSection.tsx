@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import { Product, ProductCategory, ProductBrand, HeroSettings, HeroBannerSlide } from '../types';
 import { defaultHeroBanners } from '../utils/storage';
+import { normalizeProductImage, handleImageError } from '../utils/imageUtils';
 
 export interface HeroSectionProps {
   products: Product[];
@@ -273,21 +274,15 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             >
               <picture className="w-full h-full block">
                 {currentBanner?.mobileImageUrl && (
-                  <source media="(max-width: 640px)" srcSet={currentBanner.mobileImageUrl} />
+                  <source media="(max-width: 640px)" srcSet={normalizeProductImage(currentBanner.mobileImageUrl)} />
                 )}
                 <img
-                  src={currentBanner?.imageUrl}
+                  src={normalizeProductImage(currentBanner?.imageUrl)}
                   alt={currentBanner?.title || 'Promotional Banner'}
                   className="w-full h-full object-cover object-center transition-transform duration-700 sm:group-hover:scale-[1.01]"
                   loading={currentIndex === 0 ? 'eager' : 'lazy'}
                   decoding="async"
-                  onError={(e) => {
-                    // Fallback to high-res banner if broken link
-                    const target = e.currentTarget;
-                    if (!target.src.includes('photo-1584622650111')) {
-                      target.src = 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1920&q=85';
-                    }
-                  }}
+                  onError={(e) => handleImageError(e)}
                 />
               </picture>
 

@@ -662,10 +662,9 @@ export const saveStoredConfig = async (config: BusinessConfig): Promise<{ succes
 };
 
 const sanitizeProductForLocalStorage = (p: Product): Partial<Product> => {
-  const isDataUrl = (str?: string) => Boolean(str && (str.startsWith('data:') || str.startsWith('blob:')));
-  const safeImg = isDataUrl(p.image) ? getCategoryFallbackImage(p.category, p.name) : normalizeProductImage(p.image, p.category, p.name);
-  const safeImages = Array.isArray(p.images)
-    ? p.images.filter(img => !isDataUrl(img)).map(img => normalizeProductImage(img, p.category, p.name)).slice(0, 3)
+  const safeImg = normalizeProductImage(p.image, p.category, p.name);
+  const safeImages = Array.isArray(p.images) && p.images.length > 0
+    ? p.images.map(img => normalizeProductImage(img, p.category, p.name))
     : [safeImg];
   return {
     id: p.id,
@@ -737,13 +736,6 @@ export const loadStoredProducts = (): Product[] => {
 
 export const saveStoredProductSingle = async (product: Product): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await upsertProductInSupabase(product);
-      if (res && res.success === false) {
-        console.error('[Supabase Save Error] Single product save returned error:', res.error);
-        return { success: false, error: res.error };
-      }
-    }
     const current = loadStoredProducts();
     const existingIndex = current.findIndex(p => p.id === product.id);
     let updated: Product[];
@@ -756,6 +748,16 @@ export const saveStoredProductSingle = async (product: Product): Promise<{ succe
     const sanitized = updated.map(sanitizeProductForLocalStorage);
     safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, sanitized);
     saveToServerCMS(STORAGE_KEYS.PRODUCTS, updated);
+    try {
+      window.dispatchEvent(new CustomEvent('zst_products_updated', { detail: updated }));
+    } catch {}
+
+    if (isSupabaseConfigured) {
+      const res = await upsertProductInSupabase(product);
+      if (res && res.success === false) {
+        console.warn('[Supabase Save Notice] Single product saved locally & to Server CMS; Supabase sync notice:', res.error);
+      }
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving single product', e);
@@ -786,18 +788,21 @@ export const saveStoredProducts = async (products: Product[]): Promise<{ success
 
 export const deleteProductFromStorage = async (productId: string): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const result = await deleteProductFromSupabase(productId);
-      if (!result.success) {
-        console.error('Failed to delete product from Supabase:', result.error);
-        return { success: false, error: result.error };
-      }
-    }
     const current = loadStoredProducts();
     const updated = current.filter(p => p.id !== productId);
     const sanitized = updated.map(sanitizeProductForLocalStorage);
     safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, sanitized);
     saveToServerCMS(STORAGE_KEYS.PRODUCTS, updated);
+    try {
+      window.dispatchEvent(new CustomEvent('zst_products_updated', { detail: updated }));
+    } catch {}
+
+    if (isSupabaseConfigured) {
+      const result = await deleteProductFromSupabase(productId);
+      if (!result.success) {
+        console.warn('Supabase deleteProduct notice (deleted locally):', result.error);
+      }
+    }
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err?.message || String(err) };
@@ -819,13 +824,6 @@ export const loadStoredCategories = (): ProductCategory[] => {
 
 export const saveStoredCategorySingle = async (category: ProductCategory): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await upsertCategoryInSupabase(category);
-      if (res && !res.success) {
-        console.error('Failed to save single category to Supabase:', res.error);
-        return { success: false, error: res.error };
-      }
-    }
     const current = loadStoredCategories();
     const existingIndex = current.findIndex(c => c.id === category.id);
     let updated: ProductCategory[];
@@ -837,6 +835,16 @@ export const saveStoredCategorySingle = async (category: ProductCategory): Promi
     }
     safeSetLocalStorage(STORAGE_KEYS.CATEGORIES, updated);
     saveToServerCMS(STORAGE_KEYS.CATEGORIES, updated);
+    try {
+      window.dispatchEvent(new CustomEvent('zst_categories_updated', { detail: updated }));
+    } catch {}
+
+    if (isSupabaseConfigured) {
+      const res = await upsertCategoryInSupabase(category);
+      if (res && !res.success) {
+        console.warn('Supabase saveStoredCategorySingle notice (saved locally):', res.error);
+      }
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving single category', e);
@@ -865,16 +873,20 @@ export const saveStoredCategories = async (categories: ProductCategory[]): Promi
 
 export const deleteCategoryFromStorage = async (categoryId: string): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const result = await deleteCategoryFromSupabase(categoryId);
-      if (!result.success) {
-        return { success: false, error: result.error };
-      }
-    }
     const current = loadStoredCategories();
     const updated = current.filter(c => c.id !== categoryId);
     safeSetLocalStorage(STORAGE_KEYS.CATEGORIES, updated);
     saveToServerCMS(STORAGE_KEYS.CATEGORIES, updated);
+    try {
+      window.dispatchEvent(new CustomEvent('zst_categories_updated', { detail: updated }));
+    } catch {}
+
+    if (isSupabaseConfigured) {
+      const result = await deleteCategoryFromSupabase(categoryId);
+      if (!result.success) {
+        console.warn('Supabase deleteCategory notice (deleted locally):', result.error);
+      }
+    }
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err?.message || String(err) };
@@ -896,12 +908,12 @@ export const loadStoredGallery = (): GalleryItem[] => {
 
 export const saveStoredGallery = async (items: GalleryItem[]): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.GALLERY, items);
-      if (!res.success) return { success: false, error: res.error };
-    }
     safeSetLocalStorage(STORAGE_KEYS.GALLERY, items);
     saveToServerCMS(STORAGE_KEYS.GALLERY, items);
+    if (isSupabaseConfigured) {
+      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.GALLERY, items);
+      if (!res.success) console.warn('Supabase saveStoredGallery notice:', res.error);
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving stored gallery', e);
@@ -924,13 +936,6 @@ export const loadStoredBrands = (): ProductBrand[] => {
 
 export const saveStoredBrandSingle = async (brand: ProductBrand): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await upsertBrandInSupabase(brand);
-      if (res && !res.success) {
-        console.error('Failed to save single brand to Supabase:', res.error);
-        return { success: false, error: res.error };
-      }
-    }
     const current = loadStoredBrands();
     const existingIndex = current.findIndex(b => b.id === brand.id);
     let updated: ProductBrand[];
@@ -942,6 +947,12 @@ export const saveStoredBrandSingle = async (brand: ProductBrand): Promise<{ succ
     }
     safeSetLocalStorage(STORAGE_KEYS.BRANDS, updated);
     saveToServerCMS(STORAGE_KEYS.BRANDS, updated);
+    if (isSupabaseConfigured) {
+      const res = await upsertBrandInSupabase(brand);
+      if (res && !res.success) {
+        console.warn('Supabase saveStoredBrandSingle notice (saved locally):', res.error);
+      }
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving single brand', e);
@@ -951,15 +962,14 @@ export const saveStoredBrandSingle = async (brand: ProductBrand): Promise<{ succ
 
 export const saveStoredBrands = async (brands: ProductBrand[]): Promise<{ success: boolean; error?: string }> => {
   try {
+    safeSetLocalStorage(STORAGE_KEYS.BRANDS, brands);
+    saveToServerCMS(STORAGE_KEYS.BRANDS, brands);
     if (isSupabaseConfigured) {
       const res = await upsertBrandInSupabase(brands);
       if (res && !res.success) {
-        console.error('Failed to save brands to Supabase:', res.error);
-        return { success: false, error: res.error };
+        console.warn('Supabase saveStoredBrands notice (saved locally):', res.error);
       }
     }
-    safeSetLocalStorage(STORAGE_KEYS.BRANDS, brands);
-    saveToServerCMS(STORAGE_KEYS.BRANDS, brands);
     return { success: true };
   } catch (e: any) {
     console.error('Error saving stored brands', e);
@@ -969,16 +979,16 @@ export const saveStoredBrands = async (brands: ProductBrand[]): Promise<{ succes
 
 export const deleteBrandFromStorage = async (brandId: string): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const result = await deleteBrandFromSupabase(brandId);
-      if (!result.success) {
-        return { success: false, error: result.error };
-      }
-    }
     const current = loadStoredBrands();
     const updated = current.filter(b => b.id !== brandId);
     safeSetLocalStorage(STORAGE_KEYS.BRANDS, updated);
     saveToServerCMS(STORAGE_KEYS.BRANDS, updated);
+    if (isSupabaseConfigured) {
+      const result = await deleteBrandFromSupabase(brandId);
+      if (!result.success) {
+        console.warn('Supabase deleteBrand notice (deleted locally):', result.error);
+      }
+    }
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err?.message || String(err) };
@@ -1000,12 +1010,12 @@ export const loadStoredStats = (): StatCounter[] => {
 
 export const saveStoredStats = async (stats: StatCounter[]): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.STATS, stats);
-      if (!res.success) return { success: false, error: res.error };
-    }
     safeSetLocalStorage(STORAGE_KEYS.STATS, stats);
     saveToServerCMS(STORAGE_KEYS.STATS, stats);
+    if (isSupabaseConfigured) {
+      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.STATS, stats);
+      if (!res.success) console.warn('Supabase saveStoredStats notice:', res.error);
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving stored stats', e);
@@ -1030,12 +1040,12 @@ export const loadPlannerConfig = (): AiDesignerConfig => {
 
 export const savePlannerConfig = async (config: AiDesignerConfig): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.PLANNER, config);
-      if (!res.success) return { success: false, error: res.error };
-    }
     safeSetLocalStorage(STORAGE_KEYS.PLANNER, config);
     saveToServerCMS(STORAGE_KEYS.PLANNER, config);
+    if (isSupabaseConfigured) {
+      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.PLANNER, config);
+      if (!res.success) console.warn('Supabase savePlannerConfig notice:', res.error);
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving designer config', e);
@@ -1063,12 +1073,12 @@ export const loadBuildMaterialEstimatorConfig = (): BuildMaterialEstimatorConfig
 
 export const saveBuildMaterialEstimatorConfig = async (config: BuildMaterialEstimatorConfig): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await saveBuildMaterialEstimatorToSupabase(config);
-      if (!res.success) return { success: false, error: res.error };
-    }
     safeSetLocalStorage(STORAGE_KEYS.ESTIMATOR, config);
     saveToServerCMS(STORAGE_KEYS.ESTIMATOR, config);
+    if (isSupabaseConfigured) {
+      const res = await saveBuildMaterialEstimatorToSupabase(config);
+      if (!res.success) console.warn('Supabase saveBuildMaterialEstimatorConfig notice:', res.error);
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving build material estimator config', e);
@@ -1091,12 +1101,12 @@ export const loadStoredContacts = (): ContactPerson[] => {
 
 export const saveStoredContacts = async (contacts: ContactPerson[]): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.CONTACTS, contacts);
-      if (!res.success) return { success: false, error: res.error };
-    }
     safeSetLocalStorage(STORAGE_KEYS.CONTACTS, contacts);
     saveToServerCMS(STORAGE_KEYS.CONTACTS, contacts);
+    if (isSupabaseConfigured) {
+      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.CONTACTS, contacts);
+      if (!res.success) console.warn('Supabase saveStoredContacts notice:', res.error);
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving stored contacts', e);
@@ -1747,12 +1757,12 @@ export const loadSmartToolsSettings = (): SmartToolsSettings => {
 
 export const saveSmartToolsSettings = async (settings: SmartToolsSettings): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.SMART_TOOLS, settings);
-      if (!res.success) return { success: false, error: res.error };
-    }
     safeSetLocalStorage(STORAGE_KEYS.SMART_TOOLS, settings);
     saveToServerCMS(STORAGE_KEYS.SMART_TOOLS, settings);
+    if (isSupabaseConfigured) {
+      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.SMART_TOOLS, settings);
+      if (!res.success) console.warn('Supabase saveSmartToolsSettings notice:', res.error);
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving smart tools settings', e);
@@ -1820,12 +1830,12 @@ export const loadFittingBuilderConfig = (): FittingBuilderConfig => {
 
 export const saveFittingBuilderConfig = async (config: FittingBuilderConfig): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await saveFittingBuilderConfigToSupabase(config);
-      if (!res.success) return { success: false, error: res.error };
-    }
     safeSetLocalStorage(STORAGE_KEYS.FITTING_BUILDER, config);
     saveToServerCMS(STORAGE_KEYS.FITTING_BUILDER, config);
+    if (isSupabaseConfigured) {
+      const res = await saveFittingBuilderConfigToSupabase(config);
+      if (!res.success) console.warn('Supabase saveFittingBuilderConfig notice:', res.error);
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving fitting builder config', e);
@@ -1938,13 +1948,13 @@ export const loadPricingTypographySettings = (): PricingTypographySettings => {
 
 export const savePricingTypographySettings = async (settings: PricingTypographySettings): Promise<{ success: boolean; error?: string }> => {
   try {
-    if (isSupabaseConfigured) {
-      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.PRICING_TYPOGRAPHY, settings);
-      if (!res.success) return { success: false, error: res.error };
-    }
     safeSetLocalStorage(STORAGE_KEYS.PRICING_TYPOGRAPHY, settings);
     saveToServerCMS(STORAGE_KEYS.PRICING_TYPOGRAPHY, settings);
     applyPricingTypographyToRoot(settings);
+    if (isSupabaseConfigured) {
+      const res = await saveSiteSettingToSupabase(STORAGE_KEYS.PRICING_TYPOGRAPHY, settings);
+      if (!res.success) console.warn('Supabase savePricingTypographySettings notice:', res.error);
+    }
     return { success: true };
   } catch (e: any) {
     console.error('Error saving pricing typography settings', e);
