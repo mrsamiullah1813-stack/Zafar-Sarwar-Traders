@@ -180,41 +180,99 @@ export const ContactPage: React.FC<ContactPageProps> = ({ config, contacts = [],
             </div>
 
             {/* Key Personnel */}
-            {contacts && contacts.length > 0 && (
-              <div className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-sm space-y-3">
-                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <UserCheck className="w-4 h-4 text-blue-600" />
-                  <span>Showroom Contact Personnel</span>
-                </h3>
-                <div className="space-y-2">
-                  {contacts.map((person, idx) => (
-                    <div key={person.id || idx} className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between text-xs">
-                      <div>
-                        <div className="font-bold text-slate-800">{person.fullName}</div>
-                        <div className="text-slate-500">{person.designation} {person.department ? `(${person.department})` : ''}</div>
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        {person.mobileNumber && (
-                          <a href={`tel:${person.mobileNumber.replace(/\s+/g, '')}`} className="text-blue-600 font-bold hover:underline">
-                            {person.mobileNumber}
-                          </a>
-                        )}
-                        {person.whatsappNumber && person.whatsappNumber !== person.mobileNumber && (
-                          <a href={`https://wa.me/${person.whatsappNumber.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-emerald-600 text-[11px] font-semibold hover:underline">
-                            WA: {person.whatsappNumber}
-                          </a>
-                        )}
-                        {person.email && (
-                          <a href={`mailto:${person.email}`} className="text-purple-600 text-[11px] hover:underline">
-                            {person.email}
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+            {contacts && contacts.length > 0 && (() => {
+              // Exactly 3 contact cards displayed:
+              // 1. Owner & CEO (Abu Bakar Zafar)
+              // 2. Accounts Manager (Muhammad Zohaib)
+              // 3. Technical Support (Sami Ullah)
+              // Excludes Showroom Manager / Sanitary Manager
+              const displayPersonnel = contacts.filter((person) => {
+                const designation = (person.designation || '').toLowerCase();
+                const fullName = (person.fullName || '').toLowerCase();
+                const dept = (person.department || '').toLowerCase();
+
+                // Exclude Showroom Manager / Sanitary Manager
+                if (
+                  designation.includes('showroom manager') ||
+                  designation.includes('sanitary manager') ||
+                  fullName.includes('showroom manager') ||
+                  fullName.includes('sanitary manager') ||
+                  dept.includes('sanitaryware') ||
+                  person.id === 'contact-2'
+                ) {
+                  return false;
+                }
+
+                const isOwnerCeo =
+                  designation.includes('owner') ||
+                  designation.includes('ceo') ||
+                  fullName.includes('abu bakar') ||
+                  fullName.includes('zafar');
+
+                const isAccounts =
+                  designation.includes('account') ||
+                  fullName.includes('zohaib') ||
+                  dept.includes('finance') ||
+                  dept.includes('billing');
+
+                const isTechnical =
+                  designation.includes('technical') ||
+                  designation.includes('support') ||
+                  fullName.includes('sami');
+
+                return isOwnerCeo || isAccounts || isTechnical;
+              });
+
+              if (displayPersonnel.length === 0) return null;
+
+              return (
+                <div className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-sm space-y-3">
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <UserCheck className="w-4 h-4 text-blue-600" />
+                    <span>Showroom Contact Personnel</span>
+                  </h3>
+                  <div className="space-y-2">
+                    {displayPersonnel.map((person, idx) => {
+                      const designation = (person.designation || '').toLowerCase();
+                      const fullName = (person.fullName || '').toLowerCase();
+                      const isOwnerCeo =
+                        designation.includes('owner') ||
+                        designation.includes('ceo') ||
+                        fullName.includes('abu bakar') ||
+                        fullName.includes('zafar') ||
+                        person.isPrimary;
+
+                      return (
+                        <div key={person.id || idx} className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between text-xs">
+                          <div>
+                            <div className="font-bold text-slate-800">{person.fullName}</div>
+                            <div className="text-slate-500">{person.designation} {person.department ? `(${person.department})` : ''}</div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            {person.mobileNumber && (
+                              <a href={`tel:${person.mobileNumber.replace(/\s+/g, '')}`} className="text-blue-600 font-bold hover:underline">
+                                {person.mobileNumber}
+                              </a>
+                            )}
+                            {person.whatsappNumber && person.whatsappNumber !== person.mobileNumber && (
+                              <a href={`https://wa.me/${person.whatsappNumber.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-emerald-600 text-[11px] font-semibold hover:underline">
+                                WA: {person.whatsappNumber}
+                              </a>
+                            )}
+                            {/* Only the Owner & CEO email should be displayed */}
+                            {isOwnerCeo && person.email && (
+                              <a href={`mailto:${person.email}`} className="text-purple-600 text-[11px] hover:underline">
+                                {person.email}
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
           </div>
 

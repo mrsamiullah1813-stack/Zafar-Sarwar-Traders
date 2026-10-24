@@ -77,6 +77,8 @@ export interface SitemapUrlEntry {
 /**
  * Builds the complete dynamic XML sitemap from live Supabase tables and local CMS store data
  */
+import { createClient } from '@supabase/supabase-js';
+
 export async function generateDynamicSitemapXml(
   dbClient?: any,
   cmsDataStore?: Record<string, any>
@@ -85,13 +87,47 @@ export async function generateDynamicSitemapXml(
   let categories: any[] = [];
   let brands: any[] = [];
 
-  // 1. Fetch live data from Supabase DB Client if available
-  if (dbClient) {
+  // 1. Resolve or auto-initialize Supabase client
+  let client = dbClient;
+  if (!client) {
+    try {
+      const rawUrl = (
+        process.env.VITE_SUPABASE_URL ||
+        process.env.SUPABASE_URL ||
+        process.env.NEXT_PUBLIC_SUPABASE_URL ||
+        ""
+      ).trim();
+      const serviceRoleKey = (
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SERVICE_ROLE_KEY ||
+        process.env.VITE_SUPABASE_ANON_KEY ||
+        process.env.SUPABASE_ANON_KEY ||
+        process.env.SUPABASE_KEY ||
+        process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+        process.env.SUPABASE_PUBLISHABLE_KEY ||
+        ""
+      ).trim();
+
+      if (rawUrl && serviceRoleKey) {
+        let normUrl = rawUrl;
+        if (!normUrl.startsWith("http://") && !normUrl.startsWith("https://")) {
+          normUrl = `https://${normUrl}`;
+          if (!normUrl.includes(".")) {
+            normUrl += ".supabase.co";
+          }
+        }
+        client = createClient(normUrl, serviceRoleKey);
+      }
+    } catch {}
+  }
+
+  // Fetch live data from Supabase DB Client if available
+  if (client) {
     try {
       const [prodRes, catRes, brandRes] = await Promise.all([
-        dbClient.from('products').select('id, title, name, slug, hidden, is_hidden, updated_at, created_at'),
-        dbClient.from('categories').select('id, name, slug, is_active, updated_at, created_at'),
-        dbClient.from('brands').select('id, name, slug, enabled, is_active, updated_at, created_at')
+        client.from('products').select('id, title, name, slug, hidden, is_hidden, updated_at, created_at'),
+        client.from('categories').select('id, name, slug, is_active, updated_at, created_at'),
+        client.from('brands').select('id, name, slug, enabled, is_active, updated_at, created_at')
       ]);
 
       if (prodRes && Array.isArray(prodRes.data) && prodRes.data.length > 0) {
