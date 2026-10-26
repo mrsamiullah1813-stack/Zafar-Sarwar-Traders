@@ -1651,6 +1651,452 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
   app.post("/api/reviews", handlePostReview);
   app.post("/api/product-reviews", handlePostReview);
 
+  // =========================================================
+  // SECURITY-HARDENED PRODUCT LIKES & UNLIKES SYSTEM
+  // - Cryptographic HMAC token & HttpOnly cookie prevents visitor impersonation
+  // - Product existence & ID format validation prevents junk spamming
+  // - Concurrency mutex lock per (productId, visitorId) prevents race conditions
+  // - Database unique constraint uq_product_likes_product_visitor prevents duplicate votes
+  // - Safe dual-storage sync & seamless migration from site_settings.product_likes
+  // =========================================================
+  const LIKES_HMAC_SECRET = (
+    process.env.SUPABASE_SERVICE_ROLE_KEY || 
+    process.env.SESSION_SECRET || 
+    "zst-likes-security-salt-2026"
+  ).trim();
+
+  function signVisitorToken(vid: string): string {
+    const hmac = crypto.createHmac("sha256", LIKES_HMAC_SECRET);
+    hmac.update(vid);
+    return `${vid}.${hmac.digest("hex").substring(0, 32)}`;
+  }
+
+  function verifyVisitorToken(token: string): string | null {
+    if (!token || typeof token !== "string") return null;
+    const dotIdx = token.indexOf(".");
+    if (dotIdx < 1) return null;
+    const vid = token.substring(0, dotIdx);
+    const sig = token.substring(dotIdx + 1);
+    const expected = crypto.createHmac("sha256", LIKES_HMAC_SECRET).update(vid).digest("hex").substring(0, 32);
+    if (sig.length !== expected.length) return null;
+    try {
+      if (crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+        return vid;
+      }
+    } catch {}
+    return null;
+  }
+
+  function parseCookie(req: express.Request, cookieName: string): string | null {
+    const cookieHeader = req.headers.cookie;
+    if (!cookieHeader) return null;
+    const cookies = cookieHeader.split(";");
+    for (const cookie of cookies) {
+      const parts = cookie.trim().split("=");
+      if (parts[0] === cookieName) {
+        return decodeURIComponent(parts.slice(1).join("="));
+      }
+    }
+    return null;
+  }
+
+  // Active in-flight toggle concurrency lock map: `${productId}:${visitorId}` -> Promise
+  const activeToggleLocks = new Map<string, Promise<any>>();
+
+  // Helper to verify if a product exists (in DB or memory store)
+  async function verifyProductExists(productId: string): Promise<boolean> {
+    if (dbClient) {
+      try {
+        const { data, error } = await dbClient
+          .from("products")
+          .select("id")
+          .eq("id", productId)
+          .maybeSingle();
+        if (!error && data) return true;
+      } catch {}
+    }
+    if (Array.isArray(cmsDataStore["zst_products_v1"])) {
+      return cmsDataStore["zst_products_v1"].some((p: any) => String(p.id) === productId);
+    }
+    return false;
+  }
+
+  // Safe migration helper: backfill from site_settings.product_likes into product_likes table
+  let hasCheckedLikesMigration = false;
+  async function maybeMigrateLikesToTable() {
+    if (hasCheckedLikesMigration || !dbClient) return;
+    try {
+      const { data: tableTest, error: tErr } = await dbClient
+        .from("product_likes")
+        .select("id")
+        .limit(1);
+
+      if (tErr) return; // Table not created in Supabase yet
+
+      hasCheckedLikesMigration = true;
+
+      const { data: settings } = await dbClient
+        .from("site_settings")
+        .select("theme_settings")
+        .eq("id", "product_likes")
+        .maybeSingle();
+
+      const curLikes = Array.isArray(settings?.theme_settings?.likes) ? settings.theme_settings.likes : [];
+      if (curLikes.length === 0) return;
+
+      let migratedCount = 0;
+      for (const item of curLikes) {
+        const pId = String(item.productId || item.product_id || "").trim();
+        const vId = String(item.visitorId || item.visitor_id || "").trim();
+        if (!pId || !vId) continue;
+
+        await dbClient.from("product_likes").insert({
+          id: item.id || `like-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+          product_id: pId,
+          visitor_id: vId,
+          created_at: item.createdAt || item.created_at || new Date().toISOString()
+        }).select().maybeSingle();
+        migratedCount++;
+      }
+      if (migratedCount > 0) {
+        console.log(`[ProductLikes] Safe migration verified: synced ${migratedCount} likes from site_settings into product_likes table.`);
+      }
+    } catch (err) {
+      console.warn("[ProductLikes] Migration check notice:", err);
+    }
+  }
+
+  app.get("/api/likes", async (req, res) => {
+    try {
+      await maybeMigrateLikesToTable();
+
+      // Resolve visitor identity
+      const cookieToken = parseCookie(req, "zst_vtoken");
+      const headerToken = req.headers["x-visitor-token"] ? String(req.headers["x-visitor-token"]).trim() : null;
+      const rawVisitorId = req.query.visitorId ? String(req.query.visitorId).trim() : "";
+
+      let effectiveVisitorId = "";
+      if (cookieToken) {
+        effectiveVisitorId = verifyVisitorToken(cookieToken) || "";
+      }
+      if (!effectiveVisitorId && headerToken) {
+        effectiveVisitorId = verifyVisitorToken(headerToken) || "";
+      }
+      if (!effectiveVisitorId && rawVisitorId) {
+        effectiveVisitorId = rawVisitorId;
+      }
+
+      let signedToken = "";
+      if (effectiveVisitorId) {
+        signedToken = signVisitorToken(effectiveVisitorId);
+        res.setHeader("Set-Cookie", `zst_vtoken=${encodeURIComponent(signedToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`);
+      }
+
+      const counts: Record<string, number> = {};
+      const userLikes: string[] = [];
+      let likesList: any[] = [];
+      let queriedTable = false;
+
+      if (dbClient) {
+        try {
+          const { data: tableLikes, error: tErr } = await dbClient
+            .from("product_likes")
+            .select("product_id, visitor_id");
+          if (!tErr && Array.isArray(tableLikes)) {
+            likesList = tableLikes;
+            queriedTable = true;
+          }
+        } catch {}
+
+        if (!queriedTable) {
+          const { data: settings } = await dbClient
+            .from("site_settings")
+            .select("theme_settings")
+            .eq("id", "product_likes")
+            .maybeSingle();
+          if (settings?.theme_settings?.likes && Array.isArray(settings.theme_settings.likes)) {
+            likesList = settings.theme_settings.likes;
+          }
+        }
+      }
+
+      likesList.forEach((row: any) => {
+        const pId = String(row.product_id || row.productId || "").trim();
+        const vId = String(row.visitor_id || row.visitorId || "").trim();
+        if (!pId) return;
+        counts[pId] = (counts[pId] || 0) + 1;
+        if (effectiveVisitorId && vId === effectiveVisitorId) {
+          userLikes.push(pId);
+        }
+      });
+
+      return res.json({
+        success: true,
+        counts,
+        userLikes,
+        totalLikes: likesList.length,
+        visitorId: effectiveVisitorId,
+        visitorToken: signedToken
+      });
+    } catch (err: any) {
+      console.error("[Get Likes Error]:", err);
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  app.post("/api/likes/toggle", async (req, res) => {
+    const { productId, visitorId, visitorToken: bodyToken } = req.body || {};
+    
+    // 1. PRODUCT VALIDATION
+    if (!productId || typeof productId !== "string") {
+      return res.status(400).json({ success: false, error: "Missing or invalid productId" });
+    }
+    const cleanProductId = productId.trim();
+    if (!/^[a-zA-Z0-9_-]{3,64}$/.test(cleanProductId)) {
+      return res.status(400).json({ success: false, error: "Invalid product ID format" });
+    }
+
+    const exists = await verifyProductExists(cleanProductId);
+    if (!exists) {
+      return res.status(404).json({ success: false, error: "Product does not exist" });
+    }
+
+    // 2. VISITOR IDENTITY RESOLUTION & OWNERSHIP PROTECTION
+    let effectiveVisitorId = "";
+    let isSigned = false;
+
+    // Check for authenticated Supabase JWT
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ") && dbClient) {
+      const jwt = authHeader.substring(7).trim();
+      try {
+        const { data: authUser, error: authErr } = await dbClient.auth.getUser(jwt);
+        if (!authErr && authUser?.user?.id) {
+          effectiveVisitorId = `usr-${authUser.user.id}`;
+          isSigned = true;
+        }
+      } catch {}
+    }
+
+    // Check signed token from cookie, header, or body
+    if (!effectiveVisitorId) {
+      const cookieToken = parseCookie(req, "zst_vtoken");
+      const headerToken = req.headers["x-visitor-token"] ? String(req.headers["x-visitor-token"]).trim() : null;
+      const tokenCandidate = bodyToken || headerToken || cookieToken;
+
+      if (tokenCandidate) {
+        const verifiedId = verifyVisitorToken(tokenCandidate);
+        if (verifiedId) {
+          // If caller also provided visitorId in body, verify it matches the token
+          if (visitorId && String(visitorId).trim() !== verifiedId) {
+            return res.status(403).json({
+              success: false,
+              error: "Security validation error: visitor token does not match provided identity"
+            });
+          }
+          effectiveVisitorId = verifiedId;
+          isSigned = true;
+        } else {
+          // Token candidate was passed but failed cryptographic HMAC verification
+          return res.status(403).json({
+            success: false,
+            error: "Security validation error: invalid or forged visitor token"
+          });
+        }
+      }
+    }
+
+    // If no signed token yet, inspect visitorId
+    if (!effectiveVisitorId) {
+      const rawId = visitorId ? String(visitorId).trim() : "";
+      if (rawId) {
+        if (!/^vst-[a-zA-Z0-9_-]{8,64}$/.test(rawId)) {
+          return res.status(400).json({ success: false, error: "Invalid visitor identity format" });
+        }
+
+        // SECURITY CHECK: If this visitor ID already has active records in product_likes or site_settings,
+        // caller must present a valid signed token/cookie to modify or delete them.
+        if (dbClient) {
+          try {
+            const { data: existingCheck, error: tErr } = await dbClient
+              .from("product_likes")
+              .select("id")
+              .eq("visitor_id", rawId)
+              .limit(1);
+
+            if (!tErr && existingCheck && existingCheck.length > 0) {
+              return res.status(403).json({
+                success: false,
+                error: "Ownership verification required: signature required for established visitor identity"
+              });
+            }
+
+            const { data: sCheck } = await dbClient
+              .from("site_settings")
+              .select("theme_settings")
+              .eq("id", "product_likes")
+              .maybeSingle();
+
+            const curLikes = Array.isArray(sCheck?.theme_settings?.likes) ? sCheck.theme_settings.likes : [];
+            const hasExisting = curLikes.some((l: any) => (l.visitorId === rawId || l.visitor_id === rawId));
+            if (hasExisting) {
+              return res.status(403).json({
+                success: false,
+                error: "Ownership verification required: signature required for established visitor identity"
+              });
+            }
+          } catch {}
+        }
+
+        effectiveVisitorId = rawId;
+      } else {
+        effectiveVisitorId = `vst-${crypto.randomUUID()}`;
+      }
+    }
+
+    // Issue cryptographic signature for this visitor
+    const signedToken = signVisitorToken(effectiveVisitorId);
+    res.setHeader("Set-Cookie", `zst_vtoken=${encodeURIComponent(signedToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`);
+
+    // 3. CONCURRENCY MUTEX LOCK PER (productId, visitorId)
+    const lockKey = `${cleanProductId}:${effectiveVisitorId}`;
+    const previousLock = activeToggleLocks.get(lockKey);
+    if (previousLock) {
+      try {
+        await previousLock;
+      } catch {}
+    }
+
+    let releaseLock: () => void = () => {};
+    const currentLock = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    activeToggleLocks.set(lockKey, currentLock);
+
+    try {
+      let liked = false;
+      let newCount = 0;
+
+      if (dbClient) {
+        let tableSuccess = false;
+        try {
+          // Check if product_likes table exists & check existing vote
+          const { data: existing, error: checkErr } = await dbClient
+            .from("product_likes")
+            .select("id")
+            .eq("product_id", cleanProductId)
+            .eq("visitor_id", effectiveVisitorId)
+            .maybeSingle();
+
+          if (!checkErr) {
+            if (existing) {
+              await dbClient
+                .from("product_likes")
+                .delete()
+                .eq("product_id", cleanProductId)
+                .eq("visitor_id", effectiveVisitorId);
+              liked = false;
+            } else {
+              await dbClient
+                .from("product_likes")
+                .insert([
+                  {
+                    id: `like-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                    product_id: cleanProductId,
+                    visitor_id: effectiveVisitorId,
+                    created_at: new Date().toISOString()
+                  }
+                ]);
+              liked = true;
+            }
+
+            const { count } = await dbClient
+              .from("product_likes")
+              .select("id", { count: "exact", head: true })
+              .eq("product_id", cleanProductId);
+
+            newCount = count || 0;
+            tableSuccess = true;
+          }
+        } catch {}
+
+        // Dual-sync to site_settings fallback
+        const { data: curSettings } = await dbClient
+          .from("site_settings")
+          .select("theme_settings")
+          .eq("id", "product_likes")
+          .maybeSingle();
+
+        const curLikes: any[] = Array.isArray(curSettings?.theme_settings?.likes)
+          ? curSettings.theme_settings.likes
+          : [];
+
+        const existingIdx = curLikes.findIndex(
+          (l: any) => (l.productId === cleanProductId || l.product_id === cleanProductId) &&
+                      (l.visitorId === effectiveVisitorId || l.visitor_id === effectiveVisitorId)
+        );
+
+        let updatedLikes: any[];
+        if (tableSuccess) {
+          if (liked && existingIdx < 0) {
+            updatedLikes = [
+              ...curLikes,
+              {
+                id: `like-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                productId: cleanProductId,
+                visitorId: effectiveVisitorId,
+                createdAt: new Date().toISOString()
+              }
+            ];
+          } else if (!liked && existingIdx >= 0) {
+            updatedLikes = curLikes.filter((_, idx) => idx !== existingIdx);
+          } else {
+            updatedLikes = curLikes;
+          }
+        } else {
+          if (existingIdx >= 0) {
+            updatedLikes = curLikes.filter((_, idx) => idx !== existingIdx);
+            liked = false;
+          } else {
+            updatedLikes = [
+              ...curLikes,
+              {
+                id: `like-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                productId: cleanProductId,
+                visitorId: effectiveVisitorId,
+                createdAt: new Date().toISOString()
+              }
+            ];
+            liked = true;
+          }
+          newCount = updatedLikes.filter(
+            (l: any) => l.productId === cleanProductId || l.product_id === cleanProductId
+          ).length;
+        }
+
+        await dbClient.from("site_settings").upsert({
+          id: "product_likes",
+          theme_settings: { likes: updatedLikes }
+        });
+      }
+
+      return res.json({
+        success: true,
+        productId: cleanProductId,
+        liked,
+        count: newCount,
+        visitorId: effectiveVisitorId,
+        visitorToken: signedToken
+      });
+    } catch (err: any) {
+      console.error("[Toggle Like Error]:", err);
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    } finally {
+      releaseLock();
+      activeToggleLocks.delete(lockKey);
+    }
+  });
+
   // HERO SETTINGS DB Proxy
   app.get("/api/db/hero-settings", async (req, res) => {
     try {

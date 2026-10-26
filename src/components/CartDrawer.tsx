@@ -113,7 +113,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
   if (!isOpen) return null;
 
-  const deliveryFee = subtotal > 0 ? (deliveryCalculation.isFree ? 0 : Math.max(200, deliveryCalculation.deliveryFee)) : 0;
+  const deliveryFee = subtotal > 0 
+    ? Math.min(400, Math.max(250, deliveryCalculation.deliveryFee || 250)) 
+    : 0;
   
   const taxAmount = checkoutSettings?.enableTaxes && checkoutSettings.taxRatePercent > 0
     ? Math.round((subtotal * checkoutSettings.taxRatePercent) / 100)
@@ -343,10 +345,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 <span className="font-semibold font-mono text-slate-700">
                   {deliveryFee > 0 ? (
                     `Rs. ${deliveryFee.toLocaleString('en-PK')}`
-                  ) : deliveryCalculation.isFree ? (
-                    <span className="text-emerald-600 uppercase font-bold text-[11px]">Free Delivery</span>
                   ) : (
-                    'Calculated at Checkout'
+                    'Delivery fee confirmation required'
                   )}
                 </span>
               </div>

@@ -1450,7 +1450,7 @@ export const AdminOrdersManager: React.FC<AdminOrdersManagerProps> = ({ onShowTo
                           <div className="flex justify-between text-slate-400">
                             <span>Delivery Fee:</span>
                             <span className="font-mono text-slate-200">
-                              {order.deliveryCharges === 0 ? <span className="text-emerald-400 font-bold">FREE</span> : `PKR ${order.deliveryCharges}`}
+                              {order.deliveryCharges > 0 ? `PKR ${order.deliveryCharges}` : 'Confirmation Required'}
                             </span>
                           </div>
                           <div className="pt-2 border-t border-slate-800 flex justify-between font-extrabold text-sm text-white">

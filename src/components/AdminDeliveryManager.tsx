@@ -1071,8 +1071,8 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
                                   })}
                                 </div>
                               ) : (
-                                <span className={`font-mono font-bold text-xs ${isFree ? 'text-emerald-400' : 'text-white'}`}>
-                                  {isFree ? 'Always FREE Delivery' : `PKR ${(city.baseFee ?? city.deliveryFee ?? 0).toLocaleString()}`}
+                                <span className="font-mono font-bold text-xs text-white">
+                                  {`PKR ${(Math.min(400, Math.max(250, city.baseFee ?? city.deliveryFee ?? 250))).toLocaleString()}`}
                                 </span>
                               )
                             ) : (
@@ -1394,8 +1394,8 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
               <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 mt-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-400">Calculated Fee:</span>
-                  <span className={`font-mono font-bold text-sm ${liveTestResult.isFree ? 'text-emerald-400' : 'text-amber-300'}`}>
-                    {liveTestResult.isFree ? 'FREE DELIVERY (Rs. 0)' : `Rs. ${liveTestResult.deliveryFee.toLocaleString()}`}
+                  <span className="font-mono font-bold text-sm text-amber-300">
+                    {`Rs. ${(Math.min(400, Math.max(250, liveTestResult.deliveryFee || 250))).toLocaleString()}`}
                   </span>
                 </div>
 

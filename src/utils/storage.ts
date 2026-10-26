@@ -371,7 +371,7 @@ export const defaultCheckoutSettings: CheckoutSettings = {
   deliveryFee: 250,
   taxRatePercent: 0,
   enableTaxes: false,
-  freeDeliveryThreshold: 0,
+  freeDeliveryThreshold: undefined,
   whatsappNumberOverride: '',
   codAdvanceRequired: false,
   codAdvancePercentage: 30,

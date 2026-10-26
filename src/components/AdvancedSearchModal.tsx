@@ -4,6 +4,7 @@ import { Product, ProductCategory, ProductBrand } from '../types';
 import { filterProducts, parseNaturalLanguageQuery, getNumericPrice, getInstantSearchSuggestions } from '../utils/searchUtils';
 import { ProductSaleBadge } from './ProductSaleBadge';
 import { ProductCardRating } from './ProductCardRating';
+import { ProductLikeButton } from './ProductLikeButton';
 import { getProductPricingDetails, getActiveProductPrice } from '../utils/pricingUtils';
 import { trackSearchQuery } from '../utils/analyticsStorage';
 import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
@@ -498,8 +499,12 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
                             </span>
                           )}
                         </div>
+                        {/* Floating Like Button */}
+                        <div className="absolute top-2.5 right-2.5 z-10">
+                          <ProductLikeButton productId={product.id} variant="card-floating" />
+                        </div>
                         {product.brand && (
-                          <span className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-slate-900/80 text-white backdrop-blur-sm z-10">
+                          <span className="absolute top-2.5 right-12 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-slate-900/80 text-white backdrop-blur-sm z-10">
                             {product.brand}
                           </span>
                         )}
@@ -512,7 +517,11 @@ export const AdvancedSearchModal: React.FC<AdvancedSearchModalProps> = ({
                             <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider font-mono truncate">
                               {product.category}
                             </p>
-                            <ProductCardRating productId={product.id} />
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                              <ProductCardRating productId={product.id} />
+                              <span className="text-slate-300">|</span>
+                              <ProductLikeButton productId={product.id} variant="card-badge" />
+                            </div>
                           </div>
                           <h4 
                             onClick={() => onSelectProduct(product)}

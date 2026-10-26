@@ -13,6 +13,8 @@ import {
 import { Product, FeaturedCarouselSettings } from '../types';
 import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
 import { getProductPricingDetails } from '../utils/pricingUtils';
+import { ProductCardRating } from './ProductCardRating';
+import { ProductLikeButton } from './ProductLikeButton';
 
 interface FeaturedProductsCarouselProps {
   products: Product[];
@@ -391,23 +393,7 @@ export const FeaturedProductsCarousel: React.FC<FeaturedProductsCarouselProps> =
                         </button>
                       )}
 
-                      {onToggleWishlist && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleWishlist(product.id);
-                          }}
-                          aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
-                          className={`p-2 rounded-xl backdrop-blur-md transition-all active:scale-90 cursor-pointer ${
-                            isWishlisted 
-                              ? 'bg-rose-50 text-rose-600 border border-rose-200' 
-                              : 'bg-white/90 text-stone-400 hover:text-rose-600 hover:bg-white border border-[#E5DED4] shadow-xs'
-                          }`}
-                        >
-                          <Heart className={`w-4 h-4 ${isWishlisted ? 'fill-rose-500 text-rose-500' : ''}`} />
-                        </button>
-                      )}
+                      <ProductLikeButton productId={product.id} variant="card-floating" />
                     </div>
                   </div>
 
@@ -445,14 +431,16 @@ export const FeaturedProductsCarousel: React.FC<FeaturedProductsCarouselProps> =
                   <div className="p-4 sm:p-5 flex flex-col justify-between space-y-3.5 bg-white/70 border-t border-[#F0EAE1]">
                     <div>
                       {/* Category & Star Rating */}
+                      {/* Category, Real Rating & Likes */}
                       <div className="flex items-center justify-between text-[11px] mb-1.5">
-                        <span className="font-bold uppercase tracking-wider text-[#8C7456] truncate max-w-[140px]">
+                        <span className="font-bold uppercase tracking-wider text-[#8C7456] truncate max-w-[120px]">
                           {product.brand || product.category || 'Luxury Sanitary'}
                         </span>
                         
-                        <div className="flex items-center gap-1 text-amber-500 font-bold">
-                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                          <span>{(product as any).rating || '4.9'}</span>
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <ProductCardRating productId={product.id} />
+                          <span className="text-[#D6CCC0]">|</span>
+                          <ProductLikeButton productId={product.id} variant="card-badge" />
                         </div>
                       </div>
 

@@ -577,8 +577,10 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     items
   );
 
-  const deliveryCharges = effectiveSubtotal > 0 ? (deliveryCalculation.isFree ? 0 : Math.max(200, deliveryCalculation.deliveryFee)) : 0;
-  const isFreeDelivery = effectiveSubtotal > 0 && deliveryCharges === 0;
+  const deliveryCharges = effectiveSubtotal > 0 
+    ? Math.min(400, Math.max(250, deliveryCalculation.deliveryFee || effectiveFallbackFee || 250)) 
+    : 0;
+  const isFreeDelivery = false;
   
   const taxAmount = checkoutSettings.enableTaxes && checkoutSettings.taxRatePercent > 0
     ? Math.round((effectiveSubtotal * checkoutSettings.taxRatePercent) / 100)
@@ -1090,7 +1092,7 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     deliveryLines.push(`- Delivery City: ${order.city}`);
     deliveryLines.push(`- Delivery Address: ${order.deliveryAddress}${order.areaLocality ? `, ${order.areaLocality}` : ''}${order.landmark ? ` (Near: ${order.landmark})` : ''}`);
     
-    let deliveryFeeText = 'FREE Delivery';
+    let deliveryFeeText = 'Delivery fee confirmation required';
     if (order.deliveryCharges > 0) {
       deliveryFeeText = `Rs. ${order.deliveryCharges.toLocaleString('en-PK')}`;
     }
@@ -1388,25 +1390,22 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                         <span>Delivery Fee:</span>
                       </span>
                       <span className="font-bold font-mono">
-                        {isFreeDelivery ? (
-                          <span className="text-emerald-600 font-bold uppercase text-[11px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">FREE Delivery</span>
-                        ) : (
+                        {deliveryCharges > 0 ? (
                           `PKR ${deliveryCharges.toLocaleString('en-PK')}`
+                        ) : (
+                          <span className="text-amber-700 font-semibold text-[11px] bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                            Delivery fee confirmation required
+                          </span>
                         )}
                       </span>
                     </div>
 
                     {/* Tier information notice */}
-                    {matchedCity && deliveryCalculation.hasTiers && !isCustomCitySelected && (
+                    {matchedCity && deliveryCalculation.tierDescription && !isCustomCitySelected && (
                       <div className="text-[11px] flex flex-col items-end -mt-1 pb-1">
                         <span className="font-medium text-slate-500">
-                          {deliveryCalculation.tierDescription || `${matchedCity.cityName} Order-Value Tier`}
+                          {deliveryCalculation.tierDescription}
                         </span>
-                        {deliveryCalculation.nextFreeTierNotice && (
-                          <span className="text-amber-700 font-semibold text-[10px] mt-0.5 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                            💡 {deliveryCalculation.nextFreeTierNotice}
-                          </span>
-                        )}
                       </div>
                     )}
 
@@ -1591,7 +1590,8 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                           cartWeightClassification.heavyItemCount,
                           items
                         );
-                        const feeDisplay = feeCalc.isFree ? 'FREE' : `PKR ${feeCalc.deliveryFee.toLocaleString('en-PK')}`;
+                        const finalCityFee = Math.min(400, Math.max(250, feeCalc.deliveryFee || 250));
+                        const feeDisplay = `PKR ${finalCityFee.toLocaleString('en-PK')}`;
                         return (
                           <option key={c.id ? `${c.id}-${idx}` : `checkout-city-${c.cityName}-${idx}`} value={c.cityName}>
                             📍 {c.cityName} ({c.estimatedDays} • {feeDisplay})

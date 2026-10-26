@@ -134,21 +134,21 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
     if (prodConfig && prodConfig.deliveryFeeType && prodConfig.deliveryFeeType !== 'inherit') {
       if (prodConfig.deliveryFeeType === 'free') {
         return { 
-          amount: 0, 
-          type: 'free' as const, 
-          display: 'Free Delivery',
-          heading: 'Free Delivery',
-          subtitle: 'Free delivery applied for this product.',
+          amount: 250, 
+          type: 'fixed' as const, 
+          display: 'Rs. 250',
+          heading: 'Standard Delivery: Rs. 250',
+          subtitle: 'Standard delivery charge applied for this product.',
           note: 'Direct showroom logistics & safe packaging.'
         };
       }
       if (prodConfig.deliveryFeeType === 'fixed') {
-        const amt = prodConfig.deliveryFeeAmount ?? 0;
+        const amt = Math.min(400, Math.max(250, prodConfig.deliveryFeeAmount ?? 250));
         return { 
           amount: amt, 
           type: 'fixed' as const, 
-          display: amt === 0 ? 'Free Delivery' : `Rs. ${amt.toLocaleString('en-PK')}`,
-          heading: amt === 0 ? 'Free Delivery' : `Fixed Delivery Fee: Rs. ${amt.toLocaleString('en-PK')}`,
+          display: `Rs. ${amt.toLocaleString('en-PK')}`,
+          heading: `Fixed Delivery Fee: Rs. ${amt.toLocaleString('en-PK')}`,
           subtitle: 'Fixed delivery charge configured for this product.',
           note: 'Safe packaging and doorstep delivery.'
         };
@@ -182,13 +182,13 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
         [{ product, quantity: quantity || 1 }]
       );
 
-      const feeAmt = calc.isFree ? 0 : Math.max(200, calc.deliveryFee);
+      const feeAmt = Math.min(400, Math.max(250, calc.deliveryFee || 250));
 
       return { 
         amount: feeAmt, 
-        type: calc.isFree ? ('free' as const) : ('fixed' as const), 
-        display: calc.isFree ? 'Free Delivery' : `Rs. ${feeAmt.toLocaleString('en-PK')}`,
-        heading: calc.isFree ? 'Free Delivery' : `${selectedCity.cityName} Delivery: Rs. ${feeAmt.toLocaleString('en-PK')}`,
+        type: 'fixed' as const, 
+        display: `Rs. ${feeAmt.toLocaleString('en-PK')}`,
+        heading: `${selectedCity.cityName} Delivery: Rs. ${feeAmt.toLocaleString('en-PK')}`,
         subtitle: `Calculated delivery to ${selectedCity.cityName} (${calc.weightClass === 'heavy' ? 'Heavy / Bulky Cargo' : 'Standard Parcel'})`,
         note: `Estimated timeline: ${estimatedDays}. Direct showroom logistics.`
       };
@@ -196,7 +196,7 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
 
     // Default for Custom / Unselected City
     const customHeading = prodConfig?.deliveryFeeLabel?.trim() || 'Calculated at Checkout';
-    const customSub = prodConfig?.deliveryFeeCustomText?.trim() || 'Delivery charges apply based on city, distance, quantity and weight. Minimum Rs. 200.';
+    const customSub = prodConfig?.deliveryFeeCustomText?.trim() || 'Delivery charges apply based on city, distance, quantity and weight. Standard range PKR 250 – 400.';
     const customNote = prodConfig?.deliveryNote?.trim() || 'Contact our support team for specialized delivery assistance.';
 
     return { 

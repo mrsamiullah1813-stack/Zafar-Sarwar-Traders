@@ -4,6 +4,7 @@ import { ProductCategory, Product, ProductBrand, BusinessConfig } from '../types
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ProductSaleBadge } from '../components/ProductSaleBadge';
 import { ProductCardRating } from '../components/ProductCardRating';
+import { ProductLikeButton } from '../components/ProductLikeButton';
 import { getProductPricingDetails, buildProductWhatsAppOrderUrl } from '../utils/pricingUtils';
 import { getProductSlug } from '../utils/slugUtils';
 import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
@@ -253,9 +254,16 @@ export const CategoryDetailPage: React.FC<CategoryDetailPageProps> = ({
                       </div>
                     )}
 
-                    <div className="absolute top-2 right-2 sm:top-3 sm:right-3 px-1.5 sm:px-2 py-0.5 rounded bg-white/95 border border-slate-200 text-[8.5px] sm:text-[10px] font-bold text-slate-600 uppercase shadow-xs">
-                      {brandName}
+                    {/* Top Right Floating Like Button */}
+                    <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10">
+                      <ProductLikeButton productId={product.id} variant="card-floating" />
                     </div>
+
+                    {brandName && (
+                      <div className="absolute top-2 right-14 sm:top-3 sm:right-16 px-1.5 sm:px-2 py-0.5 rounded bg-white/95 border border-slate-200 text-[8.5px] sm:text-[10px] font-bold text-slate-600 uppercase shadow-xs hidden sm:block">
+                        {brandName}
+                      </div>
+                    )}
 
                     <button
                       type="button"
@@ -308,7 +316,11 @@ export const CategoryDetailPage: React.FC<CategoryDetailPageProps> = ({
                         <span className="text-[10px] sm:text-[11px] font-bold text-blue-600 uppercase tracking-wide truncate">
                           {brandName || category.name}
                         </span>
-                        <ProductCardRating productId={product.id} />
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <ProductCardRating productId={product.id} />
+                          <span className="text-slate-300">|</span>
+                          <ProductLikeButton productId={product.id} variant="card-badge" />
+                        </div>
                       </div>
                       <h2 
                         className="text-sm font-bold text-slate-900 hover:text-blue-600 transition-colors cursor-pointer line-clamp-2 leading-snug"

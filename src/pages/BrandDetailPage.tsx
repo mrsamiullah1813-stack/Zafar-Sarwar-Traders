@@ -4,6 +4,7 @@ import { ProductBrand, Product, ProductCategory, BusinessConfig } from '../types
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ProductSaleBadge } from '../components/ProductSaleBadge';
 import { ProductCardRating } from '../components/ProductCardRating';
+import { ProductLikeButton } from '../components/ProductLikeButton';
 import { getProductPricingDetails, buildProductWhatsAppOrderUrl } from '../utils/pricingUtils';
 import { getProductSlug } from '../utils/slugUtils';
 import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
@@ -279,6 +280,11 @@ export const BrandDetailPage: React.FC<BrandDetailPageProps> = ({
                       </div>
                     )}
 
+                    {/* Top Right Floating Like Button */}
+                    <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10">
+                      <ProductLikeButton productId={product.id} variant="card-floating" />
+                    </div>
+
                     <button
                       type="button"
                       onClick={(e) => {
@@ -298,7 +304,11 @@ export const BrandDetailPage: React.FC<BrandDetailPageProps> = ({
                         <span className="text-[10px] sm:text-[11px] font-bold text-blue-600 uppercase tracking-wide truncate">
                           {product.category || brand.name}
                         </span>
-                        <ProductCardRating productId={product.id} />
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <ProductCardRating productId={product.id} />
+                          <span className="text-slate-300">|</span>
+                          <ProductLikeButton productId={product.id} variant="card-badge" />
+                        </div>
                       </div>
                       <h2 
                         className="text-xs sm:text-sm font-bold text-slate-900 hover:text-blue-600 transition-colors cursor-pointer line-clamp-2 leading-snug mt-1"

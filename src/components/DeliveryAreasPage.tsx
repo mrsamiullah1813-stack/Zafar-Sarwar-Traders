@@ -74,7 +74,10 @@ export const DeliveryAreasPage: React.FC<DeliveryAreasPageProps> = ({ onBackToHo
           msg += `   • ${formatTierRange(t)}: ${formatTierFee(t)}\n`;
         });
       } else {
-        msg += `💰 Quoted Delivery Fee: ${city.deliveryFee === 0 ? 'FREE' : `PKR ${city.deliveryFee}`}\n`;
+        const quotedFee = typeof city.deliveryFee === 'number' && city.deliveryFee > 0
+          ? Math.min(400, Math.max(250, city.deliveryFee))
+          : 250;
+        msg += `💰 Quoted Delivery Fee: PKR ${quotedFee}\n`;
       }
     }
     msg += `\nPlease provide shipping details and available courier/truck dispatch schedule. Thank you!`;
@@ -243,13 +246,13 @@ export const DeliveryAreasPage: React.FC<DeliveryAreasPageProps> = ({ onBackToHo
                       <span className="text-[10px] text-slate-400 block">Delivery Fee:</span>
                       {city.deliveryTiers && city.deliveryTiers.length > 0 ? (
                         <span className="font-bold text-amber-400 text-[11px] mt-0.5 block">
-                          From PKR {Math.max(200, city.deliveryTiers[0]?.fee || city.deliveryFee || 200).toLocaleString()}
+                          From PKR {Math.min(400, Math.max(250, city.deliveryTiers[0]?.fee || city.deliveryFee || 250)).toLocaleString()}
                         </span>
                       ) : (
                         <span className="font-bold text-amber-300 font-mono mt-0.5 block">
                           {typeof city.deliveryFee === 'number' && city.deliveryFee > 0
-                            ? `PKR ${Math.max(200, city.deliveryFee).toLocaleString()}`
-                            : 'From PKR 200'}
+                            ? `PKR ${Math.min(400, Math.max(250, city.deliveryFee)).toLocaleString()}`
+                            : 'From PKR 250'}
                         </span>
                       )}
                     </div>

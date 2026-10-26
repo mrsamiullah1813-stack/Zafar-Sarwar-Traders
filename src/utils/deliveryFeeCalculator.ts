@@ -33,16 +33,19 @@ export function formatTierRange(tier: DeliveryFeeTier): string {
 
 /**
  * Format an order tier fee into human-readable text.
+ * Delivery is never free under the pricing policy.
  */
 export function formatTierFee(tier: DeliveryFeeTier): string {
-  if (tier.isFree || Number(tier.fee) === 0) {
-    return 'FREE Delivery';
+  const fee = Number(tier.fee || 0);
+  if (tier.isFree || fee <= 0) {
+    return 'Delivery fee confirmation required';
   }
-  return `PKR ${Number(tier.fee || 0).toLocaleString('en-PK')}`;
+  const cleanFee = Math.min(400, Math.max(250, fee));
+  return `PKR ${cleanFee.toLocaleString('en-PK')}`;
 }
 
 /**
- * Default Light Weight standard tier (Minimum Rs. 200).
+ * Default Light Weight standard tier (PKR 250).
  */
 export function getDefaultCityTiers(cityName: string = 'City'): DeliveryFeeTier[] {
   return [
@@ -52,7 +55,7 @@ export function getDefaultCityTiers(cityName: string = 'City'): DeliveryFeeTier[
       maxAmount: null,
       fee: 250,
       isFree: false,
-      label: `${cityName} Standard Delivery`
+      label: `${cityName} Standard Delivery (PKR 250)`
     }
   ];
 }
@@ -60,11 +63,11 @@ export function getDefaultCityTiers(cityName: string = 'City'): DeliveryFeeTier[
 export const generateDefaultCityTiers = getDefaultCityTiers;
 
 /**
- * Generates sensible base tiers for a city based on its base fee (Minimum Rs. 200).
+ * Generates sensible base tiers for a city based on its base fee (PKR 250 - 400).
  * Delivery is always charged.
  */
 export function generateCityTiersForBaseFee(baseFee: number, citySlug: string = 'city'): DeliveryFeeTier[] {
-  const cleanFee = Math.max(200, Math.round(baseFee));
+  const cleanFee = Math.min(400, Math.max(250, Math.round(baseFee || 250)));
   return [
     {
       id: `tier-${citySlug}-1`,
@@ -72,13 +75,13 @@ export function generateCityTiersForBaseFee(baseFee: number, citySlug: string = 
       maxAmount: null,
       fee: cleanFee,
       isFree: false,
-      label: `Standard Delivery (Rs. ${cleanFee.toLocaleString('en-PK')})`
+      label: `Standard Delivery (PKR ${cleanFee.toLocaleString('en-PK')})`
     }
   ];
 }
 
 /**
- * Default Heavy Weight standard tier.
+ * Default Heavy Weight standard tier (PKR 350 - capped at 400).
  */
 export function getDefaultHeavyCityTiers(cityName: string = 'City'): DeliveryFeeTier[] {
   return [
@@ -86,9 +89,9 @@ export function getDefaultHeavyCityTiers(cityName: string = 'City'): DeliveryFee
       id: `tier-heavy-${Date.now()}-1`,
       minAmount: 0,
       maxAmount: null,
-      fee: 400,
+      fee: 350,
       isFree: false,
-      label: `${cityName} Heavy Cargo Delivery`
+      label: `${cityName} Heavy Cargo Delivery (PKR 350)`
     }
   ];
 }
@@ -96,11 +99,11 @@ export function getDefaultHeavyCityTiers(cityName: string = 'City'): DeliveryFee
 export const generateDefaultHeavyCityTiers = getDefaultHeavyCityTiers;
 
 /**
- * Generates sensible Heavy Weight tiers based on base fee (+Rs. 130–150 cargo handling).
+ * Generates sensible Heavy Weight tiers based on base fee (capped strictly at PKR 400).
  */
 export function generateHeavyCityTiersForBaseFee(baseFee: number, citySlug: string = 'city'): DeliveryFeeTier[] {
-  const cleanFee = Math.max(200, Math.round(baseFee));
-  const heavyBase = cleanFee + (cleanFee <= 250 ? 100 : (cleanFee <= 350 ? 130 : 150));
+  const cleanFee = Math.min(400, Math.max(250, Math.round(baseFee || 250)));
+  const heavyBase = Math.min(400, cleanFee + 50);
   return [
     {
       id: `tier-${citySlug}-h1`,
@@ -108,7 +111,7 @@ export function generateHeavyCityTiersForBaseFee(baseFee: number, citySlug: stri
       maxAmount: null,
       fee: heavyBase,
       isFree: false,
-      label: `Heavy Cargo Delivery (Rs. ${heavyBase.toLocaleString('en-PK')})`
+      label: `Heavy Cargo Delivery (PKR ${heavyBase.toLocaleString('en-PK')})`
     }
   ];
 }
@@ -231,10 +234,12 @@ export function formatWeightTierRange(tier: DeliveryWeightTier): string {
  * Format a weight tier fee into human-readable text.
  */
 export function formatWeightTierFee(tier: DeliveryWeightTier): string {
-  if (tier.isFree || Number(tier.fee) === 0) {
-    return 'FREE Delivery';
+  const fee = Number(tier.fee || 0);
+  if (tier.isFree || fee <= 0) {
+    return 'Delivery fee confirmation required';
   }
-  return `PKR ${Number(tier.fee || 0).toLocaleString('en-PK')}`;
+  const cleanFee = Math.min(400, Math.max(250, fee));
+  return `PKR ${cleanFee.toLocaleString('en-PK')}`;
 }
 
 export function getDefaultCityWeightTiers(): DeliveryWeightTier[] {
@@ -384,7 +389,7 @@ export function calculateCityDeliveryFee(
   city: CityDeliveryInfo | undefined | null,
   orderSubtotal: number,
   fallbackFee: number = 250,
-  _ignoredGlobalFreeThreshold?: number, // Kept for signature compatibility; order value does NOT make delivery free
+  _ignoredGlobalFreeThreshold?: number, // Delivery is NEVER free based on order value
   globalMinFee?: number,
   globalMaxFee?: number,
   weightParam?: number | WeightClass,
@@ -393,22 +398,6 @@ export function calculateCityDeliveryFee(
   heavyItemCountParam?: number,
   itemsList?: Array<{ product?: any; quantity?: number }>
 ): CalculatedDeliveryFee {
-  const effectiveAmount = Math.max(0, Number(orderSubtotal) || 0);
-
-  // If subtotal is zero (empty cart), no delivery charges
-  if (effectiveAmount <= 0) {
-    return {
-      deliveryFee: 0,
-      isFree: true,
-      weightClass: 'light',
-      hasTiers: false,
-      hasWeightTiers: false,
-      totalWeightKg: 0,
-      totalItemCount: 0,
-      loadMultiplier: 1.0
-    };
-  }
-
   // 1. Resolve weight class and item counts
   let resolvedWeightClass: WeightClass = 'light';
   let totalWeightKg = 0;
@@ -435,132 +424,82 @@ export function calculateCityDeliveryFee(
     }
   }
 
-  // 2. Check explicit Admin Free Delivery override on the city itself (only if admin explicitly set free)
-  const isCityAdminFree = Boolean(city?.freeDelivery || city?.deliveryFeeType === 'free');
   const isUnavailable = city?.status === 'unavailable' || city?.isEnabled === false;
 
-  if (isCityAdminFree && city) {
-    return {
-      deliveryFee: 0,
-      isFree: true,
-      weightClass: resolvedWeightClass,
-      hasTiers: false,
-      hasWeightTiers: false,
-      totalWeightKg,
-      totalItemCount: computedTotalItems,
-      loadMultiplier: 1.0,
-      tierDescription: `${city.cityName}: Admin Free Delivery`,
-      isUnavailable
-    };
-  }
-
-  // 3. Determine Base Fee for this City & Weight Class
+  // 2. Determine Base Fee for this City (PKR 250 - 400 policy)
   let baseFeeForClass = 250;
 
   if (!city || city.useCustomRules === false) {
-    // Standard site default
-    const rawFallback = Number(fallbackFee) || 250;
-    baseFeeForClass = resolvedWeightClass === 'heavy' ? Math.max(350, rawFallback + 150) : Math.max(200, rawFallback);
+    // Standard site default (conservative PKR 300 fallback if city unknown/unreliable)
+    const rawFallback = Number(fallbackFee) || 300;
+    baseFeeForClass = Math.min(400, Math.max(250, rawFallback));
   } else {
-    // City-specific base rate
+    // City-specific rate: respect light/heavy fees while capping strictly within PKR 250 - 400
+    const rawCityBase = Number(city.baseFee ?? city.deliveryFee ?? fallbackFee ?? 300);
+    const validCityBase = (rawCityBase >= 250 && rawCityBase <= 400) ? rawCityBase : (rawCityBase <= 0 ? 300 : Math.min(400, Math.max(250, rawCityBase)));
+
     if (resolvedWeightClass === 'heavy') {
-      if (typeof city.heavyWeightFee === 'number' && city.heavyWeightFee > 0) {
-        baseFeeForClass = city.heavyWeightFee;
+      if (typeof city.heavyWeightFee === 'number' && city.heavyWeightFee >= 250) {
+        baseFeeForClass = Math.min(400, city.heavyWeightFee);
       } else {
-        const cityBase = Number(city.baseFee ?? city.deliveryFee ?? fallbackFee);
-        baseFeeForClass = Math.max(350, cityBase + 150);
+        baseFeeForClass = Math.min(400, validCityBase + 50);
       }
     } else {
-      if (typeof city.lightWeightFee === 'number' && city.lightWeightFee > 0) {
-        baseFeeForClass = city.lightWeightFee;
+      if (typeof city.lightWeightFee === 'number' && city.lightWeightFee >= 250) {
+        baseFeeForClass = Math.min(400, Math.max(250, city.lightWeightFee));
       } else {
-        baseFeeForClass = Number(city.baseFee ?? city.deliveryFee ?? fallbackFee);
+        baseFeeForClass = validCityBase;
       }
     }
   }
 
-  // Ensure city base fee is at least Rs. 200
-  baseFeeForClass = Math.max(200, baseFeeForClass);
+  // Ensure base fee is strictly within PKR 250 - 400
+  baseFeeForClass = Math.min(400, Math.max(250, baseFeeForClass));
 
-  // 4. Calculate Quantity & Physical Shipment Load Multiplier
-  // - 1 normal/light item: base fee (e.g. Rs. 300)
-  // - 2-3 normal/light items: base fee (does NOT double)
-  // - 4-6 small items: 1.2x base fee
-  // - 7-10 small items: 1.4x base fee
-  // - 11-15 small items: 1.65x base fee
-  // - 16+ small items: scales up to ~2.0x–2.2x base fee
-  // - 1 heavy item (e.g. commode): 1.0x heavy base fee
-  // - 2 heavy items: 1.35x heavy base fee (e.g. Rs. 450 * 1.35 = Rs. 600+)
-  // - 3 heavy items: 1.65x heavy base fee
-  // - 4+ heavy items: scales up to ~2.2x–2.5x heavy base fee
+  // 3. Multi-Item Shipment Load Multiplier
+  // Preserve multi-item load rules without double-charging; final fee is capped at PKR 400
   let loadMultiplier = 1.0;
   const effectiveLightItems = Math.max(0, computedTotalItems - computedHeavyItems);
 
   if (computedHeavyItems > 0) {
     if (computedHeavyItems === 1) {
-      loadMultiplier = effectiveLightItems <= 3 ? 1.0 : 1.15;
+      loadMultiplier = effectiveLightItems <= 3 ? 1.0 : 1.1;
     } else if (computedHeavyItems === 2) {
-      loadMultiplier = 1.35;
-    } else if (computedHeavyItems === 3) {
-      loadMultiplier = 1.65;
+      loadMultiplier = 1.2;
     } else {
-      loadMultiplier = Math.min(2.5, 1.65 + (computedHeavyItems - 3) * 0.25);
+      loadMultiplier = 1.3;
     }
   } else {
     if (computedTotalItems <= 3) {
       loadMultiplier = 1.0;
     } else if (computedTotalItems <= 6) {
-      loadMultiplier = 1.2;
+      loadMultiplier = 1.1;
     } else if (computedTotalItems <= 10) {
-      loadMultiplier = 1.4;
-    } else if (computedTotalItems <= 15) {
-      loadMultiplier = 1.65;
+      loadMultiplier = 1.2;
     } else {
-      loadMultiplier = Math.min(2.2, 1.65 + (computedTotalItems - 15) * 0.05);
+      loadMultiplier = 1.25;
     }
   }
 
-  // Weight-based freight cargo check for very heavy shipments (> 20 kg)
-  if (totalWeightKg > 20) {
-    const weightCargoMultiplier = Math.min(2.5, 1.0 + (totalWeightKg - 20) * 0.02);
-    loadMultiplier = Math.max(loadMultiplier, weightCargoMultiplier);
-  }
+  // Calculate fee with load multiplier, rounded to 5 PKR
+  let calculatedFee = Math.round((baseFeeForClass * loadMultiplier) / 5) * 5;
 
-  // Calculate fee with load multiplier, rounded to nearest 10 PKR
-  let calculatedFee = Math.round((baseFeeForClass * loadMultiplier) / 10) * 10;
+  // 4. Strict Clamp: final displayed delivery fee must remain within PKR 250 – 400
+  calculatedFee = Math.min(400, Math.max(250, calculatedFee));
 
-  // 5. Apply Absolute Minimum of Rs. 200
-  calculatedFee = Math.max(200, calculatedFee);
-
-  // 6. Apply City Min / Max Bounds if configured
-  if (city) {
-    if (typeof city.minFee === 'number' && city.minFee > 0) {
-      calculatedFee = Math.max(calculatedFee, city.minFee);
-    }
-    if (typeof city.maxFee === 'number' && city.maxFee > 0) {
-      calculatedFee = Math.min(calculatedFee, city.maxFee);
-    }
-  }
-
-  // 7. Apply Global Min / Max Bounds
-  if (typeof globalMinFee === 'number' && globalMinFee >= 0) {
-    calculatedFee = Math.max(calculatedFee, globalMinFee);
-  }
-  if (typeof globalMaxFee === 'number' && globalMaxFee > 0) {
-    calculatedFee = Math.min(calculatedFee, globalMaxFee);
-  }
-
-  // Final guarantee: delivery fee is never below Rs. 200
-  calculatedFee = Math.max(200, calculatedFee);
+  // 5. Check if shipment is too large/heavy for standard delivery cap (> 60 kg)
+  const isOversized = totalWeightKg > 60 || computedHeavyItems >= 4;
 
   const cityNameLabel = city?.cityName || 'Standard';
   const weightLabel = resolvedWeightClass === 'heavy' ? 'Heavy Cargo' : 'Standard';
   const qtyNotice = computedTotalItems > 1 ? `, Qty: ${computedTotalItems}` : '';
-  const tierDescription = `${cityNameLabel} (${weightLabel}${qtyNotice}): PKR ${calculatedFee.toLocaleString('en-PK')}`;
+  const tierDescription = isOversized
+    ? `${cityNameLabel}: Delivery fee confirmation required (Bulk cargo)`
+    : `${cityNameLabel} (${weightLabel}${qtyNotice}): PKR ${calculatedFee.toLocaleString('en-PK')}`;
 
   return {
     deliveryFee: calculatedFee,
-    isFree: false,
+    isFree: false, // NEVER free under the pricing policy
     weightClass: resolvedWeightClass,
     tierDescription,
     hasTiers: false,

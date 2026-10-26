@@ -853,7 +853,7 @@ export function buildProductWhatsAppOrderUrl(params: BuildWhatsAppOrderParams): 
   deliveryLines.push(`- Delivery City: ${deliveryCity || 'To be confirmed'}${isCustomCity ? ' (Custom Location)' : ''}`);
   deliveryLines.push(`- Delivery Address: ${deliveryAddress || 'To be confirmed on WhatsApp'}`);
   
-  let deliveryFeeLabel = 'FREE Delivery';
+  let deliveryFeeLabel = 'Delivery fee confirmation required';
   if (typeof deliveryFee === 'number' && deliveryFee > 0) {
     deliveryFeeLabel = formatPakistaniPrice(deliveryFee);
   } else if (typeof deliveryFee === 'string' && deliveryFee.trim() !== '') {

@@ -44,6 +44,7 @@ import { navigateBackFromProduct } from '../utils/navigationHistory';
 import { normalizeProductImage, normalizeProductImages, resolveProductImage, handleImageError } from '../utils/imageUtils';
 import { ProductReviewsSection } from '../components/ProductReviewsSection';
 import { ProductCardRating } from '../components/ProductCardRating';
+import { ProductLikeButton } from '../components/ProductLikeButton';
 
 interface ProductDetailPageProps {
   product: Product;
@@ -669,7 +670,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                   {product.name}
                 </h1>
 
-                {/* Rating Stars & Reviews Link */}
+                {/* Rating Stars & Reviews Link & Likes */}
                 <div className="flex items-center flex-wrap gap-2.5 pt-0.5">
                   <button 
                     type="button"
@@ -682,6 +683,9 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                       Reviews
                     </span>
                   </button>
+
+                  <span className="text-slate-300">•</span>
+                  <ProductLikeButton productId={product.id} variant="detail" />
 
                   {product.sku && (
                     <>
@@ -1154,11 +1158,18 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                         onError={(e) => handleImageError(e, rel.category, rel.name)}
                         className="max-h-full max-w-full object-contain filter group-hover:scale-105 transition-transform"
                       />
+                      <div className="absolute top-2 right-2 z-10">
+                        <ProductLikeButton productId={rel.id} variant="card-floating" />
+                      </div>
                     </div>
                     <div className="pt-2.5 space-y-1">
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-[10px] font-bold text-slate-500 uppercase truncate">{rel.category}</span>
-                        <ProductCardRating productId={rel.id} />
+                        <div className="flex items-center gap-1.5">
+                          <ProductCardRating productId={rel.id} />
+                          <span className="text-slate-300">|</span>
+                          <ProductLikeButton productId={rel.id} variant="card-badge" />
+                        </div>
                       </div>
                       <h3 className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-2 leading-snug">
                         {rel.name}

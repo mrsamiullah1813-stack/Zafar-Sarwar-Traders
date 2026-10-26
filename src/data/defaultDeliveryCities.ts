@@ -11,23 +11,28 @@ export const createDefaultCityInfo = (
   options?: Partial<CityDeliveryInfo>
 ): CityDeliveryInfo => {
   const citySlug = id.replace('city-', '');
+  const cleanFee = Math.min(400, Math.max(250, Math.round(baseFee || 250)));
   return {
     id,
     cityName,
     province,
     areaTown,
     status: 'available',
-    estimatedDays: baseFee <= 200 ? '1 Working Day' : (baseFee <= 300 ? '1–2 Working Days' : '2–3 Working Days'),
-    deliveryFee: baseFee,
-    baseFee: baseFee,
-    lightWeightFee: baseFee,
-    heavyWeightFee: baseFee + (baseFee <= 250 ? 100 : (baseFee <= 350 ? 130 : 150)),
+    estimatedDays: cleanFee <= 250 ? '1 Working Day' : (cleanFee <= 300 ? '1–2 Working Days' : '2–3 Working Days'),
+    deliveryFee: cleanFee,
+    baseFee: cleanFee,
+    lightWeightFee: cleanFee,
+    heavyWeightFee: Math.min(400, cleanFee + 50),
+    minFee: 250,
+    maxFee: 400,
+    freeDelivery: false,
+    freeDeliveryThreshold: undefined,
     deliveryFeeType: 'tiered',
     useCustomRules: true,
     isEnabled: true,
     displayOrder,
-    deliveryTiers: generateCityTiersForBaseFee(baseFee, citySlug),
-    heavyDeliveryTiers: generateHeavyCityTiersForBaseFee(baseFee, citySlug),
+    deliveryTiers: generateCityTiersForBaseFee(cleanFee, citySlug),
+    heavyDeliveryTiers: generateHeavyCityTiersForBaseFee(cleanFee, citySlug),
     ...options
   };
 };

@@ -42,6 +42,7 @@ import { SaleCountdownTimer } from './SaleCountdownTimer';
 import { PaintShadeSelector } from './PaintShadeSelector';
 import { ProductMediaViewer, compileProductMediaList } from './ProductMediaViewer';
 import { CouponPromoBox } from './CouponPromoBox';
+import { ProductLikeButton } from './ProductLikeButton';
 import { 
   getProductPricingDetails, 
   getVariantPricingDetails, 
@@ -611,9 +612,12 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
             {/* RIGHT COLUMN: Title, Brand, Colors, Sizes, Materials, Specs (6 columns on desktop) */}
             <div className="lg:col-span-6 space-y-5">
               <div>
-                <span className="text-xs font-bold text-blue-400 uppercase tracking-widest block mb-1">
-                  {product.brand ? `${product.brand} • ${product.category}` : product.category}
-                </span>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="text-xs font-bold text-blue-400 uppercase tracking-widest block">
+                    {product.brand ? `${product.brand} • ${product.category}` : product.category}
+                  </span>
+                  <ProductLikeButton productId={product.id} variant="detail" />
+                </div>
 
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-white font-serif leading-tight">
                   {product.name}
