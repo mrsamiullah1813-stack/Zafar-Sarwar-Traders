@@ -1,5 +1,28 @@
 import { CityDeliveryInfo } from '../types';
 import { generateCityTiersForBaseFee, generateHeavyCityTiersForBaseFee } from '../utils/deliveryFeeCalculator';
+import { 
+  TIER_1_CHINIOT_AREAS, 
+  TIER_2_NEARBY_CITIES, 
+  TIER_3_MEDIUM_DISTANCE_CITIES, 
+  TIER_4_FARTHER_CITIES 
+} from '../utils/deliveryEstimationUtils';
+
+function getDefaultEstimatedDaysForCity(cityName: string): string {
+  const norm = cityName.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (TIER_1_CHINIOT_AREAS.some(c => norm === c || norm.includes(c) || c.includes(norm))) {
+    return '1–2 Days';
+  }
+  if (TIER_2_NEARBY_CITIES.some(c => norm === c || norm.includes(c) || c.includes(norm))) {
+    return '2–3 Days';
+  }
+  if (TIER_3_MEDIUM_DISTANCE_CITIES.some(c => norm === c || norm.includes(c) || c.includes(norm))) {
+    return '3–4 Days';
+  }
+  if (TIER_4_FARTHER_CITIES.some(c => norm === c || norm.includes(c) || c.includes(norm))) {
+    return '3–5 Days';
+  }
+  return '3–5 Days';
+}
 
 export const createDefaultCityInfo = (
   id: string,
@@ -12,13 +35,14 @@ export const createDefaultCityInfo = (
 ): CityDeliveryInfo => {
   const citySlug = id.replace('city-', '');
   const cleanFee = Math.min(400, Math.max(250, Math.round(baseFee || 250)));
+  const defaultDays = getDefaultEstimatedDaysForCity(cityName);
   return {
     id,
     cityName,
     province,
     areaTown,
     status: 'available',
-    estimatedDays: cleanFee <= 250 ? '1 Working Day' : (cleanFee <= 300 ? '1–2 Working Days' : '2–3 Working Days'),
+    estimatedDays: defaultDays,
     deliveryFee: cleanFee,
     baseFee: cleanFee,
     lightWeightFee: cleanFee,

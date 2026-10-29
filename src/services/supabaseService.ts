@@ -412,14 +412,16 @@ export function mapDbProductToProduct(row: any): Product {
     ''
   );
 
-  const primaryImage = row.main_image || row.image || row.image_url || row.img_url || row.cover_image || row.thumbnail || row.picture || row.photo || (Array.isArray(row.gallery_images) && row.gallery_images[0]) || (Array.isArray(row.images) && row.images[0]) || (Array.isArray(row.gallery) && row.gallery[0]) || '';
+  const primaryImage = row.main_image || row.image || row.image_url || row.img_url || row.cover_image || rawSpecs._main_image || rawSpecs._image || row.thumbnail || row.picture || row.photo || (Array.isArray(row.gallery_images) && row.gallery_images[0]) || (Array.isArray(row.images) && row.images[0]) || (Array.isArray(row.gallery) && row.gallery[0]) || (Array.isArray(rawSpecs._gallery_images) && rawSpecs._gallery_images[0]) || '';
   const galleryImagesList = Array.isArray(row.gallery_images) && row.gallery_images.length > 0 
     ? row.gallery_images 
     : (Array.isArray(row.images) && row.images.length > 0 
       ? row.images 
       : (Array.isArray(row.gallery) && row.gallery.length > 0 
         ? row.gallery 
-        : (primaryImage ? [primaryImage] : [])));
+        : (Array.isArray(rawSpecs._gallery_images) && rawSpecs._gallery_images.length > 0
+          ? rawSpecs._gallery_images
+          : (primaryImage ? [primaryImage] : []))));
 
   return {
     id: String(row.id),
@@ -648,6 +650,9 @@ export function mapProductToDb(product: Product): any {
     _delivery_config: product.deliveryConfig || null,
     _rating: typeof product.rating === 'number' ? product.rating : (product.rating ? parseFloat(String(product.rating)) : 4.8),
     _reviews_count: typeof product.reviewsCount === 'number' ? product.reviewsCount : (typeof product.reviews_count === 'number' ? product.reviews_count : 12),
+    _main_image: product.image || null,
+    _gallery_images: product.images || [],
+    _image: product.image || null,
     _display_order: product.displayOrder ?? 0
   };
 
@@ -663,8 +668,12 @@ export function mapProductToDb(product: Product): any {
     sale_enabled: isSaleEnabled,
     category_id: product.categoryId || null,
     brand_id: product.brandId || null,
+    main_image: product.image || '',
     image: product.image || '',
+    image_url: product.image || '',
+    gallery_images: product.images || [],
     gallery: product.images || [],
+    images: product.images || [],
     features: product.features || [],
     specifications: specsWithMeta,
     stock_quantity: product.stockQuantity ?? 10,
@@ -2803,9 +2812,10 @@ export async function uploadMediaToSupabase(
         })
       });
       const json = await res.json().catch(() => null);
-      if (res.ok && json?.success && json?.url) {
-        console.log(`[Storage] Upload SUCCESS via server backend: ${json.url}`);
-        return { url: json.url };
+      const chosenUrl = json?.supabaseUrl || json?.url || json?.dataUri;
+      if (res.ok && json?.success && chosenUrl) {
+        console.log(`[Storage] Upload SUCCESS via server backend: ${chosenUrl}`);
+        return { url: chosenUrl };
       }
     } catch (proxyErr) {
       console.warn('[Storage] Backend upload proxy attempt skipped/failed:', proxyErr);

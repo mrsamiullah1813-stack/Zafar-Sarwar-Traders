@@ -26,6 +26,7 @@ import { fetchPaymentMethodsFromSupabase, uploadMediaToSupabase, uploadPaymentPr
 import { CouponPromoBox } from './CouponPromoBox';
 import { pushNavigationState, replaceNavigationState, navigateBackSafe, addNavigationListener, resetToHome } from '../utils/navigationHistory';
 import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
+import { calculateDeliveryEstimate } from '../utils/deliveryEstimationUtils';
 
 type CheckoutStep = 'cart' | 'customer' | 'address' | 'payment_method' | 'payment_instructions' | 'payment_proof' | 'confirmation';
 
@@ -532,6 +533,13 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     ? (customCityName.trim() || 'Custom Location')
     : (matchedCity ? matchedCity.cityName : (selectedCityId || 'Lahore'));
 
+  const checkoutEstimate = useMemo(() => {
+    return calculateDeliveryEstimate(
+      isCustomCitySelected ? customCityName.trim() : (matchedCity || finalCityName),
+      deliverySettings
+    );
+  }, [isCustomCitySelected, customCityName, matchedCity, finalCityName, deliverySettings]);
+
   const getItemPricing = (item: CartItem) => {
     if (!item?.product) return { effectivePriceNumeric: 0, isSaleActive: false, discountPercentage: 0, regularPriceNumeric: 0, effectivePriceString: 'Price on Request', formattedSalePrice: '', formattedRegularPrice: '', variantSku: undefined };
     const p = item.product;
@@ -977,8 +985,8 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
       advanceAmountRequired: isCodAdvanceRequired ? codAdvanceAmountRequired : undefined,
       advancePaidAmount: isCodAdvanceRequired ? codAdvanceAmountRequired : undefined,
       remainingCodAmount: isCodAdvanceRequired ? codRemainingAmount : (isCashOnDelivery ? grandTotal : 0),
-      estimatedDeliveryDays: matchedCity ? matchedCity.estimatedDays : '2-4 Business Days',
-      estimatedDeliveryDate: matchedCity ? matchedCity.estimatedDays : '2-4 Business Days',
+      estimatedDeliveryDays: checkoutEstimate.rangeDaysLabel,
+      estimatedDeliveryDate: checkoutEstimate.formattedDateRange,
       estimatedDeliveryTime: '10:00 AM – 6:00 PM',
     };
 
@@ -1400,6 +1408,12 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                       </span>
                     </div>
 
+                    {/* Dynamic Expected Delivery Timeline */}
+                    <div className="flex justify-between items-center text-[11px] text-emerald-800 font-semibold bg-emerald-50/90 px-2.5 py-1.5 rounded-lg border border-emerald-200/70 -mt-1">
+                      <span>Expected by ({checkoutEstimate.rangeDaysLabel}):</span>
+                      <span>{checkoutEstimate.formattedDateRange}</span>
+                    </div>
+
                     {/* Tier information notice */}
                     {matchedCity && deliveryCalculation.tierDescription && !isCustomCitySelected && (
                       <div className="text-[11px] flex flex-col items-end -mt-1 pb-1">
@@ -1623,8 +1637,11 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                       </div>
 
                       <div className="flex flex-wrap gap-2 text-[11px] text-slate-600 pt-0.5">
-                        <span className="bg-white px-2 py-0.5 rounded border border-slate-200 font-medium">
-                          ⏱ {matchedCity.estimatedDays || '1–3 Working Days'}
+                        <span className="bg-white px-2 py-0.5 rounded border border-slate-200 font-medium text-emerald-800">
+                          ⏱ {checkoutEstimate.rangeDaysLabel} (Expected by: {checkoutEstimate.formattedDateRange})
+                        </span>
+                        <span className="bg-white px-2 py-0.5 rounded border border-slate-200 font-medium text-slate-700">
+                          📍 {checkoutEstimate.originText}
                         </span>
                         <span className="bg-white px-2 py-0.5 rounded border border-slate-200 font-medium">
                           📦 {cartWeightClassification.weightClass === 'heavy' ? 'Heavy / Bulky Cargo' : 'Standard Parcel'}
@@ -1640,6 +1657,11 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                           </span>
                         )}
                       </div>
+                      {checkoutEstimate.isProvisional && (
+                        <p className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
+                          ⚠️ {checkoutEstimate.provisionalNote}
+                        </p>
+                      )}
                       {matchedCity.notes && (
                         <p className="text-[10px] text-slate-500 italic">
                           ℹ️ {matchedCity.notes}

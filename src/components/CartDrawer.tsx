@@ -5,6 +5,7 @@ import { getActiveProductPrice } from '../utils/pricingUtils';
 import { loadDeliverySettings } from '../utils/storage';
 import { calculateCityDeliveryFee } from '../utils/deliveryFeeCalculator';
 import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
+import { calculateDeliveryEstimate } from '../utils/deliveryEstimationUtils';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -340,16 +341,27 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 </span>
               </div>
 
-              <div className="flex justify-between items-center">
-                <span>Estimated Delivery ({defaultCity?.cityName || 'Standard'}):</span>
-                <span className="font-semibold font-mono text-slate-700">
-                  {deliveryFee > 0 ? (
-                    `Rs. ${deliveryFee.toLocaleString('en-PK')}`
-                  ) : (
-                    'Delivery fee confirmation required'
-                  )}
-                </span>
-              </div>
+              {(() => {
+                const est = calculateDeliveryEstimate(defaultCity, deliverySettings);
+                return (
+                  <div className="space-y-0.5">
+                    <div className="flex justify-between items-center">
+                      <span>Delivery ({defaultCity?.cityName || 'Chiniot'} • {est.rangeDaysLabel}):</span>
+                      <span className="font-semibold font-mono text-slate-700">
+                        {deliveryFee > 0 ? (
+                          `Rs. ${deliveryFee.toLocaleString('en-PK')}`
+                        ) : (
+                          'Delivery fee confirmation required'
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[10px] text-emerald-700 font-medium">
+                      <span>Expected by: {est.formattedDateRange}</span>
+                      <span className="text-slate-400">From {est.originText}</span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {taxAmount > 0 && (
                 <div className="flex justify-between items-center">

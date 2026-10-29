@@ -333,14 +333,17 @@ export function handleImageError(
     return;
   }
 
-  // Do NOT replace uploaded product or Hero Slider images (Supabase Storage or /uploads/) with category or placeholder images
-  if (
-    target.src.includes('supabase.co/storage/') ||
-    target.src.includes('/uploads/') ||
-    target.src.startsWith('data:') ||
-    target.src.startsWith('blob:')
-  ) {
-    return;
+  // If a local /uploads/ URL fails (e.g. on live Hostinger static host), attempt loading directly from Supabase Storage
+  if (target.src.includes('/uploads/') && !target.src.includes('supabase.co')) {
+    const filename = target.src.split('/uploads/').pop()?.split('?')[0];
+    if (filename) {
+      target.onerror = () => {
+        target.onerror = null;
+        target.src = getCategoryFallbackImage(category, name);
+      };
+      target.src = `https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/product-media/uploads/${encodeURIComponent(decodeURIComponent(filename))}`;
+      return;
+    }
   }
 
   const fallback = getCategoryFallbackImage(category, name);

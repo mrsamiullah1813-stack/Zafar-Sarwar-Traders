@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { DeliverySettings, CityDeliveryInfo } from '../types';
 import { loadDeliverySettings, sanitizeAndDeduplicateCities } from '../utils/storage';
+import { calculateDeliveryEstimate } from '../utils/deliveryEstimationUtils';
 
 interface DeliveryCheckerModalProps {
   isOpen: boolean;
@@ -250,21 +251,32 @@ export const DeliveryCheckerModal: React.FC<DeliveryCheckerModalProps> = ({ isOp
                     </div>
                   </div>
 
-                  <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs">
-                    <span className="text-amber-400 font-medium flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" />
-                      {city.estimatedDays}
-                    </span>
-                    <span className="font-bold text-amber-300 font-mono">
-                      {isContact
-                        ? 'Contact to Confirm'
-                        : city.deliveryTiers && city.deliveryTiers.length > 0
-                        ? `From PKR ${Math.max(200, city.deliveryTiers[0]?.fee || city.deliveryFee || 200).toLocaleString()}`
-                        : typeof city.deliveryFee === 'number' && city.deliveryFee > 0
-                        ? `PKR ${Math.max(200, city.deliveryFee).toLocaleString()}`
-                        : 'From PKR 200'}
-                    </span>
-                  </div>
+                  {(() => {
+                    const est = calculateDeliveryEstimate(city, deliverySettings);
+                    return (
+                      <div className="mt-2.5 pt-2 border-t border-slate-800/80 space-y-1.5 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-amber-400 font-medium flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5" />
+                            {est.rangeDaysLabel}
+                          </span>
+                          <span className="font-bold text-amber-300 font-mono">
+                            {isContact
+                              ? 'Contact to Confirm'
+                              : city.deliveryTiers && city.deliveryTiers.length > 0
+                              ? `From PKR ${Math.max(200, city.deliveryTiers[0]?.fee || city.deliveryFee || 200).toLocaleString()}`
+                              : typeof city.deliveryFee === 'number' && city.deliveryFee > 0
+                              ? `PKR ${Math.max(200, city.deliveryFee).toLocaleString()}`
+                              : 'From PKR 200'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-400">
+                          <span className="text-emerald-400 font-medium">📅 Expected: {est.formattedDateRange}</span>
+                          <span className="text-slate-500 text-[10px]">📍 {est.originText}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}

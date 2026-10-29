@@ -16,6 +16,7 @@ import { DeliverySettings, CityDeliveryInfo, Product, ProductDeliveryConfig } fr
 import { loadDeliverySettings, sanitizeAndDeduplicateCities, saveSelectedDeliveryCity, loadSelectedDeliveryCity } from '../utils/storage';
 import { calculateCityDeliveryFee, isProductHeavyOrBulky } from '../utils/deliveryFeeCalculator';
 import { parseNumericPrice } from '../utils/pricingUtils';
+import { calculateDeliveryEstimate } from '../utils/deliveryEstimationUtils';
 
 export interface DeliveryDetailsPayload {
   city: string;
@@ -111,6 +112,17 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
     });
   }, [activeCities, searchQuery]);
 
+  // Current active city name
+  const currentCityName = isCustomMode ? customCityName.trim() : (selectedCity?.cityName || '');
+
+  // Calculate dynamic delivery estimate using Asia/Karachi time & Chiniot origin
+  const dynamicEstimate = useMemo(() => {
+    return calculateDeliveryEstimate(
+      isCustomMode ? customCityName : (selectedCity || currentCityName),
+      deliverySettings
+    );
+  }, [isCustomMode, customCityName, selectedCity, currentCityName, deliverySettings]);
+
   // Derive estimated days
   const estimatedDays = useMemo(() => {
     if (prodConfig && (prodConfig.deliveryType === 'standard' || prodConfig.deliveryType === 'both')) {
@@ -119,14 +131,8 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
       const unit = prodConfig.deliveryTimeUnit || 'Days';
       return min === max ? `${min} ${unit}` : `${min}–${max} ${unit}`;
     }
-    if (isCustomMode) {
-      return '2–4 Working Days';
-    }
-    if (selectedCity) {
-      return selectedCity.estimatedDays || '1–2 Working Days';
-    }
-    return deliverySettings.defaultEstimatedDays || '2–4 Working Days';
-  }, [prodConfig, isCustomMode, selectedCity, deliverySettings]);
+    return dynamicEstimate.rangeDaysLabel;
+  }, [prodConfig, dynamicEstimate]);
 
   // Derive delivery fee info
   const deliveryFeeInfo = useMemo(() => {
@@ -208,9 +214,6 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
       note: customNote
     };
   }, [prodConfig, isCustomMode, selectedCity, product, deliverySettings, estimatedDays, quantity]);
-
-  // Current active city name
-  const currentCityName = isCustomMode ? customCityName.trim() : (selectedCity?.cityName || '');
 
   // Sync with global storage when city changes
   useEffect(() => {
@@ -377,17 +380,34 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
 
       {/* 2. SELECTED CITY INFORMATION BADGES */}
       {currentCityName && (
-        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="flex items-center gap-2 text-slate-600">
-              <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-              <span>Time: <strong className="text-slate-900">{estimatedDays}</strong></span>
+        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-2 text-slate-700">
+                <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>Est. Delivery: <strong className="text-slate-900">{estimatedDays}</strong></span>
+              </div>
+              <p className="text-[11px] font-semibold text-emerald-700 pl-5.5">
+                📅 Expected by: {dynamicEstimate.formattedDateRange}
+              </p>
             </div>
-            <div className="flex items-center gap-2 text-slate-600">
-              <Truck className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-              <span>Delivery Fee: <strong className="text-slate-900 font-mono">{deliveryFeeInfo.display}</strong></span>
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-2 text-slate-700">
+                <Truck className="w-3.5 h-3.5 text-slate-700 shrink-0" />
+                <span>Delivery Fee: <strong className="text-slate-900 font-mono">{deliveryFeeInfo.display}</strong></span>
+              </div>
+              <p className="text-[11px] text-slate-500 pl-5.5">
+                📍 Origin: {dynamicEstimate.originText}
+              </p>
             </div>
           </div>
+
+          {dynamicEstimate.isProvisional && (
+            <p className="text-[11px] text-amber-700 font-medium flex items-start gap-1.5 pt-1.5 border-t border-slate-200">
+              <Info className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+              <span>{dynamicEstimate.provisionalNote}</span>
+            </p>
+          )}
 
           {selectedCity?.notes && (
             <p className="text-[11px] text-slate-500 flex items-start gap-1.5 pt-1 border-t border-slate-200">
@@ -399,7 +419,7 @@ export const ProductDeliveryEstimator: React.FC<ProductDeliveryEstimatorProps> =
           {isCustomMode && (
             <p className="text-[11px] text-blue-800 flex items-start gap-1.5 pt-1 border-t border-slate-200">
               <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0 mt-0.5" />
-              <span>Our team will confirm exact cargo dispatch rates for {currentCityName} on WhatsApp.</span>
+              <span>Our team will confirm exact cargo dispatch schedule for {currentCityName} on WhatsApp.</span>
             </p>
           )}
         </div>

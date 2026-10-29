@@ -1353,7 +1353,9 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
       _related_product_ids: product.relatedProductIds || [],
       _tags: product.tags || [],
       _seo_title: product.seoTitle || null,
-      _seo_description: product.seoDescription || null,
+      _main_image: product.image || null,
+      _gallery_images: product.images || [],
+      _image: product.image || null,
       _display_order: product.displayOrder ?? 0
     };
 
@@ -1369,8 +1371,12 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
       sale_enabled: isSaleEnabled,
       category_id: product.categoryId || null,
       brand_id: product.brandId || null,
+      main_image: product.image || "",
       image: product.image || "",
+      image_url: product.image || "",
+      gallery_images: product.images || [],
       gallery: product.images || [],
+      images: product.images || [],
       features: product.features || [],
       specifications: specsWithMeta,
       stock_quantity: product.stockQuantity ?? 10,
@@ -5160,7 +5166,7 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
                     console.log(`✅ [Supabase Upload] Stored in bucket "${b}":`, publicData.publicUrl);
                     return res.json({
                       success: true,
-                      url: localPublicUrl,
+                      url: publicData.publicUrl,
                       supabaseUrl: publicData.publicUrl,
                       localUrl: localPublicUrl,
                       fileName: finalFileName,
@@ -5179,14 +5185,14 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
       }
 
       // Safe persistent fallback: If Supabase Storage was not reachable, return permanent base64 data URI
-      // (ensures images never break or 404 when container filesystem restarts)
+      // (ensures images never break or 404 when container filesystem restarts or on static hosts)
       const dataUriFallback = typeof fileData === "string" && fileData.startsWith("data:")
         ? fileData
         : `data:${mimeType};base64,${buffer.toString("base64")}`;
 
       return res.json({
         success: true,
-        url: localPublicUrl || dataUriFallback,
+        url: dataUriFallback || localPublicUrl,
         localUrl: localPublicUrl,
         dataUri: dataUriFallback,
         fileName: finalFileName
