@@ -167,23 +167,25 @@ export function normalizeProductImage(image?: string | null | any, category?: st
     return trimmed;
   }
 
-  // Normalize local server / Express uploaded images directly (/uploads/... or uploads/...)
+  // Resolve legacy local/Express /uploads/ paths to verified public Supabase Storage CDN URL
+  const SUPABASE_STORAGE_PRODUCT_MEDIA_BASE = 'https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/product-media';
+
   if (trimmed.startsWith('/uploads/')) {
     const filename = trimmed.split('/uploads/').pop()?.split('?')[0];
     if (filename) {
-      return `/uploads/${encodeURIComponent(decodeURIComponent(filename))}`;
+      return `${SUPABASE_STORAGE_PRODUCT_MEDIA_BASE}/uploads/${encodeURIComponent(decodeURIComponent(filename))}`;
     }
   }
   if (trimmed.startsWith('uploads/')) {
     const filename = trimmed.replace(/^uploads\//, '').split('?')[0];
     if (filename) {
-      return `/uploads/${encodeURIComponent(decodeURIComponent(filename))}`;
+      return `${SUPABASE_STORAGE_PRODUCT_MEDIA_BASE}/uploads/${encodeURIComponent(decodeURIComponent(filename))}`;
     }
   }
   if (trimmed.includes('/uploads/') && !trimmed.startsWith('http')) {
     const filename = trimmed.split('/uploads/').pop()?.split('?')[0];
     if (filename) {
-      return `/uploads/${encodeURIComponent(decodeURIComponent(filename))}`;
+      return `${SUPABASE_STORAGE_PRODUCT_MEDIA_BASE}/uploads/${encodeURIComponent(decodeURIComponent(filename))}`;
     }
   }
 
@@ -264,9 +266,9 @@ export function resolveProductImage(product: any): string {
     return getCategoryFallbackImage(product.category, product.name);
   }
 
-  // Priority 1: Check for explicit uploaded images (/uploads/, data:, blob:)
+  // Priority 1: Check for explicit uploaded images (supabase.co, /uploads/, data:, blob:)
   for (const img of candidateImages) {
-    if (img.includes('/uploads/') || img.startsWith('uploads/') || img.startsWith('data:') || img.startsWith('blob:')) {
+    if (img.includes('supabase.co') || img.includes('/uploads/') || img.startsWith('uploads/') || img.startsWith('data:') || img.startsWith('blob:')) {
       return normalizeProductImage(img, product.category, product.name);
     }
   }
