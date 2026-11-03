@@ -300,85 +300,132 @@ export default function App() {
     const path = currentPath;
     if (path === '/' || path === '') {
       updateSeoMetadata({
-        title: `${config.name || 'Zafar Sarwar Traders'} | Sanitaryware & Building Materials | Sanitary Shop in Chiniot`,
-        description: 'Zafar Sarwar Traders is a sanitaryware and building materials shop in Chiniot, offering sanitary fittings, bathroom products, pipes, water tanks, and paints.',
-        path: '/'
+        title: `${config.name || 'Zafar Sarwar Traders'} | Sanitary Shop in Chiniot | Building Materials & Paints`,
+        description: 'Zafar Sarwar Traders is a leading sanitary shop in Chiniot, offering luxury bathroom fittings, bathroom accessories, water tanks, PPRC/UPVC pipes, and paints with nationwide delivery across Pakistan.',
+        path: '/',
+        breadcrumbs: [
+          { name: 'Home', path: '/' }
+        ]
       });
     } else if (path === '/store' || path === '/products') {
       updateSeoMetadata({
-        title: 'Sanitaryware & Building Materials Shop in Chiniot | Zafar Sarwar Traders',
-        description: 'Shop sanitary fittings, bathroom products, pipes, water tanks, paints, and building materials at Zafar Sarwar Traders Chiniot with delivery across Pakistan.',
-        path: '/store'
+        title: 'Sanitaryware, Bathroom Fittings & Paints Catalog | Zafar Sarwar Traders Chiniot',
+        description: 'Explore verified sanitary fittings, bathroom accessories, kitchen taps, water tanks, pipes, and paints at wholesale prices from Zafar Sarwar Traders Chiniot with nationwide delivery.',
+        path: '/store',
+        breadcrumbs: [
+          { name: 'Home', path: '/' },
+          { name: 'Store Catalog', path: '/store' }
+        ]
       });
     } else if (path === '/categories') {
       updateSeoMetadata({
-        title: 'Product Categories & Departments | Zafar Sarwar Traders',
-        description: 'Browse bathroom fixtures, sanitary fittings, tiles, paints, hardware, and plumbing solutions.',
-        path: '/categories'
+        title: 'Sanitaryware, Plumbing & Paint Categories | Zafar Sarwar Traders Chiniot',
+        description: 'Browse product categories: luxury sanitaryware, designer faucets, rain showers, water tanks, PPRC and UPVC pipes and fittings, and paints.',
+        path: '/categories',
+        breadcrumbs: [
+          { name: 'Home', path: '/' },
+          { name: 'Categories', path: '/categories' }
+        ]
       });
     } else if (path.startsWith('/category/')) {
       const slug = path.slice('/category/'.length);
       const cat = findCategoryBySlug(slug, categories);
       if (cat) {
         updateSeoMetadata({
-          title: `${cat.name} in Chiniot | Zafar Sarwar Traders`,
-          description: cat.description || `Browse our verified collection of ${cat.name} at Zafar Sarwar Traders in Chiniot with delivery across Pakistan.`,
+          title: `${cat.name} in Chiniot | Sanitary Fittings & Supplies | Zafar Sarwar Traders`,
+          description: cat.description ? `${cat.description.slice(0, 140)}... Verified ${cat.name} at Zafar Sarwar Traders Chiniot with delivery across Pakistan.` : `Browse our verified collection of ${cat.name} at Zafar Sarwar Traders in Chiniot with delivery across Pakistan.`,
           path: `/category/${slug}`,
-          image: cat.image
+          image: cat.image,
+          breadcrumbs: [
+            { name: 'Home', path: '/' },
+            { name: 'Categories', path: '/categories' },
+            { name: cat.name, path: `/category/${slug}` }
+          ]
         });
       }
     } else if (path.startsWith('/product/')) {
       const slug = path.slice('/product/'.length);
       const prod = findProductBySlug(slug, products);
       if (prod) {
+        const catSlug = prod.category ? generateCategorySlug(prod.category, prod.categoryId) : '';
         updateSeoMetadata({
           title: `${prod.name} | ${prod.category ? `${prod.category} | ` : ''}Zafar Sarwar Traders Chiniot`,
-          description: prod.description ? `${prod.description.slice(0, 140)}... Available at Zafar Sarwar Traders Chiniot.` : `Buy ${prod.name} at wholesale prices from Zafar Sarwar Traders in Chiniot with fast delivery across Pakistan.`,
+          description: prod.description ? `${prod.description.slice(0, 140)}... Available at Zafar Sarwar Traders Chiniot with fast delivery across Pakistan.` : `Buy ${prod.name} at wholesale prices from Zafar Sarwar Traders in Chiniot with fast delivery across Pakistan.`,
           path: `/product/${slug}`,
           image: prod.image,
-          type: 'product'
+          type: 'product',
+          breadcrumbs: [
+            { name: 'Home', path: '/' },
+            ...(prod.category ? [{ name: prod.category, path: `/category/${catSlug}` }] : [{ name: 'Store', path: '/store' }]),
+            { name: prod.name, path: `/product/${slug}` }
+          ]
         });
       }
     } else if (path === '/brands') {
       updateSeoMetadata({
-        title: 'Authorized Brands & Manufacturers | Zafar Sarwar Traders',
-        description: 'Official distributor for Master Sanitary, Porta, Grohe, Sonex, Diamond Pipes, and premier building material brands.',
-        path: '/brands'
+        title: 'Authorized Sanitary & Hardware Brands | Zafar Sarwar Traders Chiniot',
+        description: 'Official stockist for Master Sanitary, Dura Max, Faisal Sanitary, Primax Paints, Brighto, and premier building material brands in Chiniot.',
+        path: '/brands',
+        breadcrumbs: [
+          { name: 'Home', path: '/' },
+          { name: 'Authorized Brands', path: '/brands' }
+        ]
       });
     } else if (path.startsWith('/brand/')) {
       const slug = path.slice('/brand/'.length);
       const brand = findBrandBySlug(slug, brands);
       if (brand) {
         updateSeoMetadata({
-          title: `${brand.name} Products & Catalog | Zafar Sarwar Traders`,
-          description: brand.description || `Explore genuine products from ${brand.name} at Zafar Sarwar Traders.`,
+          title: `${brand.name} Products in Chiniot | Zafar Sarwar Traders`,
+          description: brand.description ? `${brand.description.slice(0, 140)}... Explore genuine ${brand.name} products at Zafar Sarwar Traders Chiniot.` : `Explore genuine products from ${brand.name} at Zafar Sarwar Traders in Chiniot with delivery across Pakistan.`,
           path: `/brand/${slug}`,
-          image: brand.logo
+          image: brand.logo,
+          breadcrumbs: [
+            { name: 'Home', path: '/' },
+            { name: 'Authorized Brands', path: '/brands' },
+            { name: brand.name, path: `/brand/${slug}` }
+          ]
         });
       }
     } else if (path === '/smart-tools' || path === '/tools') {
       updateSeoMetadata({
-        title: 'Smart Construction Calculators & Planners | Zafar Sarwar Traders',
-        description: 'Free building material estimator, cement calculator, easy bathroom planner, pipe sizing calculator, and tile quantity tools.',
-        path: '/smart-tools'
+        title: 'Smart Construction Calculators & Estimators | Zafar Sarwar Traders Chiniot',
+        description: 'Free building material estimator, cement calculator, easy bathroom planner, pipe sizing calculator, and tile quantity tools by Zafar Sarwar Traders.',
+        path: '/smart-tools',
+        breadcrumbs: [
+          { name: 'Home', path: '/' },
+          { name: 'Smart Tools', path: '/smart-tools' }
+        ]
       });
     } else if (path === '/delivery' || path === '/delivery-areas') {
       updateSeoMetadata({
-        title: 'Delivery Coverage & Logistics Directory | Zafar Sarwar Traders',
-        description: 'Transparent freight calculation across Chiniot, Faisalabad, Lahore, Rawalpindi, Islamabad, Sargodha, Karachi, and all cities in Pakistan.',
-        path: '/delivery'
+        title: 'Delivery Coverage Across Chiniot & Pakistan | Zafar Sarwar Traders',
+        description: 'Transparent freight and shipping rates from Chiniot to Faisalabad, Lahore, Rawalpindi, Islamabad, Sargodha, Karachi, and all cities in Pakistan.',
+        path: '/delivery',
+        breadcrumbs: [
+          { name: 'Home', path: '/' },
+          { name: 'Delivery Information', path: '/delivery' }
+        ]
       });
     } else if (path === '/about') {
       updateSeoMetadata({
-        title: 'About Zafar Sarwar Traders | Legacy & Showroom',
-        description: 'Established legacy of supplying certified sanitaryware, tiles, CPVC pipes, and architectural building materials across Pakistan.',
-        path: '/about'
+        title: 'About Zafar Sarwar Traders | Sanitaryware & Building Materials Chiniot',
+        description: 'Established legacy since 2011 in Chiniot supplying certified sanitaryware, tiles, CPVC pipes, and architectural building materials across Pakistan.',
+        path: '/about',
+        breadcrumbs: [
+          { name: 'Home', path: '/' },
+          { name: 'About Showroom', path: '/about' }
+        ]
       });
     } else if (path === '/contact') {
       updateSeoMetadata({
-        title: 'Contact Showroom & Warehouse | Zafar Sarwar Traders',
-        description: 'Visit our flagship showroom on Main Sargodha Road Chiniot, or contact our sales and logistics team.',
-        path: '/contact'
+        title: 'Contact Showroom in Chiniot | Zafar Sarwar Traders',
+        description: 'Visit our showroom on Jhang Road, Jhummrah Chowk, Chiniot. Call or WhatsApp +92 310 8002863 for trade inquiries, quotes, and delivery.',
+        path: '/contact',
+        breadcrumbs: [
+          { name: 'Home', path: '/' },
+          { name: 'Contact Showroom', path: '/contact' }
+        ]
       });
     }
   }, [currentPath, config.name, categories, products, brands]);

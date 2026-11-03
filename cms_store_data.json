@@ -3197,9 +3197,9 @@
       "categoryId": "cat-1787217166281",
       "brand": "BEST AISA",
       "brandId": "brand-1786620024934",
-      "image": "/uploads/1791706185919-y1lxry-1791706183361-0590sxb.jpeg",
+      "image": "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/product-media/uploads/1791706185919-y1lxry-1791706183361-0590sxb.jpeg",
       "images": [
-        "/uploads/1791706185919-y1lxry-1791706183361-0590sxb.jpeg"
+        "https://hdbqzhyaluwbktogbfvu.supabase.co/storage/v1/object/public/product-media/uploads/1791706185919-y1lxry-1791706183361-0590sxb.jpeg"
       ],
       "description": "Premium Ivory Pedestal Wash Basin  \nAdd a touch of luxury to your bathroom with this elegant beige pedestal wash basin, featuring a marble-inspired design and stylish modern finish.",
       "shortDescription": "",

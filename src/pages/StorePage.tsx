@@ -85,9 +85,28 @@ export const StorePage: React.FC<StorePageProps> = ({
 
   useEffect(() => {
     updateSeoMetadata({
-      title: 'Online Store & Building Material Catalog | Zafar Sarwar Traders',
-      description: 'Explore verified sanitaryware, luxury faucets, bathroom fittings, heavy water tanks, pipes, and Nippon paints in Chiniot with nationwide delivery.',
-      path: '/store'
+      title: 'Sanitaryware, Paints & Building Materials Catalog | Zafar Sarwar Traders Chiniot',
+      description: 'Explore verified sanitary fittings, bathroom accessories, kitchen taps, water tanks, pipes, and paints at Zafar Sarwar Traders in Chiniot with nationwide delivery.',
+      path: '/store',
+      breadcrumbs: [
+        { name: 'Home', path: '/' },
+        { name: 'Store Catalog', path: '/store' }
+      ],
+      jsonLd: {
+        '@context': 'https://schema.org',
+        '@type': 'CollectionPage',
+        '@id': 'https://zafarsarwartraders.shop/store#collection',
+        'url': 'https://zafarsarwartraders.shop/store',
+        'name': 'Sanitaryware, Paints & Building Materials Catalog | Zafar Sarwar Traders Chiniot',
+        'description': 'Explore verified sanitary fittings, bathroom accessories, kitchen taps, water tanks, pipes, and paints at Zafar Sarwar Traders in Chiniot with nationwide delivery.',
+        'about': [
+          { '@type': 'Thing', 'name': 'Sanitaryware' },
+          { '@type': 'Thing', 'name': 'Bathroom Fittings' },
+          { '@type': 'Thing', 'name': 'Water Tanks' },
+          { '@type': 'Thing', 'name': 'PPRC & UPVC Pipes' },
+          { '@type': 'Thing', 'name': 'Paints & Building Materials' }
+        ]
+      }
     });
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'instant' });

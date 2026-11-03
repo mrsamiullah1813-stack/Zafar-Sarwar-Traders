@@ -348,37 +348,73 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     return null;
   }, [product]);
 
-  // Schema.org structured data using real product fields
+  // Schema.org structured data using real product fields & BreadcrumbList
   const productJsonLd = useMemo(() => {
     const slug = getProductSlug(product);
     const prodUrl = `https://zafarsarwartraders.shop/product/${slug}`;
     const primaryImg = normalizeProductImage(mediaImages[0] || product.image, product.category, product.name);
+    const catSlug = categoryObj ? getCategorySlug(categoryObj) : '';
 
     return {
       "@context": "https://schema.org",
-      "@type": "Product",
-      "name": product.name,
-      "image": primaryImg,
-      "description": product.description || `${product.name} available at Zafar Sarwar Traders in Chiniot, Pakistan.`,
-      ...(brandName ? { "brand": { "@type": "Brand", "name": brandName } } : {}),
-      ...(product.category ? { "category": product.category } : {}),
-      "offers": {
-        "@type": "Offer",
-        "url": prodUrl,
-        "priceCurrency": "PKR",
-        "price": activePricing.effectivePrice,
-        "availability": product.stockStatus === 'out_of_stock' 
-          ? "https://schema.org/OutOfStock" 
-          : "https://schema.org/InStock",
-        "itemCondition": "https://schema.org/NewCondition",
-        "seller": {
-          "@type": "HomeGoodsStore",
-          "name": "Zafar Sarwar Traders",
-          "url": "https://zafarsarwartraders.shop/"
+      "@graph": [
+        {
+          "@type": "Product",
+          "@id": `${prodUrl}#product`,
+          "name": product.name,
+          "image": primaryImg,
+          "description": product.description || `${product.name} available at wholesale rates from Zafar Sarwar Traders in Chiniot, Pakistan.`,
+          ...(product.sku ? { "sku": product.sku } : {}),
+          ...(brandName ? { "brand": { "@type": "Brand", "name": brandName } } : {}),
+          ...(product.category ? { "category": product.category } : {}),
+          "offers": {
+            "@type": "Offer",
+            "url": prodUrl,
+            "priceCurrency": "PKR",
+            "price": activePricing.effectivePrice,
+            "availability": product.stockStatus === 'out_of_stock' 
+              ? "https://schema.org/OutOfStock" 
+              : "https://schema.org/InStock",
+            "itemCondition": "https://schema.org/NewCondition",
+            "seller": {
+              "@type": "HomeGoodsStore",
+              "name": "Zafar Sarwar Traders",
+              "url": "https://zafarsarwartraders.shop/"
+            }
+          }
+        },
+        {
+          "@type": "BreadcrumbList",
+          "@id": `${prodUrl}#breadcrumbs`,
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://zafarsarwartraders.shop/"
+            },
+            ...(categoryObj ? [{
+              "@type": "ListItem",
+              "position": 2,
+              "name": categoryObj.name,
+              "item": `https://zafarsarwartraders.shop/category/${catSlug}`
+            }] : [{
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Store",
+              "item": "https://zafarsarwartraders.shop/store"
+            }]),
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": product.name,
+              "item": prodUrl
+            }
+          ]
         }
-      }
+      ]
     };
-  }, [product, mediaImages, brandName, activePricing.effectivePrice]);
+  }, [product, mediaImages, brandName, activePricing.effectivePrice, categoryObj]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-28 sm:pb-32 md:pb-24">

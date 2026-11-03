@@ -368,9 +368,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={(e) => handleNavClick('/', e)} 
             className="inline-block group text-center cursor-pointer bg-transparent border-0 p-0"
           >
-            <h1 className="text-xl lg:text-2xl font-black font-serif tracking-tight text-slate-900 uppercase group-hover:text-blue-900 transition-colors">
-              ZAFAR SARWAR <span className="text-blue-600 font-sans font-light">TRADERS</span>
-            </h1>
+            {currentPath === '/' || currentPath === '' ? (
+              <h1 className="text-xl lg:text-2xl font-black font-serif tracking-tight text-slate-900 uppercase group-hover:text-blue-900 transition-colors">
+                ZAFAR SARWAR <span className="text-blue-600 font-sans font-light">TRADERS</span>
+              </h1>
+            ) : (
+              <span className="block text-xl lg:text-2xl font-black font-serif tracking-tight text-slate-900 uppercase group-hover:text-blue-900 transition-colors">
+                ZAFAR SARWAR <span className="text-blue-600 font-sans font-light">TRADERS</span>
+              </span>
+            )}
             <p className="text-[11px] font-bold text-slate-500 tracking-widest uppercase mt-0.5">
               Luxury Sanitaryware & Architectural Building Materials
             </p>

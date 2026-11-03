@@ -1,0 +1,12 @@
+# Robots.txt for Zafar Sarwar Traders
+User-agent: *
+Allow: /
+
+# Disallow internal admin or sensitive URL parameters
+Disallow: /api/
+Disallow: /*?admin=*
+Disallow: /*&admin=*
+
+# Sitemap reference
+Sitemap: https://zafarsarwartraders.shop/sitemap.xml
+

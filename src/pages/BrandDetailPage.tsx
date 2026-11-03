@@ -109,9 +109,62 @@ export const BrandDetailPage: React.FC<BrandDetailPageProps> = ({
     window.open(result.url, '_blank');
   };
 
+  const brandJsonLd = useMemo(() => {
+    const slug = brand.slug || brand.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const brandUrl = `https://zafarsarwartraders.shop/brand/${slug}`;
+
+    return {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "CollectionPage",
+          "@id": `${brandUrl}#collection`,
+          "url": brandUrl,
+          "name": `${brand.name} Products in Chiniot | Zafar Sarwar Traders`,
+          "description": brand.description || `Explore authentic ${brand.name} sanitaryware, bathroom fixtures, and building materials at Zafar Sarwar Traders in Chiniot.`,
+          "about": {
+            "@type": "Brand",
+            "name": brand.name,
+            ...(brand.logo ? { "logo": brand.logo } : {})
+          }
+        },
+        {
+          "@type": "BreadcrumbList",
+          "@id": `${brandUrl}#breadcrumbs`,
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://zafarsarwartraders.shop/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Authorized Brands",
+              "item": "https://zafarsarwartraders.shop/brands"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": brand.name,
+              "item": brandUrl
+            }
+          ]
+        }
+      ]
+    };
+  }, [brand]);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
       
+      {/* Schema.org CollectionPage & BreadcrumbList */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(brandJsonLd) }}
+      />
+
       {/* Toast */}
       {addedToast && (
         <div className="fixed top-24 right-6 z-50 px-4 py-3 bg-emerald-900/95 border border-emerald-500/50 text-white text-xs font-semibold rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-2">
@@ -237,7 +290,7 @@ export const BrandDetailPage: React.FC<BrandDetailPageProps> = ({
                   >
                     <img
                       src={resolveProductImage(product)}
-                      alt={product.name}
+                      alt={`${product.name} - ${brand.name} | Zafar Sarwar Traders Chiniot`}
                       onError={(e) => handleImageError(e, product.category, product.name)}
                       className="max-h-full max-w-full object-contain filter group-hover:scale-105 transition-transform duration-300"
                       loading="lazy"

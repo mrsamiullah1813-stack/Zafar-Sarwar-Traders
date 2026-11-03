@@ -26,7 +26,8 @@ export const NotFoundPage: React.FC<NotFoundPageProps> = ({
     updateSeoMetadata({
       title: 'Page Not Found (404) | Zafar Sarwar Traders',
       description: 'The requested product, category, or page could not be found on Zafar Sarwar Traders online store.',
-      path: attemptedPath || '/404'
+      path: attemptedPath || '/404',
+      noindex: true
     });
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'instant' });

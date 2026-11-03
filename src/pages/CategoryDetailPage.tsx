@@ -6,7 +6,7 @@ import { ProductSaleBadge } from '../components/ProductSaleBadge';
 import { ProductCardRating } from '../components/ProductCardRating';
 import { ProductLikeButton } from '../components/ProductLikeButton';
 import { getProductPricingDetails, buildProductWhatsAppOrderUrl } from '../utils/pricingUtils';
-import { getProductSlug } from '../utils/slugUtils';
+import { getProductSlug, getCategorySlug } from '../utils/slugUtils';
 import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
 
 interface CategoryDetailPageProps {
@@ -112,9 +112,58 @@ export const CategoryDetailPage: React.FC<CategoryDetailPageProps> = ({
     window.open(result.url, '_blank');
   };
 
+  const categoryJsonLd = useMemo(() => {
+    const slug = getCategorySlug(category);
+    const catUrl = `https://zafarsarwartraders.shop/category/${slug}`;
+
+    return {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "CollectionPage",
+          "@id": `${catUrl}#collection`,
+          "url": catUrl,
+          "name": `${category.name} in Chiniot | Zafar Sarwar Traders`,
+          "description": category.description || `Browse our verified collection of ${category.name} at wholesale prices from Zafar Sarwar Traders in Chiniot with delivery across Pakistan.`,
+          ...(category.image ? { "image": normalizeProductImage(category.image, category.name) } : {})
+        },
+        {
+          "@type": "BreadcrumbList",
+          "@id": `${catUrl}#breadcrumbs`,
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://zafarsarwartraders.shop/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Categories",
+              "item": "https://zafarsarwartraders.shop/categories"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": category.name,
+              "item": catUrl
+            }
+          ]
+        }
+      ]
+    };
+  }, [category]);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
       
+      {/* Schema.org CollectionPage & BreadcrumbList Structured Data */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(categoryJsonLd) }}
+      />
+
       {/* Toast Notification */}
       {addedToast && (
         <div className="fixed top-24 right-6 z-50 px-4 py-3 bg-emerald-900/95 border border-emerald-500/50 text-white text-xs font-semibold rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-2">
