@@ -45,8 +45,6 @@ export const AiInteriorDesigner: React.FC<AiInteriorDesignerProps> = ({
   whatsappNumber = "923108002863",
   onViewProduct
 }) => {
-  if (!config.isEnabled) return null;
-
   // Wizard state
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
@@ -241,6 +239,10 @@ export const AiInteriorDesigner: React.FC<AiInteriorDesignerProps> = ({
     setTimeout(() => setShareSuccess(false), 3000);
     trackAction('quote', `AI Designer Share: ${roomType}`);
   };
+
+  if (!config.isEnabled) {
+    return null;
+  }
 
   return (
     <section id="ai-bathroom-planner" className="py-20 bg-[#030712] relative overflow-hidden text-slate-100">

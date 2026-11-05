@@ -29,11 +29,6 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   onNavigateToStore,
   onNavigateToCategories
 }) => {
-  // If explicitly disabled in settings, return null
-  if (heroSettings && heroSettings.isEnabled === false) {
-    return null;
-  }
-
   // Active banner slides resolution
   const activeBanners: HeroBannerSlide[] = React.useMemo(() => {
     if (heroSettings?.banners && Array.isArray(heroSettings.banners) && heroSettings.banners.length > 0) {
@@ -230,6 +225,11 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
       opacity: 0
     })
   };
+
+  // If explicitly disabled in settings, return null
+  if (heroSettings && heroSettings.isEnabled === false) {
+    return null;
+  }
 
   return (
     <section 

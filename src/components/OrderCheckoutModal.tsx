@@ -519,8 +519,6 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     );
   }, [items, deliverySettings.heavyWeightThresholdKg]);
 
-  if (!isOpen) return null;
-
   const safeSelectedCityId = String(selectedCityId || '');
   const isCustomCitySelected = safeSelectedCityId === customCityOptionValue || safeSelectedCityId === 'Other';
 
@@ -539,6 +537,8 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
       deliverySettings
     );
   }, [isCustomCitySelected, customCityName, matchedCity, finalCityName, deliverySettings]);
+
+  if (!isOpen) return null;
 
   const getItemPricing = (item: CartItem) => {
     if (!item?.product) return { effectivePriceNumeric: 0, isSaleActive: false, discountPercentage: 0, regularPriceNumeric: 0, effectivePriceString: 'Price on Request', formattedSalePrice: '', formattedRegularPrice: '', variantSku: undefined };

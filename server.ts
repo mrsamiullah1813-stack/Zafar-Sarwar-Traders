@@ -85,7 +85,27 @@ if (dbClient) {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  
+  const args = process.argv.slice(2);
+  let parsedPort = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  let parsedHost = process.env.HOST || "0.0.0.0";
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--port" && args[i + 1]) {
+      parsedPort = parseInt(args[i + 1], 10);
+      i++;
+    } else if (args[i].startsWith("--port=")) {
+      parsedPort = parseInt(args[i].split("=")[1], 10);
+    } else if (args[i] === "--host" && args[i + 1]) {
+      parsedHost = args[i + 1];
+      i++;
+    } else if (args[i].startsWith("--host=")) {
+      parsedHost = args[i].split("=")[1];
+    }
+  }
+
+  const PORT = !isNaN(parsedPort) && parsedPort > 0 ? parsedPort : 3000;
+  const HOST = parsedHost || "0.0.0.0";
 
   // Enable trust proxy for accurate X-Forwarded-* header parsing behind reverse proxies (Cloud Run, Nginx, Cloudflare)
   app.set("trust proxy", true);
@@ -7891,8 +7911,8 @@ Please analyze this space and provide complete, coordinated color palettes stric
     });
   }
 
-  const server = app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Zafar Sarwar Traders Server running on http://0.0.0.0:${PORT}`);
+  const server = app.listen(PORT, HOST, () => {
+    console.log(`Zafar Sarwar Traders Server running on http://${HOST}:${PORT}`);
   });
 
   server.on("error", (err: any) => {

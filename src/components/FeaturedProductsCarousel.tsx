@@ -39,11 +39,6 @@ export const FeaturedProductsCarousel: React.FC<FeaturedProductsCarouselProps> =
   onToggleWishlist,
   onNavigateToStore
 }) => {
-  // If carousel is disabled in settings, do not render
-  if (settings.isEnabled === false) {
-    return null;
-  }
-
   // Resolve the real products to show:
   // 1. Follow admin's configured productIds order
   // 2. Fall back to featured/bestseller/active products from existing database if list is empty
@@ -258,6 +253,11 @@ export const FeaturedProductsCarousel: React.FC<FeaturedProductsCarouselProps> =
   const eyebrowLabel = settings.badgeText || 'OUR COLLECTION';
   const headingTitle = settings.title && settings.title !== 'Curated Masterpieces' ? settings.title : 'Featured Products';
   const subtitleText = settings.subtitle && !settings.subtitle.includes('sanitaryware, designer') ? settings.subtitle : 'Explore our selected products';
+
+  // If carousel is disabled in settings or no products, do not render
+  if (settings.isEnabled === false || displayProducts.length === 0) {
+    return null;
+  }
 
   return (
     <section 
