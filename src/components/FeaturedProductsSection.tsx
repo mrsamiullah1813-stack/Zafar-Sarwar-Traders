@@ -24,6 +24,7 @@ import { ProductSaleBadge } from './ProductSaleBadge';
 import { SaleCountdownTimer } from './SaleCountdownTimer';
 import { ProductCardRating } from './ProductCardRating';
 import { ProductLikeButton } from './ProductLikeButton';
+import { ProductShareButton } from './ProductShareButton';
 import { getProductPricingDetails, getProductVariantDisplaySummary, hasActiveVariants, getActiveProductPrice, buildProductWhatsAppOrderUrl } from '../utils/pricingUtils';
 import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
 
@@ -326,8 +327,9 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                       )}
                     </div>
 
-                    {/* Like & Compare Quick Floating Buttons */}
+                    {/* Like, Share & Compare Quick Floating Buttons */}
                     <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 flex flex-col gap-1 sm:gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
+                      <ProductShareButton product={product} variant="card-floating" />
                       <ProductLikeButton productId={product.id} variant="card-floating" />
 
                       {onToggleCompare && (
@@ -389,6 +391,8 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsProps> = ({
                         <span className="truncate max-w-[85px] sm:max-w-[130px]">{product.brand || product.category}</span>
                         <div className="flex items-center gap-1.5 sm:gap-2">
                           <ProductCardRating productId={product.id} />
+                          <span className="text-slate-300">|</span>
+                          <ProductShareButton product={product} variant="card-badge" />
                           <span className="text-slate-300">|</span>
                           <ProductLikeButton productId={product.id} variant="card-badge" />
                         </div>

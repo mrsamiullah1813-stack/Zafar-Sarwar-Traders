@@ -45,6 +45,9 @@ import { normalizeProductImage, normalizeProductImages, resolveProductImage, han
 import { ProductReviewsSection } from '../components/ProductReviewsSection';
 import { ProductCardRating } from '../components/ProductCardRating';
 import { ProductLikeButton } from '../components/ProductLikeButton';
+import { ProductShareButton } from '../components/ProductShareButton';
+import { isCementProduct, getCementMoqForCity, CementMoqSettings } from '../utils/cementMoqUtils';
+import { loadCementMoqSettings, loadSelectedDeliveryCity } from '../utils/storage';
 
 interface ProductDetailPageProps {
   product: Product;
@@ -187,6 +190,39 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
   // Quantity config
   const qtyConfig = getProductQuantityConfig(product);
 
+  // Feature 2: Cement Minimum Order Quantity (MOQ) State & Hooks
+  const isCement = useMemo(() => isCementProduct(product), [product]);
+  const [deliveryCity, setDeliveryCity] = useState<string>(() => loadSelectedDeliveryCity() || 'Chiniot');
+  const [cementSettings, setCementSettings] = useState<CementMoqSettings>(() => loadCementMoqSettings());
+  const [cementMoqError, setCementMoqError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleCityUpdate = (e: any) => {
+      const city = e.detail || loadSelectedDeliveryCity();
+      if (city) {
+        setDeliveryCity(city);
+        setCementMoqError(null);
+      }
+    };
+    const handleMoqUpdate = (e: any) => {
+      const s = e.detail || loadCementMoqSettings();
+      if (s) {
+        setCementSettings(s);
+        setCementMoqError(null);
+      }
+    };
+    window.addEventListener('zst_selected_city_updated', handleCityUpdate);
+    window.addEventListener('zst_cement_moq_updated', handleMoqUpdate);
+    return () => {
+      window.removeEventListener('zst_selected_city_updated', handleCityUpdate);
+      window.removeEventListener('zst_cement_moq_updated', handleMoqUpdate);
+    };
+  }, []);
+
+  const cementMoqInfo = useMemo(() => {
+    return getCementMoqForCity(deliveryCity, cementSettings, product);
+  }, [deliveryCity, cementSettings, product]);
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'instant' });
@@ -197,8 +233,15 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     const availShades = getActivePaintShades(product);
     setSelectedShade(availShades.find(s => s.isActive) || availShades[0]);
     setSelectedColor(hasColors ? productColors[0] : '');
-    setQuantity(qtyConfig.defaultQuantity || 1);
-  }, [product.id, hasColors, productColors]);
+    
+    // For cement products, if customer hasn't explicitly set a higher quantity, set initial default
+    if (isCement) {
+      setQuantity(cementMoqInfo.minQuantity);
+    } else {
+      setQuantity(qtyConfig.defaultQuantity || 1);
+    }
+    setCementMoqError(null);
+  }, [product.id, hasColors, productColors, isCement, cementMoqInfo.minQuantity]);
 
   // Normalize all existing images for this product (NO fake images generated)
   const mediaImages = useMemo(() => {
@@ -247,6 +290,13 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
   };
 
   const handleAdd = () => {
+    if (isCement && quantity < cementMoqInfo.minQuantity) {
+      setCementMoqError(
+        `Minimum order is ${cementMoqInfo.minQuantity} bags for delivery to ${cementMoqInfo.cityName} (${cementMoqInfo.zoneName}). You currently selected ${quantity} bag${quantity === 1 ? '' : 's'}.`
+      );
+      return;
+    }
+    setCementMoqError(null);
     onAddToCart(
       product,
       quantity,
@@ -262,6 +312,13 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
   };
 
   const handleBuy = () => {
+    if (isCement && quantity < cementMoqInfo.minQuantity) {
+      setCementMoqError(
+        `Minimum order is ${cementMoqInfo.minQuantity} bags for delivery to ${cementMoqInfo.cityName} (${cementMoqInfo.zoneName}). You currently selected ${quantity} bag${quantity === 1 ? '' : 's'}.`
+      );
+      return;
+    }
+    setCementMoqError(null);
     onBuyNow(
       product,
       quantity,
@@ -467,20 +524,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={handleShare}
-              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
-              title="Share product link"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Share</span>
-            </button>
-            {copiedLink && (
-              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200">
-                Link Copied!
-              </span>
-            )}
+            <ProductShareButton product={product} variant="detail" />
           </div>
         </div>
       </div>
@@ -878,36 +922,170 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                 </div>
               )}
 
-              {/* Quantity Selector & Action Buttons */}
-              <div className="space-y-3 pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-xs font-bold text-slate-800">
-                    Quantity {qtyConfig.unitLabel ? `(${qtyConfig.unitLabel})` : ''}:
-                  </div>
-                  
-                  <div className="flex items-center border border-slate-300 rounded-xl overflow-hidden bg-white shadow-2xs">
-                    <button
-                      type="button"
-                      onClick={() => setQuantity(Math.max(qtyConfig.minQuantity || 1, quantity - (qtyConfig.quantityStep || 1)))}
-                      className="min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-700 hover:bg-slate-100 active:bg-slate-200 transition-colors cursor-pointer"
-                      disabled={quantity <= (qtyConfig.minQuantity || 1)}
-                      title="Decrease quantity"
-                    >
-                      <Minus className="w-3.5 h-3.5" />
-                    </button>
-                    <span className="px-3.5 py-1 text-sm font-black text-slate-900 min-w-[40px] text-center font-mono">
-                      {quantity}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setQuantity(quantity + (qtyConfig.quantityStep || 1))}
-                      className="min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-700 hover:bg-slate-100 active:bg-slate-200 transition-colors cursor-pointer"
-                      title="Increase quantity"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
+              {/* Cement Minimum Order Quantity (MOQ) Delivery Banner */}
+              {isCement && (
+                <div className={`p-4 rounded-2xl border transition-all ${
+                  quantity < cementMoqInfo.minQuantity
+                    ? 'bg-amber-50/90 border-amber-300 text-amber-950 shadow-xs'
+                    : 'bg-blue-50/70 border-blue-200 text-slate-900'
+                }`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`p-2 rounded-xl shrink-0 mt-0.5 ${
+                      quantity < cementMoqInfo.minQuantity ? 'bg-amber-500 text-white' : 'bg-blue-600 text-white'
+                    }`}>
+                      <Truck className="w-4 h-4" />
+                    </div>
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/80 border border-slate-200 text-slate-700">
+                          {cementMoqInfo.zoneName}
+                        </span>
+                        <span className="text-xs font-bold font-mono text-slate-700">
+                          Destination: <strong className="text-slate-900 underline decoration-blue-500 underline-offset-2">{cementMoqInfo.cityName}</strong>
+                        </span>
+                      </div>
+                      
+                      <h4 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
+                        Minimum order: <span className="text-blue-700 underline font-black">{cementMoqInfo.minQuantity} bags</span> for your selected delivery location ({cementMoqInfo.cityName}).
+                      </h4>
+
+                      <p className="text-[11px] text-slate-600 leading-relaxed">
+                        Chiniot City: 100 bags • Nearby ~30–50 km: 300 bags • Farther Cities: 500 bags flatbed truckload.
+                      </p>
+
+                      {quantity < cementMoqInfo.minQuantity ? (
+                        <div className="pt-1 flex items-center justify-between gap-2 flex-wrap">
+                          <span className="text-[11px] font-bold text-amber-900 bg-amber-100/90 px-2.5 py-1 rounded-lg border border-amber-300">
+                            Current: {quantity} bags (deficit of {cementMoqInfo.minQuantity - quantity} bags)
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQuantity(cementMoqInfo.minQuantity);
+                              setCementMoqError(null);
+                            }}
+                            className="px-3 py-1 text-xs font-bold bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white rounded-lg shadow-2xs transition-colors cursor-pointer"
+                          >
+                            Set to Minimum ({cementMoqInfo.minQuantity} bags)
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="pt-1 flex items-center gap-1.5 text-[11px] font-bold text-emerald-700">
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Valid quantity for delivery to {cementMoqInfo.cityName} ({quantity} bags selected)</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
+              )}
+
+              {/* Cement MOQ Error Alert */}
+              {cementMoqError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-semibold flex items-start gap-2 animate-in fade-in duration-200">
+                  <div className="w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center shrink-0 mt-0.5 text-[10px] font-black">
+                    !
+                  </div>
+                  <div className="flex-1">
+                    <span>{cementMoqError}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Quantity Selector & Action Buttons */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="text-xs font-bold text-slate-800">
+                    Quantity {isCement ? '(Bags)' : (qtyConfig.unitLabel ? `(${qtyConfig.unitLabel})` : '')}:
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center border border-slate-300 rounded-xl overflow-hidden bg-white shadow-2xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const step = isCement ? 10 : (qtyConfig.quantityStep || 1);
+                          const newQ = Math.max(1, quantity - step);
+                          setQuantity(newQ);
+                          if (isCement && newQ >= cementMoqInfo.minQuantity) setCementMoqError(null);
+                        }}
+                        className="min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-700 hover:bg-slate-100 active:bg-slate-200 transition-colors cursor-pointer"
+                        disabled={quantity <= 1}
+                        title="Decrease quantity"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <input
+                        type="number"
+                        min="1"
+                        max="20000"
+                        value={quantity}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          if (!isNaN(val) && val >= 1) {
+                            setQuantity(val);
+                            if (isCement && val >= cementMoqInfo.minQuantity) {
+                              setCementMoqError(null);
+                            }
+                          } else if (e.target.value === '') {
+                            setQuantity(1);
+                          }
+                        }}
+                        className="w-18 sm:w-20 py-1 text-sm font-black text-slate-900 text-center font-mono focus:outline-none focus:bg-blue-50/50"
+                        title="Directly enter order quantity"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const step = isCement ? 10 : (qtyConfig.quantityStep || 1);
+                          const newQ = quantity + step;
+                          setQuantity(newQ);
+                          if (isCement && newQ >= cementMoqInfo.minQuantity) setCementMoqError(null);
+                        }}
+                        className="min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-700 hover:bg-slate-100 active:bg-slate-200 transition-colors cursor-pointer"
+                        title="Increase quantity"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Presets for Cement Bulk Ordering */}
+                {isCement && (
+                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">Quick Add Bags:</span>
+                    {[
+                      { label: '+50', add: 50 },
+                      { label: '+100', add: 100 },
+                      { label: '+300', add: 300 },
+                      { label: '+500', add: 500 }
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          const nextQ = quantity + preset.add;
+                          setQuantity(nextQ);
+                          if (nextQ >= cementMoqInfo.minQuantity) setCementMoqError(null);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 border border-slate-200 text-slate-700 text-xs font-bold font-mono transition-colors cursor-pointer"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuantity(cementMoqInfo.minQuantity);
+                        setCementMoqError(null);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-800 text-xs font-bold font-mono transition-colors cursor-pointer ml-auto"
+                    >
+                      Min: {cementMoqInfo.minQuantity}
+                    </button>
+                  </div>
+                )}
 
                 {/* Primary Action Buttons: Add to Cart (Black) + Buy Now + WhatsApp */}
                 <div className="space-y-2 pt-1">
@@ -1194,7 +1372,8 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                         onError={(e) => handleImageError(e, rel.category, rel.name)}
                         className="max-h-full max-w-full object-contain filter group-hover:scale-105 transition-transform"
                       />
-                      <div className="absolute top-2 right-2 z-10">
+                      <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
+                        <ProductShareButton product={rel} variant="card-floating" />
                         <ProductLikeButton productId={rel.id} variant="card-floating" />
                       </div>
                     </div>
@@ -1203,6 +1382,8 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                         <span className="text-[10px] font-bold text-slate-500 uppercase truncate">{rel.category}</span>
                         <div className="flex items-center gap-1.5">
                           <ProductCardRating productId={rel.id} />
+                          <span className="text-slate-300">|</span>
+                          <ProductShareButton product={rel} variant="card-badge" />
                           <span className="text-slate-300">|</span>
                           <ProductLikeButton productId={rel.id} variant="card-badge" />
                         </div>

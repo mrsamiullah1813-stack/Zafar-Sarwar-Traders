@@ -1051,6 +1051,51 @@ export interface DeliverySettings {
   notes?: string;
 }
 
+export type CementDeliveryZone = 'chiniot' | 'nearby' | 'farther';
+
+export interface CementMoqSettings {
+  isEnabled: boolean; // Master toggle for cement MOQ rules
+  chiniotMinQuantity: number; // default: 100 bags
+  nearbyZoneMinQuantity: number; // default: 300 bags (configurable 200-300)
+  fartherZoneMinQuantity: number; // default: 500 bags
+  chiniotMinBags?: number;
+  nearbyMinBags?: number;
+  fartherMinBags?: number;
+  nearbyCities: string[]; // List of city slugs or normalized city names in the nearby zone
+  unitLabel: string; // "bags"
+}
+
+export interface CementMoqInfo {
+  isCement: boolean;
+  zone: CementDeliveryZone;
+  zoneName: string;
+  minQuantity: number;
+  cityName: string;
+  unitLabel: string;
+  badgeText: string;
+  descriptionText: string;
+}
+
+export interface CementValidationResult {
+  isValid: boolean;
+  hasCement: boolean;
+  totalCementQuantity: number;
+  requiredMinQuantity: number;
+  deficitQuantity: number;
+  zone: CementDeliveryZone;
+  zoneName: string;
+  cityName: string;
+  unitLabel: string;
+  errorMessage?: string;
+  cementItems: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+  }>;
+  cementItemCount?: number;
+  requiredMoq?: number;
+}
+
 export interface ThemeOption {
   id: string; // 'light' | 'dark' | 'navy' | 'glass' | 'premium-blue'
   name: string;

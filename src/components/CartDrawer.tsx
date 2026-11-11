@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { X, Trash2, ShoppingBag, Plus, Minus, ArrowRight, ShieldCheck, Boxes, Sparkles, Check, Truck } from 'lucide-react';
+import { X, Trash2, ShoppingBag, Plus, Minus, ArrowRight, ShieldCheck, Boxes, Sparkles, Check, Truck, AlertTriangle } from 'lucide-react';
 import { BusinessConfig, CartItem, CheckoutSettings, DeliverySettings } from '../types';
 import { getActiveProductPrice } from '../utils/pricingUtils';
-import { loadDeliverySettings } from '../utils/storage';
+import { loadDeliverySettings, loadSelectedDeliveryCity, loadCementMoqSettings } from '../utils/storage';
 import { calculateCityDeliveryFee } from '../utils/deliveryFeeCalculator';
 import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
 import { calculateDeliveryEstimate } from '../utils/deliveryEstimationUtils';
+import { validateCementCart, isCementProduct } from '../utils/cementMoqUtils';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -50,6 +51,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   }, [isOpen, onClose]);
 
   const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>(() => loadDeliverySettings());
+  const [selectedCity, setSelectedCity] = useState<string>(() => loadSelectedDeliveryCity() || 'Chiniot');
+  const [cementSettings, setCementSettings] = useState(() => loadCementMoqSettings());
 
   useEffect(() => {
     const handleSettingsUpdate = (e: any) => {
@@ -59,12 +62,29 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
         setDeliverySettings(loadDeliverySettings());
       }
     };
+    const handleCityUpdate = (e: any) => {
+      setSelectedCity(e.detail || loadSelectedDeliveryCity() || 'Chiniot');
+    };
+    const handleMoqUpdate = (e: any) => {
+      setCementSettings(e.detail || loadCementMoqSettings());
+    };
+
     window.addEventListener('zst_delivery_settings_updated', handleSettingsUpdate);
-    return () => window.removeEventListener('zst_delivery_settings_updated', handleSettingsUpdate);
+    window.addEventListener('zst_selected_city_updated', handleCityUpdate);
+    window.addEventListener('zst_cement_moq_updated', handleMoqUpdate);
+    return () => {
+      window.removeEventListener('zst_delivery_settings_updated', handleSettingsUpdate);
+      window.removeEventListener('zst_selected_city_updated', handleCityUpdate);
+      window.removeEventListener('zst_cement_moq_updated', handleMoqUpdate);
+    };
   }, []);
 
   const items = Array.isArray(cartItems) ? cartItems : [];
   const totalItemCount = items.reduce((acc, item) => acc + (item?.quantity || 0), 0);
+
+  const cementValidation = useMemo(() => {
+    return validateCementCart(items, selectedCity, cementSettings);
+  }, [items, selectedCity, cementSettings]);
 
   const getItemPricing = (item: CartItem) => {
     if (!item?.product) return { effectivePriceNumeric: 0, isSaleActive: false, discountPercentage: 0, regularPriceNumeric: 0, effectivePriceString: 'Price on Request' };
@@ -378,6 +398,24 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               </div>
             </div>
 
+            {/* Cement MOQ Alert Banner */}
+            {!cementValidation.isValid && (
+              <div className="p-3 rounded-xl bg-amber-50 border-2 border-amber-300 text-amber-900 text-xs space-y-1.5 animate-fadeIn">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-bold text-amber-950 text-xs">Cement Minimum Order Requirement</p>
+                    <p className="text-[11px] text-amber-900 leading-snug mt-0.5 font-medium">
+                      {cementValidation.errorMessage}
+                    </p>
+                    <p className="text-[10px] text-amber-800/90 mt-1">
+                      🚚 Cement is dispatched directly via factory freight trucks for {selectedCity}. Please increase bag quantity to reach the required minimum.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center gap-2 text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl font-medium">
               <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>Direct order processing with WhatsApp & cash/bank payment options.</span>
@@ -385,12 +423,21 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
             <button
               onClick={() => {
+                if (!cementValidation.isValid) {
+                  return;
+                }
                 onClose();
                 onProceedToCheckout();
               }}
-              className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer"
+              disabled={!cementValidation.isValid}
+              className={`w-full py-3.5 px-4 rounded-xl font-extrabold text-xs sm:text-sm shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                cementValidation.isValid
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/25 active:scale-98'
+                  : 'bg-amber-500/90 hover:bg-amber-500 text-slate-950 cursor-not-allowed shadow-amber-500/20 opacity-95'
+              }`}
+              title={cementValidation.isValid ? 'Proceed to Checkout' : cementValidation.errorMessage}
             >
-              <span>Proceed to Checkout</span>
+              <span>{cementValidation.isValid ? 'Proceed to Checkout' : `Cement MOQ Required (${cementValidation.requiredMinQuantity || 100} Bags Min)`}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
 

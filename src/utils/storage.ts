@@ -72,6 +72,7 @@ export const STORAGE_KEYS = {
   HOW_TO_ORDER_GUIDE: 'zst_how_to_order_guide_v1',
   SELECTED_DELIVERY_CITY: 'zst_selected_delivery_city_v1',
   FEATURED_CAROUSEL: 'zst_featured_carousel_v1',
+  CEMENT_MOQ_SETTINGS: 'zst_cement_moq_settings_v1',
 };
 
 export const defaultHeroBanners: HeroBannerSlide[] = [
@@ -2852,6 +2853,60 @@ export const loadSelectedDeliveryCity = (): string => {
     }
   } catch {}
   return '';
+};
+import { CementMoqSettings, defaultCementMoqSettings } from './cementMoqUtils';
+export { defaultCementMoqSettings, defaultCementMoqSettings as DEFAULT_CEMENT_MOQ_SETTINGS };
+
+/**
+ * Load Cement MOQ (Minimum Order Quantity) Settings with fallback to default rules
+ */
+export const loadCementMoqSettings = (): CementMoqSettings => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.CEMENT_MOQ_SETTINGS);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed && typeof parsed.isEnabled === 'boolean') {
+        return {
+          ...defaultCementMoqSettings,
+          ...parsed,
+          chiniotMinQuantity: Number(parsed.chiniotMinQuantity) || 100,
+          nearbyZoneMinQuantity: Number(parsed.nearbyZoneMinQuantity) || 300,
+          fartherZoneMinQuantity: Number(parsed.fartherZoneMinQuantity) || 500,
+          nearbyCities: Array.isArray(parsed.nearbyCities) && parsed.nearbyCities.length > 0 
+            ? parsed.nearbyCities 
+            : defaultCementMoqSettings.nearbyCities
+        };
+      }
+    }
+  } catch (e) {
+    console.error('Error loading cement MOQ settings:', e);
+  }
+  return defaultCementMoqSettings;
+};
+
+/**
+ * Save Cement MOQ Settings to localStorage, Server CMS, and Supabase site_settings
+ */
+export const saveCementMoqSettings = async (
+  settings: CementMoqSettings
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    safeSetLocalStorage(STORAGE_KEYS.CEMENT_MOQ_SETTINGS, settings);
+    saveToServerCMS(STORAGE_KEYS.CEMENT_MOQ_SETTINGS, settings);
+    
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('zst_cement_moq_updated', { detail: settings }));
+    }
+
+    const res = await saveSiteSettingToSupabase(STORAGE_KEYS.CEMENT_MOQ_SETTINGS, settings);
+    if (res && res.success === false) {
+      return { success: false, error: res.error };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error saving cement MOQ settings:', err);
+    return { success: false, error: err?.message || String(err) };
+  }
 };
 
 

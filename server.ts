@@ -2572,15 +2572,60 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
       let calculatedSubtotal = 0;
       const validatedItems: any[] = [];
 
+      // Load server-side Cement MOQ settings from memory or DB
+      let cementMoqConfig: any = cmsDataStore["cement_moq_settings"] || cmsDataStore["zst_cement_moq_settings_v1"] || null;
+      if (!cementMoqConfig && dbClient) {
+        try {
+          const { data: cData } = await dbClient.from("site_settings").select("value").eq("key", "cement_moq_settings").maybeSingle();
+          if (cData && cData.value) cementMoqConfig = cData.value;
+        } catch {}
+      }
+
+      const isCementActive = cementMoqConfig?.isEnabled !== false;
+      const chiniotMoq = Number(cementMoqConfig?.chiniotMinBags) || 100;
+      const nearbyMoq = Number(cementMoqConfig?.nearbyMinBags) || 300;
+      const fartherMoq = Number(cementMoqConfig?.fartherMinBags) || 500;
+      const nearbyCitiesList = Array.isArray(cementMoqConfig?.nearbyCities) && cementMoqConfig.nearbyCities.length > 0
+        ? cementMoqConfig.nearbyCities.map((c: string) => String(c).trim().toLowerCase())
+        : ["rabwah", "chenab nagar", "faisalabad", "sargodha", "bhowana", "lalian", "pindi bhattian"];
+
+      let totalCementBags = 0;
+      let orderContainsCement = false;
+
       for (let idx = 0; idx < items.length; idx++) {
         const item = items[idx];
         const rawQty = parseInt(String(item.quantity || "1"), 10);
-        if (isNaN(rawQty) || rawQty < 1 || rawQty > 500) {
+        if (isNaN(rawQty) || rawQty < 1) {
           return res.status(400).json({ success: false, error: `Validation Error: Invalid quantity (${item.quantity}) for item #${idx + 1}.` });
         }
 
         const prodId = String(item.product_id || item.productId || item.id || "").trim();
         const dbProduct = prodId ? dbProductsMap.get(prodId.toLowerCase()) : null;
+
+        // Identify if this item is a cement product (excluding plumbing solvent cements)
+        const itemCat = String(dbProduct?.category || item.category || item.product?.category || "").trim().toLowerCase();
+        const itemTitle = String(dbProduct?.title || dbProduct?.name || item.product_title || item.productName || item.title || item.name || "").trim().toLowerCase();
+        const isSolventGlue = itemTitle.includes("solvent") || itemTitle.includes("solution") || itemTitle.includes("pipe cement") || itemTitle.includes("pvc cement");
+        const isCement = !isSolventGlue && (
+          itemCat === "cement" || 
+          itemCat.includes("cement") || 
+          itemTitle.includes("cement") || 
+          itemTitle.includes("bestway") || 
+          itemTitle.includes("best way") || 
+          itemTitle.includes("dandot")
+        );
+
+        if (isCement) {
+          orderContainsCement = true;
+          totalCementBags += rawQty;
+          if (rawQty > 10000) {
+            return res.status(400).json({ success: false, error: `Validation Error: Maximum order quantity for cement is 10,000 bags per order.` });
+          }
+        } else {
+          if (rawQty > 500) {
+            return res.status(400).json({ success: false, error: `Validation Error: Invalid quantity (${item.quantity}) for item #${idx + 1}. Maximum 500 units per standard retail item.` });
+          }
+        }
 
         let trustedUnitPrice = 0;
 
@@ -2664,6 +2709,36 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
           selected_shade: item.selected_shade || item.selectedShade || null,
           selected_shade_code: item.selected_shade_code || item.selectedShadeCode || null
         });
+      }
+
+      // 4b. Server-Side Cement Minimum Order Quantity (MOQ) Validation
+      if (orderContainsCement && isCementActive) {
+        const destCity = String(
+          city || 
+          order.shipping_city || 
+          order.city || 
+          order.delivery_city || 
+          ""
+        ).trim().toLowerCase();
+
+        let requiredMoq = fartherMoq;
+        let zoneLabel = "Farther Cities / Nationwide";
+
+        if (!destCity || destCity.includes("chiniot")) {
+          requiredMoq = chiniotMoq;
+          zoneLabel = "Chiniot Local Zone";
+        } else if (nearbyCitiesList.some((nc: string) => destCity.includes(nc) || nc.includes(destCity))) {
+          requiredMoq = nearbyMoq;
+          zoneLabel = "Nearby Chiniot Zone (30-50 km)";
+        }
+
+        if (totalCementBags < requiredMoq) {
+          const deficit = requiredMoq - totalCementBags;
+          return res.status(400).json({
+            success: false,
+            error: `Cement Minimum Order Quantity Requirement: Minimum order for ${destCity || "your destination"} (${zoneLabel}) is ${requiredMoq} bags. Your order currently has ${totalCementBags} bags (need ${deficit} more). Cement is dispatched in factory truckloads. Please adjust your bag quantity.`
+          });
+        }
       }
 
       calculatedSubtotal = Math.round(calculatedSubtotal * 100) / 100;

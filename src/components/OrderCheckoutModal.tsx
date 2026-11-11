@@ -19,7 +19,7 @@ import {
   formatWeightTierRange,
   formatWeightTierFee
 } from '../utils/deliveryFeeCalculator';
-import { loadDeliverySettings, generateNextOrderId, loadPaymentMethods, loadHowToOrderConfig, openWhatsAppLink, safeSetLocalStorage, STORAGE_KEYS, sanitizeAndDeduplicateCities, saveSelectedDeliveryCity, loadSelectedDeliveryCity } from '../utils/storage';
+import { loadDeliverySettings, generateNextOrderId, loadPaymentMethods, loadHowToOrderConfig, openWhatsAppLink, safeSetLocalStorage, STORAGE_KEYS, sanitizeAndDeduplicateCities, saveSelectedDeliveryCity, loadSelectedDeliveryCity, loadCementMoqSettings } from '../utils/storage';
 import { getOrGenerateCustomerId } from '../utils/customerStorage';
 import { getProductPricingDetails, getVariantPricingDetails, getActiveProductPrice } from '../utils/pricingUtils';
 import { fetchPaymentMethodsFromSupabase, uploadMediaToSupabase, uploadPaymentProof, fetchHowToOrderConfigFromSupabase, fetchDeliveryCitiesFromSupabase } from '../services/supabaseService';
@@ -27,6 +27,7 @@ import { CouponPromoBox } from './CouponPromoBox';
 import { pushNavigationState, replaceNavigationState, navigateBackSafe, addNavigationListener, resetToHome } from '../utils/navigationHistory';
 import { normalizeProductImage, resolveProductImage, handleImageError } from '../utils/imageUtils';
 import { calculateDeliveryEstimate } from '../utils/deliveryEstimationUtils';
+import { validateCementCart, isCementProduct } from '../utils/cementMoqUtils';
 
 type CheckoutStep = 'cart' | 'customer' | 'address' | 'payment_method' | 'payment_instructions' | 'payment_proof' | 'confirmation';
 
@@ -538,6 +539,20 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     );
   }, [isCustomCitySelected, customCityName, matchedCity, finalCityName, deliverySettings]);
 
+  const [cementSettings, setCementSettings] = useState(() => loadCementMoqSettings());
+
+  useEffect(() => {
+    const handleMoqUpdate = (e: any) => {
+      setCementSettings(e.detail || loadCementMoqSettings());
+    };
+    window.addEventListener('zst_cement_moq_updated', handleMoqUpdate);
+    return () => window.removeEventListener('zst_cement_moq_updated', handleMoqUpdate);
+  }, []);
+
+  const cementValidation = useMemo(() => {
+    return validateCementCart(items, finalCityName, cementSettings);
+  }, [items, finalCityName, cementSettings]);
+
   if (!isOpen) return null;
 
   const getItemPricing = (item: CartItem) => {
@@ -839,6 +854,9 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
     if (!deliveryAddress.trim()) {
       errs.deliveryAddress = 'Please enter complete delivery address';
     }
+    if (!cementValidation.isValid) {
+      errs.cementMoq = cementValidation.errorMessage;
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -857,6 +875,16 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
 
   // Order Placement
   const handleFinalizeOrder = async () => {
+    if (!cementValidation.isValid) {
+      setErrors(prev => ({
+        ...prev,
+        cementMoq: cementValidation.errorMessage,
+        submit: cementValidation.errorMessage
+      }));
+      goToStep('address');
+      return;
+    }
+
     setIsSubmitting(true);
     setErrors(prev => {
       const copy = { ...prev };
@@ -1668,6 +1696,52 @@ export const OrderCheckoutModal: React.FC<OrderCheckoutModalProps> = ({
                         </p>
                       )}
                     </div>
+                  )}
+
+                  {/* Cement Minimum Order Quantity (MOQ) Alert Banner */}
+                  {cementValidation.hasCement && (
+                    <div className={`mt-2.5 p-3 rounded-2xl border text-xs space-y-1.5 transition-all ${
+                      cementValidation.isValid
+                        ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
+                        : 'bg-amber-50 border-2 border-amber-400 text-amber-950 shadow-sm animate-fadeIn'
+                    }`}>
+                      <div className="flex items-start gap-2.5">
+                        {cementValidation.isValid ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        )}
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-extrabold text-xs">
+                              {cementValidation.isValid ? '✓ Cement Quantity Verified' : '⚠️ Cement Minimum Order Required'}
+                            </span>
+                            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                              cementValidation.isValid ? 'bg-emerald-200 text-emerald-900' : 'bg-amber-200 text-amber-950'
+                            }`}>
+                              {cementValidation.totalCementQuantity} / {cementValidation.requiredMinQuantity} Bags
+                            </span>
+                          </div>
+                          <p className={`text-[11px] mt-1 leading-snug font-medium ${cementValidation.isValid ? 'text-emerald-800' : 'text-amber-950'}`}>
+                            {cementValidation.isValid
+                              ? `Your order of ${cementValidation.totalCementQuantity} bags qualifies for freight delivery to ${finalCityName} (${cementValidation.zoneName}).`
+                              : cementValidation.errorMessage}
+                          </p>
+                          {!cementValidation.isValid && (
+                            <p className="text-[10.5px] text-amber-800/90 mt-1">
+                              🚚 Minimum order: {cementValidation.requiredMinQuantity} bags for your selected delivery destination ({finalCityName}). Dispatched in direct factory truckloads across Pakistan.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {errors.cementMoq && (
+                    <p className="mt-1.5 text-xs text-rose-600 font-bold flex items-center gap-1.5 bg-rose-50 border border-rose-200 p-2 rounded-xl">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                      <span>{errors.cementMoq}</span>
+                    </p>
                   )}
                 </div>
 

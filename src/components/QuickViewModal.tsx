@@ -33,6 +33,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { Product, BusinessConfig, ProductVariant, PaintShade, AppliedCouponState } from '../types';
+import { ProductShareButton } from './ProductShareButton';
 import { getProductSlug } from '../utils/slugUtils';
 import { normalizeProductImage, normalizeProductImages, resolveProductImage, handleImageError } from '../utils/imageUtils';
 import { VideoPlayer } from './VideoPlayer';
@@ -432,6 +433,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <ProductShareButton product={product} variant="detail" className="bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border-slate-700/80" />
             {(onViewFullDetails || onNavigate) && (
               <button
                 type="button"

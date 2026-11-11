@@ -34,10 +34,11 @@ import {
   CheckSquare,
   Square,
   HelpCircle,
-  Scale
+  Scale,
+  Boxes
 } from 'lucide-react';
-import { DeliverySettings, CityDeliveryInfo, DeliveryFeeTier, DeliveryWeightTier } from '../types';
-import { loadDeliverySettings, saveDeliverySettings, sanitizeAndDeduplicateCities, defaultDeliverySettings } from '../utils/storage';
+import { DeliverySettings, CityDeliveryInfo, DeliveryFeeTier, DeliveryWeightTier, CementMoqSettings } from '../types';
+import { loadDeliverySettings, saveDeliverySettings, sanitizeAndDeduplicateCities, defaultDeliverySettings, loadCementMoqSettings, saveCementMoqSettings, DEFAULT_CEMENT_MOQ_SETTINGS } from '../utils/storage';
 import { 
   validateDeliveryTiers, 
   generateDefaultCityTiers, 
@@ -85,16 +86,29 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
   // New Note Input
   const [newNoteText, setNewNoteText] = useState('');
 
-  // Auto-sync real-time delivery rules from Supabase production database on mount
+  // Cement Delivery Minimum Order Quantity (MOQ) State
+  const [cementSettings, setCementSettings] = useState<CementMoqSettings>(() => loadCementMoqSettings());
+  const [newNearbyCityInput, setNewNearbyCityInput] = useState('');
+
+  // Auto-sync real-time delivery rules and cement MOQ from Supabase production database on mount
   useEffect(() => {
     let isMounted = true;
     async function loadCloudDeliveryData() {
       try {
-        const [cloudSettings, cloudCities] = await Promise.all([
+        const [cloudSettings, cloudCities, cloudCement] = await Promise.all([
           fetchSiteSettingFromSupabase<DeliverySettings>('delivery_settings'),
-          fetchDeliveryCitiesFromSupabase()
+          fetchDeliveryCitiesFromSupabase(),
+          fetchSiteSettingFromSupabase<CementMoqSettings>('cement_moq_settings')
         ]);
         if (!isMounted) return;
+
+        if (cloudCement && typeof cloudCement === 'object') {
+          setCementSettings(prev => {
+            const merged = { ...prev, ...cloudCement };
+            saveCementMoqSettings(merged);
+            return merged;
+          });
+        }
 
         setDeliverySettings(prev => {
           let updated = { ...prev };
@@ -127,8 +141,9 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
   const handleSaveChanges = () => {
     try {
       saveDeliverySettings(deliverySettings);
+      saveCementMoqSettings(cementSettings);
       setSyncStatus('saved');
-      onShowToast('✓ Saved: Delivery fee rules saved in draft! Click [APPLY TO WEBSITE] to push live.');
+      onShowToast('✓ Saved: Delivery fee & cement MOQ rules saved in draft! Click [APPLY TO WEBSITE] to push live.');
     } catch (err: any) {
       onShowToast('Failed to save settings: ' + (err?.message || String(err)));
     }
@@ -140,6 +155,7 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
     try {
       // 1. Save locally
       saveDeliverySettings(settingsToApply);
+      saveCementMoqSettings(cementSettings);
 
       // 2. Push city delivery slabs to Supabase
       const citiesRes = await saveDeliveryCitiesToSupabase(settingsToApply.cities);
@@ -153,12 +169,16 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
         throw new Error(settingsRes.error || 'Failed to sync delivery settings to database');
       }
 
-      // 4. Dispatch browser custom event for instant frontend checkout recalculation
+      // 4. Push cement MOQ settings to Supabase
+      await saveSiteSettingToSupabase('cement_moq_settings', cementSettings);
+
+      // 5. Dispatch browser custom event for instant frontend checkout recalculation
       window.dispatchEvent(new CustomEvent('zst_delivery_settings_updated', { detail: settingsToApply }));
+      window.dispatchEvent(new CustomEvent('zst_cement_moq_updated', { detail: cementSettings }));
 
       setSyncStatus('applied');
       setLastAppliedTime(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
-      onShowToast('🚀 LIVE: Delivery fee rules and slabs successfully applied to production database & checkout!');
+      onShowToast('🚀 LIVE: Delivery fee rules and Cement MOQ slabs successfully applied to production database & checkout!');
     } catch (err: any) {
       console.error('[Delivery Manager] Apply failed:', err);
       onShowToast('⚠️ Error applying to database: ' + (err?.message || 'Check database connection.'));
@@ -793,6 +813,322 @@ export const AdminDeliveryManager: React.FC<AdminDeliveryManagerProps> = ({ onSh
               className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
             />
             <p className="text-[10px] text-slate-500">Ceiling cap: Fee will never exceed this amount.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Cement Delivery Minimum Order Quantity (MOQ) Management Card */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 shrink-0">
+              <Boxes className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-serif font-bold text-white">Cement Minimum Order Quantity (MOQ) & Delivery Zones</h3>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  Bulk Freight Rules
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                Factory freight rules for Bestway Cement, Dandot, White Cement & all cement products. Sanitaryware, paints, water tanks, and fittings remain completely unrestricted.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            <span className="text-xs font-semibold text-slate-300">
+              Rules Active:
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                const nextVal = cementSettings.isEnabled === false ? true : false;
+                const updated = { ...cementSettings, isEnabled: nextVal };
+                setCementSettings(updated);
+                saveCementMoqSettings(updated);
+                setSyncStatus('unsaved');
+                onShowToast(`Cement MOQ rules ${nextVal ? 'ENABLED' : 'DISABLED'}. Click [APPLY TO WEBSITE] to push live.`);
+              }}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                cementSettings.isEnabled !== false
+                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                  : 'bg-slate-800 border-slate-700 text-slate-400'
+              }`}
+            >
+              {cementSettings.isEnabled !== false ? (
+                <>
+                  <ToggleRight className="w-5 h-5 text-emerald-400" />
+                  <span>Enabled</span>
+                </>
+              ) : (
+                <>
+                  <ToggleLeft className="w-5 h-5 text-slate-500" />
+                  <span>Disabled</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* 3 Delivery Slabs / Zones Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          {/* Zone A: Chiniot Local */}
+          <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                <span className="font-bold text-amber-400 text-xs flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>Zone A: Chiniot City</span>
+                </span>
+                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  Local Yard
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                Local dispatch inside Chiniot city limits from warehouse/yard.
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                Minimum Bags Required *
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={cementSettings.chiniotMinQuantity ?? cementSettings.chiniotMinBags ?? 100}
+                  onChange={(e) => {
+                    const val = Math.max(1, parseInt(e.target.value) || 100);
+                    const updated = { ...cementSettings, chiniotMinQuantity: val, chiniotMinBags: val };
+                    setCementSettings(updated);
+                    saveCementMoqSettings(updated);
+                    setSyncStatus('unsaved');
+                  }}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono font-bold focus:outline-none focus:border-amber-500"
+                />
+                <span className="text-slate-400 font-mono text-xs shrink-0">Bags</span>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1">Default: 100 bags for Chiniot local buyers.</p>
+            </div>
+          </div>
+
+          {/* Zone B: Nearby Areas (30-50 km) */}
+          <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                <span className="font-bold text-sky-400 text-xs flex items-center gap-1.5">
+                  <Truck className="w-3.5 h-3.5" />
+                  <span>Zone B: Nearby (30–50 km)</span>
+                </span>
+                <span className="text-[10px] font-mono text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">
+                  Short-Haul
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                Configurable between 200 and 300 bags for short-haul destinations around Chiniot.
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                Minimum Bags Required (200–300) *
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={200}
+                  max={300}
+                  step={10}
+                  value={cementSettings.nearbyZoneMinQuantity ?? cementSettings.nearbyMinBags ?? 300}
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value) || 300;
+                    const clamped = Math.min(300, Math.max(200, parsed));
+                    const updated = { ...cementSettings, nearbyZoneMinQuantity: clamped, nearbyMinBags: clamped };
+                    setCementSettings(updated);
+                    saveCementMoqSettings(updated);
+                    setSyncStatus('unsaved');
+                  }}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono font-bold focus:outline-none focus:border-amber-500"
+                />
+                <span className="text-slate-400 font-mono text-xs shrink-0">Bags</span>
+              </div>
+              
+              {/* Quick Preset Buttons */}
+              <div className="flex gap-1.5 mt-2">
+                {[200, 250, 300].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => {
+                      const updated = { ...cementSettings, nearbyZoneMinQuantity: preset, nearbyMinBags: preset };
+                      setCementSettings(updated);
+                      saveCementMoqSettings(updated);
+                      setSyncStatus('unsaved');
+                    }}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                      (cementSettings.nearbyZoneMinQuantity ?? cementSettings.nearbyMinBags ?? 300) === preset
+                        ? 'bg-sky-500 text-slate-950 shadow-xs'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    {preset} Bags {preset === 300 ? '(Default)' : ''}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Zone C: Farther Cities / Nationwide */}
+          <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                <span className="font-bold text-rose-400 text-xs flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>Zone C: Farther / Nationwide</span>
+                </span>
+                <span className="text-[10px] font-mono text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
+                  Truckload
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                Strict full factory freight truckload minimum for Lahore, Islamabad, Karachi, Multan, and other distant cities.
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                Strict Minimum Bags Required *
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={500}
+                  value={cementSettings.fartherZoneMinQuantity ?? cementSettings.fartherMinBags ?? 500}
+                  onChange={(e) => {
+                    const val = Math.max(500, parseInt(e.target.value) || 500);
+                    const updated = { ...cementSettings, fartherZoneMinQuantity: val, fartherMinBags: val };
+                    setCementSettings(updated);
+                    saveCementMoqSettings(updated);
+                    setSyncStatus('unsaved');
+                  }}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono font-bold focus:outline-none focus:border-amber-500"
+                />
+                <span className="text-slate-400 font-mono text-xs shrink-0">Bags</span>
+              </div>
+              <p className="text-[10px] text-rose-300/80 mt-1">Strict business rule: 500 bags minimum.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Assigned Nearby Cities Manager (30-50 km from Chiniot) */}
+        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h4 className="font-bold text-slate-200 text-xs flex items-center gap-2">
+                <span>Assigned Nearby Delivery Cities (30–50 km radius)</span>
+                <span className="text-[10px] font-mono bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded-full border border-sky-500/30">
+                  {cementSettings.nearbyCities?.length || 0} Cities
+                </span>
+              </h4>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Orders for these destinations will use the Zone B minimum ({cementSettings.nearbyZoneMinQuantity ?? cementSettings.nearbyMinBags ?? 300} bags). All other destinations default to Zone C (500 bags).
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                const defaultList = [...DEFAULT_CEMENT_MOQ_SETTINGS.nearbyCities];
+                const updated = { ...cementSettings, nearbyCities: defaultList };
+                setCementSettings(updated);
+                saveCementMoqSettings(updated);
+                setSyncStatus('unsaved');
+                onShowToast('Reset nearby cities to standard defaults (Rabwah, Faisalabad, Sargodha, etc.)');
+              }}
+              className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
+            >
+              Reset to Defaults
+            </button>
+          </div>
+
+          {/* Cities Chips */}
+          <div className="flex flex-wrap gap-2 pt-1">
+            {(cementSettings.nearbyCities || []).map((cityName, idx) => (
+              <span
+                key={`${cityName}-${idx}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-200 text-xs font-medium group hover:border-sky-500/50 transition-colors"
+              >
+                <MapPin className="w-3 h-3 text-sky-400" />
+                <span>{cityName}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const filtered = (cementSettings.nearbyCities || []).filter((_, i) => i !== idx);
+                    const updated = { ...cementSettings, nearbyCities: filtered };
+                    setCementSettings(updated);
+                    saveCementMoqSettings(updated);
+                    setSyncStatus('unsaved');
+                  }}
+                  className="p-0.5 rounded-md hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                  title={`Remove ${cityName} from nearby zone`}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+
+          {/* Add City Input Row */}
+          <div className="flex gap-2 pt-1 max-w-md">
+            <input
+              type="text"
+              placeholder="e.g. Rabwah, Jhang, Hafizabad..."
+              value={newNearbyCityInput}
+              onChange={(e) => setNewNearbyCityInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const trimmed = newNearbyCityInput.trim();
+                  if (!trimmed) return;
+                  if ((cementSettings.nearbyCities || []).some(c => c.toLowerCase() === trimmed.toLowerCase())) {
+                    onShowToast(`${trimmed} is already in the nearby cities list.`);
+                    return;
+                  }
+                  const updated = { ...cementSettings, nearbyCities: [...(cementSettings.nearbyCities || []), trimmed] };
+                  setCementSettings(updated);
+                  saveCementMoqSettings(updated);
+                  setNewNearbyCityInput('');
+                  setSyncStatus('unsaved');
+                  onShowToast(`Added ${trimmed} to nearby cement delivery zone!`);
+                }
+              }}
+              className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const trimmed = newNearbyCityInput.trim();
+                if (!trimmed) return;
+                if ((cementSettings.nearbyCities || []).some(c => c.toLowerCase() === trimmed.toLowerCase())) {
+                  onShowToast(`${trimmed} is already in the nearby cities list.`);
+                  return;
+                }
+                const updated = { ...cementSettings, nearbyCities: [...(cementSettings.nearbyCities || []), trimmed] };
+                setCementSettings(updated);
+                saveCementMoqSettings(updated);
+                setNewNearbyCityInput('');
+                setSyncStatus('unsaved');
+                onShowToast(`Added ${trimmed} to nearby cement delivery zone!`);
+              }}
+              className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded-xl transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add City</span>
+            </button>
           </div>
         </div>
       </div>
