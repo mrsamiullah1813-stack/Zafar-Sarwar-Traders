@@ -856,17 +856,112 @@ export function mapDbDeliveryCity(r: any, idx: number): CityDeliveryInfo {
   };
 }
 
+export interface BootstrapCatalogPayload {
+  categories: ProductCategory[] | null;
+  brands: ProductBrand[] | null;
+  products: Product[] | null;
+  heroSettings: HeroSettings | null;
+  config: BusinessConfig | null;
+  pricingTypography: any | null;
+  themeSettings: ThemeSettings | null;
+  announcementSettings: AnnouncementBarSettings | null;
+  featuredCarouselSettings: any | null;
+  smartToolsSettings: any | null;
+}
+
+let bootstrapMemoryCache: { data: BootstrapCatalogPayload; expiresAt: number } | null = null;
+let bootstrapInFlightPromise: Promise<BootstrapCatalogPayload | null> | null = null;
+
+export function invalidateBootstrapCache(): void {
+  bootstrapMemoryCache = null;
+  bootstrapInFlightPromise = null;
+}
+
+export async function fetchBootstrapCatalogFromServer(forceRefresh: boolean = false): Promise<BootstrapCatalogPayload | null> {
+  if (!forceRefresh && bootstrapMemoryCache && bootstrapMemoryCache.expiresAt > Date.now()) {
+    return bootstrapMemoryCache.data;
+  }
+  if (!forceRefresh && bootstrapInFlightPromise) {
+    return bootstrapInFlightPromise;
+  }
+
+  bootstrapInFlightPromise = (async () => {
+    try {
+      const res = await fetch('/api/bootstrap', forceRefresh ? { cache: 'no-store' } : undefined);
+      if (!res.ok) return null;
+      const json = await res.json();
+      if (!json || json.success === false) return null;
+
+      const rawCategories = Array.isArray(json.categories) ? json.categories : null;
+      const categories = rawCategories
+        ? rawCategories
+            .map((r: any, idx: number) => mapDbCategoryToCategory(r, idx))
+            .sort((a: ProductCategory, b: ProductCategory) => {
+              if ((a.displayOrder ?? 0) !== (b.displayOrder ?? 0)) {
+                return (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+              }
+              return a.name.localeCompare(b.name);
+            })
+        : null;
+
+      const rawBrands = Array.isArray(json.brands) ? json.brands : null;
+      const brands = rawBrands
+        ? rawBrands.map((r: any, idx: number) => mapDbBrandToBrand(r, idx))
+        : null;
+
+      const rawProducts = Array.isArray(json.products) ? json.products : null;
+      const products = rawProducts ? rawProducts.map(mapDbProductToProduct) : null;
+
+      const heroSettings = json.heroSettings ? mapDbHeroSettings(json.heroSettings) : null;
+
+      const payload: BootstrapCatalogPayload = {
+        categories,
+        brands,
+        products,
+        heroSettings,
+        config: json.config || null,
+        pricingTypography: json.pricingTypography || null,
+        themeSettings: json.themeSettings || null,
+        announcementSettings: json.announcementSettings || null,
+        featuredCarouselSettings: json.featuredCarouselSettings || null,
+        smartToolsSettings: json.smartToolsSettings || null,
+      };
+
+      bootstrapMemoryCache = { data: payload, expiresAt: Date.now() + 15_000 };
+      return payload;
+    } catch {
+      return null;
+    } finally {
+      bootstrapInFlightPromise = null;
+    }
+  })();
+
+  return bootstrapInFlightPromise;
+}
+
 // =========================================================
-// 1. PRODUCTS CRUD (Direct Supabase SDK + Server Fallback)
+// 1. PRODUCTS CRUD (Fast Cached Server Proxy First + Direct Supabase SDK Fallback)
 // =========================================================
 
 export async function fetchProductsFromSupabase(): Promise<Product[] | null> {
-  await initializeSupabaseRuntime();
+  // 1. Prefer cached, slimmed & compressed backend endpoint first (avoids 20MB raw base64 downloads)
+  try {
+    const res = await fetch('/api/db/products');
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        return json.data.map(mapDbProductToProduct);
+      }
+    }
+  } catch {
+    // Fallback to direct Supabase SDK (static host / offline fallback)
+  }
 
-  // 1. Attempt Direct Supabase SDK Query
+  // 2. Direct Supabase SDK Fallback
+  await initializeSupabaseRuntime();
   if (isSupabaseConfigured) {
     try {
-      let { data, error, status, statusText } = await supabase
+      let { data, error } = await supabase
         .from('products')
         .select('*')
         .order('display_order', { ascending: true })
@@ -876,39 +971,21 @@ export async function fetchProductsFromSupabase(): Promise<Product[] | null> {
         const fallbackRes = await supabase.from('products').select('*');
         data = fallbackRes.data;
         error = fallbackRes.error;
-        status = fallbackRes.status;
-        statusText = fallbackRes.statusText;
       }
 
       if (!error && Array.isArray(data)) {
-        console.log(`[Supabase Direct SDK] Table: products | Status: SUCCESS | Records: ${data.length} | HTTP: ${status || 200}`);
         return data.map(mapDbProductToProduct);
       }
-      
-      console.warn(`[Supabase Direct SDK] Direct products fetch failed (HTTP ${status || 0}), attempting server proxy fallback...`);
-    } catch (err: any) {
-      console.warn('[Supabase Direct SDK] Direct products fetch network exception, attempting server proxy fallback...');
+    } catch {
+      // Network offline or static host fallback
     }
-  }
-
-  // 2. Server Proxy Fallback
-  try {
-    const res = await fetch('/api/db/products', { cache: 'no-store' });
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        console.log(`[Supabase Proxy] Loaded ${json.data.length} products via server proxy`);
-        return json.data.map(mapDbProductToProduct);
-      }
-    }
-  } catch (proxyErr) {
-    // Network offline or static host fallback
   }
 
   return null;
 }
 
 export async function upsertProductInSupabase(product: Product | Product[]): Promise<{ success: boolean; error?: string }> {
+  invalidateBootstrapCache();
   await initializeSupabaseRuntime();
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
@@ -949,6 +1026,7 @@ export async function upsertProductInSupabase(product: Product | Product[]): Pro
 }
 
 export async function deleteProductFromSupabase(productId: string): Promise<{ success: boolean; error?: string }> {
+  invalidateBootstrapCache();
   await initializeSupabaseRuntime();
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
@@ -983,12 +1061,31 @@ export async function deleteProductFromSupabase(productId: string): Promise<{ su
 // =========================================================
 
 export async function fetchCategoriesFromSupabase(): Promise<ProductCategory[] | null> {
-  await initializeSupabaseRuntime();
+  // 1. Prefer cached, slimmed & compressed backend endpoint first
+  try {
+    const res = await fetch('/api/db/categories');
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        const mappedCategories: ProductCategory[] = json.data.map((r: any, idx: number) => mapDbCategoryToCategory(r, idx));
+        mappedCategories.sort((a, b) => {
+          if ((a.displayOrder ?? 0) !== (b.displayOrder ?? 0)) {
+            return (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+          }
+          return a.name.localeCompare(b.name);
+        });
+        return mappedCategories;
+      }
+    }
+  } catch {
+    // fallback to direct SDK
+  }
 
-  // 1. Attempt Direct Supabase SDK Query
+  // 2. Direct Supabase SDK Fallback
+  await initializeSupabaseRuntime();
   if (isSupabaseConfigured) {
     try {
-      let { data, error, status } = await supabase
+      const { data, error } = await supabase
         .from('categories')
         .select('*');
 
@@ -1000,40 +1097,18 @@ export async function fetchCategoriesFromSupabase(): Promise<ProductCategory[] |
           }
           return a.name.localeCompare(b.name);
         });
-        console.log(`[Supabase Direct SDK] Categories mapped successfully: ${mappedCategories.length} categories ready`);
         return mappedCategories;
       }
-      console.warn(`[Supabase Direct SDK] Direct categories fetch failed (HTTP ${status || 0}), attempting server proxy fallback...`);
-    } catch (err: any) {
-      console.warn('[Supabase Direct SDK] Direct categories fetch network exception, attempting server proxy fallback...');
+    } catch {
+      // offline or static hosting
     }
-  }
-
-  // 2. Server Proxy Fallback
-  try {
-    const res = await fetch('/api/db/categories', { cache: 'no-store' });
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        const mappedCategories: ProductCategory[] = json.data.map((r: any, idx: number) => mapDbCategoryToCategory(r, idx));
-        mappedCategories.sort((a, b) => {
-          if ((a.displayOrder ?? 0) !== (b.displayOrder ?? 0)) {
-            return (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
-          }
-          return a.name.localeCompare(b.name);
-        });
-        console.log(`[Supabase Proxy] Loaded ${mappedCategories.length} categories via server proxy`);
-        return mappedCategories;
-      }
-    }
-  } catch (proxyErr) {
-    // offline or static hosting
   }
 
   return null;
 }
 
 export async function upsertCategoryInSupabase(category: ProductCategory | ProductCategory[]): Promise<{ success: boolean; error?: string }> {
+  invalidateBootstrapCache();
   await initializeSupabaseRuntime();
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
@@ -1061,6 +1136,7 @@ export async function upsertCategoryInSupabase(category: ProductCategory | Produ
 }
 
 export async function deleteCategoryFromSupabase(categoryId: string): Promise<{ success: boolean; error?: string }> {
+  invalidateBootstrapCache();
   await initializeSupabaseRuntime();
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
@@ -1085,16 +1161,28 @@ export async function deleteCategoryFromSupabase(categoryId: string): Promise<{ 
 }
 
 // =========================================================
-// 3. BRANDS CRUD (Direct Supabase SDK + Server Fallback)
+// 3. BRANDS CRUD (Fast Cached Server Proxy First + Direct Supabase SDK Fallback)
 // =========================================================
 
 export async function fetchBrandsFromSupabase(): Promise<ProductBrand[] | null> {
-  await initializeSupabaseRuntime();
+  // 1. Prefer cached, slimmed & compressed backend endpoint first
+  try {
+    const res = await fetch('/api/db/brands');
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        return json.data.map((r: any, idx: number) => mapDbBrandToBrand(r, idx));
+      }
+    }
+  } catch {
+    // fallback to direct SDK
+  }
 
-  // 1. Attempt Direct Supabase SDK Query
+  // 2. Direct Supabase SDK Fallback
+  await initializeSupabaseRuntime();
   if (isSupabaseConfigured) {
     try {
-      let { data, error, status } = await supabase
+      let { data, error } = await supabase
         .from('brands')
         .select('*')
         .order('display_order', { ascending: true });
@@ -1106,33 +1194,18 @@ export async function fetchBrandsFromSupabase(): Promise<ProductBrand[] | null> 
       }
 
       if (!error && Array.isArray(data)) {
-        console.log(`[Supabase Direct SDK] Table: brands | Status: SUCCESS | Records: ${data.length} | HTTP: ${status || 200}`);
         return data.map((r: any, idx: number) => mapDbBrandToBrand(r, idx));
       }
-      console.warn(`[Supabase Direct SDK] Direct brands fetch failed (HTTP ${status || 0}), attempting server proxy fallback...`);
-    } catch (err: any) {
-      console.warn('[Supabase Direct SDK] Direct brands fetch network exception, attempting server proxy fallback...');
+    } catch {
+      // offline or static host fallback
     }
-  }
-
-  // 2. Server Proxy Fallback
-  try {
-    const res = await fetch('/api/db/brands', { cache: 'no-store' });
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        console.log(`[Supabase Proxy] Loaded ${json.data.length} brands via server proxy`);
-        return json.data.map((r: any, idx: number) => mapDbBrandToBrand(r, idx));
-      }
-    }
-  } catch (proxyErr) {
-    // offline or static host fallback
   }
 
   return null;
 }
 
 export async function upsertBrandInSupabase(brand: ProductBrand | ProductBrand[]): Promise<{ success: boolean; error?: string }> {
+  invalidateBootstrapCache();
   await initializeSupabaseRuntime();
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
@@ -1160,6 +1233,7 @@ export async function upsertBrandInSupabase(brand: ProductBrand | ProductBrand[]
 }
 
 export async function deleteBrandFromSupabase(brandId: string): Promise<{ success: boolean; error?: string }> {
+  invalidateBootstrapCache();
   await initializeSupabaseRuntime();
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
@@ -1184,16 +1258,28 @@ export async function deleteBrandFromSupabase(brandId: string): Promise<{ succes
 }
 
 // =========================================================
-// 4. HERO SETTINGS & SLIDES (Direct Supabase SDK + Server Fallback)
+// 4. HERO SETTINGS & SLIDES (Fast Cached Server Proxy First + Direct Supabase SDK Fallback)
 // =========================================================
 
 export async function fetchHeroSettingsFromSupabase(): Promise<HeroSettings | null> {
-  await initializeSupabaseRuntime();
+  // 1. Prefer cached, compressed server proxy first
+  try {
+    const res = await fetch('/api/db/hero-settings');
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data) {
+        return mapDbHeroSettings(json.data);
+      }
+    }
+  } catch {
+    // fallback to direct SDK
+  }
 
-  // 1. Attempt Direct Supabase SDK Query
+  // 2. Direct Supabase SDK Fallback
+  await initializeSupabaseRuntime();
   if (isSupabaseConfigured) {
     try {
-      const { data, error, status } = await supabase
+      const { data, error } = await supabase
         .from('hero_settings')
         .select('*')
         .eq('id', 'default')
@@ -1213,39 +1299,18 @@ export async function fetchHeroSettingsFromSupabase(): Promise<HeroSettings | nu
           }
         } catch {}
 
-        console.log(`[Supabase Direct SDK] Table: hero_settings | Status: SUCCESS | Config Found: true | HTTP: ${status || 200}`);
         return mapDbHeroSettings(data, slideProductIds);
       }
-      
-      if (!error && !data) {
-        console.log(`[Supabase Direct SDK] Table: hero_settings | Status: SUCCESS (No default row)`);
-        return null;
-      }
-
-      console.warn(`[Supabase Direct SDK] Direct hero settings fetch failed (HTTP ${status || 0}), attempting server proxy fallback...`);
-    } catch (err: any) {
-      console.warn('[Supabase Direct SDK] Direct hero settings fetch network exception, attempting server proxy fallback...');
+    } catch {
+      // offline or static host fallback
     }
-  }
-
-  // 2. Server Proxy Fallback
-  try {
-    const res = await fetch('/api/db/hero-settings', { cache: 'no-store' });
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && json.data) {
-        console.log('[Supabase Proxy] Loaded hero settings via server proxy');
-        return mapDbHeroSettings(json.data);
-      }
-    }
-  } catch (proxyErr) {
-    // offline or static host fallback
   }
 
   return null;
 }
 
 export async function saveHeroSettingsToSupabase(settings: HeroSettings): Promise<{ success: boolean; error?: string }> {
+  invalidateBootstrapCache();
   await initializeSupabaseRuntime();
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 
@@ -2175,14 +2240,25 @@ function getSiteSettingColumnName(key: string): string | null {
 }
 
 export async function fetchSiteSettingFromSupabase<T>(key: string): Promise<T | null> {
-  await initializeSupabaseRuntime();
+  // 1. Prefer cached & compressed server proxy first
+  try {
+    const res = await fetch(`/api/db/site-settings/${encodeURIComponent(key)}`);
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data !== undefined && json.data !== null) {
+        return json.data as T;
+      }
+    }
+  } catch {
+    // fallback to direct SDK
+  }
 
-  // 1. Attempt Direct Supabase SDK Query
+  // 2. Direct Supabase SDK Fallback
+  await initializeSupabaseRuntime();
   if (isSupabaseConfigured) {
     try {
       const k = key.toLowerCase();
 
-      // 1a. Pricing Typography is stored inside theme_settings.pricingTypography (id = 'config')
       if (k.includes('pricing') || k.includes('typography')) {
         const { data: themeData, error: themeErr } = await supabase
           .from('site_settings')
@@ -2192,14 +2268,10 @@ export async function fetchSiteSettingFromSupabase<T>(key: string): Promise<T | 
 
         if (!themeErr && themeData?.theme_settings) {
           const pTypo = themeData.theme_settings.pricingTypography || themeData.theme_settings.pricing_typography;
-          if (pTypo) {
-            console.log(`[Supabase Direct SDK] Loaded pricing typography from site_settings.theme_settings`);
-            return pTypo as T;
-          }
+          if (pTypo) return pTypo as T;
         }
       }
 
-      // 1b. Coupons & Promo Codes are stored inside checkout_settings.coupons (id = 'config')
       if (k.includes('coupon') || k.includes('promo')) {
         const { data: chkData, error: chkErr } = await supabase
           .from('site_settings')
@@ -2209,14 +2281,10 @@ export async function fetchSiteSettingFromSupabase<T>(key: string): Promise<T | 
 
         if (!chkErr && chkData?.checkout_settings) {
           const coupons = chkData.checkout_settings.coupons || chkData.checkout_settings.promo_codes;
-          if (coupons && Array.isArray(coupons)) {
-            console.log(`[Supabase Direct SDK] Loaded ${coupons.length} coupons from site_settings.checkout_settings`);
-            return coupons as T;
-          }
+          if (coupons && Array.isArray(coupons)) return coupons as T;
         }
       }
 
-      // 1b-2. Payment Methods are stored inside checkout_settings.payment_methods (id = 'config')
       if (k.includes('payment')) {
         const { data: chkData, error: chkErr } = await supabase
           .from('site_settings')
@@ -2226,14 +2294,10 @@ export async function fetchSiteSettingFromSupabase<T>(key: string): Promise<T | 
 
         if (!chkErr && chkData?.checkout_settings) {
           const pm = chkData.checkout_settings.payment_methods || chkData.checkout_settings.paymentMethods;
-          if (pm && Array.isArray(pm) && pm.length > 0) {
-            console.log(`[Supabase Direct SDK] Loaded ${pm.length} payment methods from site_settings.checkout_settings`);
-            return pm as T;
-          }
+          if (pm && Array.isArray(pm) && pm.length > 0) return pm as T;
         }
       }
 
-      // 1c. Smart Tools & Fitting Builder are stored inside planner_config (id = 'config')
       if (k.includes('smart_tools') || k.includes('smart-tools') || k.includes('smarttools')) {
         const { data: planData, error: planErr } = await supabase
           .from('site_settings')
@@ -2258,7 +2322,6 @@ export async function fetchSiteSettingFromSupabase<T>(key: string): Promise<T | 
         }
       }
 
-      // 1d. Try key-value table (key, value)
       const { data: kvData, error: kvErr } = await supabase
         .from('site_settings')
         .select('value')
@@ -2269,7 +2332,6 @@ export async function fetchSiteSettingFromSupabase<T>(key: string): Promise<T | 
         return kvData.value as T;
       }
 
-      // 1e. Try standard single row config with named column (id = 'config')
       const colName = getSiteSettingColumnName(key);
       if (colName) {
         const { data: colData, error: colErr } = await supabase
@@ -2282,29 +2344,16 @@ export async function fetchSiteSettingFromSupabase<T>(key: string): Promise<T | 
           return (colData as any)[colName] as T;
         }
       }
-    } catch (err: any) {
-      console.warn(`[Supabase Direct SDK] Site setting (${key}) fetch exception, attempting proxy fallback...`);
+    } catch {
+      // offline or static host fallback
     }
-  }
-
-  // 2. Server Proxy Fallback
-  try {
-    const res = await fetch(`/api/db/site-settings/${encodeURIComponent(key)}`, { cache: 'no-store' });
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && json.data !== undefined && json.data !== null) {
-        console.log(`[Supabase Proxy] Loaded site setting "${key}" via server proxy`);
-        return json.data as T;
-      }
-    }
-  } catch (proxyErr) {
-    // offline or static host fallback
   }
 
   return null;
 }
 
 export async function saveSiteSettingToSupabase(key: string, value: any): Promise<{ success: boolean; error?: string }> {
+  invalidateBootstrapCache();
   await initializeSupabaseRuntime();
   if (!isSupabaseConfigured) return { success: false, error: 'Supabase not configured' };
 

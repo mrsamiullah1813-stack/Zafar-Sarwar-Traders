@@ -499,6 +499,8 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                 <img
                   src={currentImage}
                   alt={`${product.name} - Detailed Specification | Zafar Sarwar Traders Luxury Sanitaryware Pakistan`}
+                  loading="eager"
+                  decoding="async"
                   referrerPolicy="no-referrer"
                   onError={(e) => handleImageError(e, product.category, product.name)}
                   className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
@@ -595,6 +597,8 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
                         <img 
                           src={normalizeProductImage(img, product.category, product.name)} 
                           alt="" 
+                          loading="lazy"
+                          decoding="async"
                           referrerPolicy="no-referrer" 
                           onError={(e) => handleImageError(e, product.category, product.name)}
                           className="w-full h-full object-cover" 

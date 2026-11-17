@@ -50,5 +50,19 @@ export default defineConfig(({ mode }) => {
       watch: process.env.DISABLE_HMR === 'true' ? null : undefined,
       allowedHosts: true,
     },
+    build: {
+      chunkSizeWarningLimit: 900,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+            'vendor-motion': ['motion'],
+            'vendor-lucide': ['lucide-react'],
+            'vendor-genai': ['@google/genai'],
+          },
+        },
+      },
+    },
   };
 });

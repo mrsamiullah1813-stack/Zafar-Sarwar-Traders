@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Play, Video } from 'lucide-react';
 import { ProductVideo } from '../types';
 
@@ -8,6 +8,8 @@ interface VideoPlayerProps {
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, className = '' }) => {
+  const [isActivated, setIsActivated] = useState(false);
+
   if (!video || !video.url) {
     return (
       <div className={`bg-slate-950 border border-slate-800 rounded-2xl p-8 text-center text-slate-500 flex flex-col items-center justify-center ${className}`}>
@@ -19,17 +21,29 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, className = '' 
 
   const { url, type } = video;
 
+  const extractYouTubeId = (rawUrl: string): string => {
+    try {
+      if (rawUrl.includes('embed/')) {
+        return rawUrl.split('embed/')[1]?.split(/[?&]/)[0] || '';
+      }
+      if (rawUrl.includes('v=')) {
+        return rawUrl.split('v=')[1]?.split('&')[0] || '';
+      }
+      if (rawUrl.includes('youtu.be/')) {
+        return rawUrl.split('youtu.be/')[1]?.split('?')[0] || '';
+      }
+    } catch {}
+    return '';
+  };
+
   // Helper to extract YouTube embed URL
   const getYouTubeEmbedUrl = (rawUrl: string): string => {
     try {
-      if (rawUrl.includes('embed/')) return rawUrl;
-      let videoId = '';
-      if (rawUrl.includes('v=')) {
-        videoId = rawUrl.split('v=')[1]?.split('&')[0] || '';
-      } else if (rawUrl.includes('youtu.be/')) {
-        videoId = rawUrl.split('youtu.be/')[1]?.split('?')[0] || '';
+      if (rawUrl.includes('embed/')) {
+        return rawUrl.includes('autoplay=') ? rawUrl : `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}autoplay=1&rel=0`;
       }
-      return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=0&rel=0` : rawUrl;
+      const videoId = extractYouTubeId(rawUrl);
+      return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0` : rawUrl;
     } catch {
       return rawUrl;
     }
@@ -38,34 +52,66 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, className = '' 
   // Helper to extract Vimeo embed URL
   const getVimeoEmbedUrl = (rawUrl: string): string => {
     try {
-      if (rawUrl.includes('player.vimeo.com')) return rawUrl;
+      if (rawUrl.includes('player.vimeo.com')) {
+        return rawUrl.includes('autoplay=') ? rawUrl : `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}autoplay=1`;
+      }
       const parts = rawUrl.split('/');
       const id = parts[parts.length - 1];
-      return id ? `https://player.vimeo.com/video/${id}` : rawUrl;
+      return id ? `https://player.vimeo.com/video/${id}?autoplay=1` : rawUrl;
     } catch {
       return rawUrl;
     }
   };
 
-  // Check if URL is YouTube or Vimeo based on string matching if type isn't explicit
   const isYouTube = type === 'youtube' || url.includes('youtube.com') || url.includes('youtu.be');
   const isVimeo = type === 'vimeo' || url.includes('vimeo.com');
-  
-  // Direct device video or video file link (MP4, MOV, AVI, WEBM, MKV)
-  const isDirectVideo = 
-    type === 'mp4' || 
-    url.startsWith('data:video') || 
+  const isDirectVideo =
+    type === 'mp4' ||
+    url.startsWith('data:video') ||
     url.startsWith('blob:') ||
     /\.(mp4|mov|avi|webm|mkv)(\?.*)?$/i.test(url);
 
   if (isYouTube) {
     const embedUrl = getYouTubeEmbedUrl(url);
+    const ytId = extractYouTubeId(url);
     if (!embedUrl) return null;
+
+    if (!isActivated) {
+      return (
+        <button
+          type="button"
+          onClick={() => setIsActivated(true)}
+          aria-label={`Play ${video.title || 'Product Video'}`}
+          className={`relative w-full aspect-video rounded-2xl overflow-hidden bg-slate-950 shadow-2xl border border-slate-800 group cursor-pointer flex items-center justify-center ${className}`}
+        >
+          {ytId && (
+            <img
+              src={`https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`}
+              alt={video.title || 'Video Thumbnail'}
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500"
+            />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-black/20" />
+          <span className="relative z-10 w-16 h-16 rounded-full bg-red-600/95 group-hover:bg-red-500 text-white flex items-center justify-center shadow-2xl transition-transform group-hover:scale-110">
+            <Play className="w-7 h-7 fill-current ml-1" />
+          </span>
+          {video.title && (
+            <span className="absolute bottom-3 left-4 right-4 z-10 text-left text-xs font-semibold text-white/95 truncate">
+              {video.title}
+            </span>
+          )}
+        </button>
+      );
+    }
+
     return (
       <div className={`relative w-full aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-slate-800 ${className}`}>
         <iframe
           src={embedUrl}
           title={video.title || "Product Video"}
+          loading="lazy"
           className="w-full h-full"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
           allowFullScreen
@@ -77,11 +123,31 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, className = '' 
   if (isVimeo) {
     const embedUrl = getVimeoEmbedUrl(url);
     if (!embedUrl) return null;
+
+    if (!isActivated) {
+      return (
+        <button
+          type="button"
+          onClick={() => setIsActivated(true)}
+          aria-label={`Play ${video.title || 'Product Video'}`}
+          className={`relative w-full aspect-video rounded-2xl overflow-hidden bg-slate-950 shadow-2xl border border-slate-800 group cursor-pointer flex flex-col items-center justify-center gap-2 ${className}`}
+        >
+          <span className="w-16 h-16 rounded-full bg-blue-600/95 group-hover:bg-blue-500 text-white flex items-center justify-center shadow-2xl transition-transform group-hover:scale-110">
+            <Play className="w-7 h-7 fill-current ml-1" />
+          </span>
+          <span className="text-xs font-semibold text-slate-200">
+            {video.title || 'Watch Product Video'}
+          </span>
+        </button>
+      );
+    }
+
     return (
       <div className={`relative w-full aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl border border-slate-800 ${className}`}>
         <iframe
           src={embedUrl}
           title={video.title || "Product Video"}
+          loading="lazy"
           className="w-full h-full"
           allow="autoplay; fullscreen; picture-in-picture"
           allowFullScreen
@@ -98,7 +164,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, className = '' 
           src={url}
           controls
           controlsList="nodownload"
-          preload="metadata"
+          preload="none"
           className="w-full h-full object-contain"
         >
           Your browser does not support the video tag.
@@ -124,6 +190,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, className = '' 
       <iframe
         src={url}
         title={video.title || "Product Video"}
+        loading="lazy"
         className="w-full h-full"
         allow="fullscreen"
         allowFullScreen

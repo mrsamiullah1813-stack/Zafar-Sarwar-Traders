@@ -1434,6 +1434,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
               <img
                 src={normalizeProductImage(mediaImages[selectedImageIndex] || mediaImages[0], product.category, product.name)}
                 alt={product.name}
+                decoding="async"
                 referrerPolicy="no-referrer"
                 className="max-h-[70vh] max-w-full object-contain filter drop-shadow-md"
               />
@@ -1454,6 +1455,8 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                     <img
                       src={normalizeProductImage(img, product.category, product.name)}
                       alt={`Thumbnail ${idx + 1}`}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-contain"
                     />
                   </button>

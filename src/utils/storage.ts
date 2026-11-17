@@ -41,7 +41,9 @@ import {
   saveAiAssistantConfigToSupabase,
   fetchAiKnowledgeFromSupabase,
   upsertAiKnowledgeInSupabase,
-  deleteAiKnowledgeFromSupabase
+  deleteAiKnowledgeFromSupabase,
+  fetchBootstrapCatalogFromServer,
+  invalidateBootstrapCache
 } from '../services/supabaseService';
 
 export const STORAGE_KEYS = {
@@ -455,6 +457,7 @@ export const defaultContactPersons: ContactPerson[] = [
 ];
 
 const saveToServerCMS = (key: string, payload: any) => {
+  invalidateBootstrapCache();
   try {
     fetch('/api/cms/save', {
       method: 'POST',
@@ -468,6 +471,7 @@ const saveToServerCMS = (key: string, payload: any) => {
 };
 
 const saveAllToServerCMS = async (data: Record<string, any>) => {
+  invalidateBootstrapCache();
   try {
     const res = await fetch('/api/cms/save-all', {
       method: 'POST',
@@ -1986,412 +1990,411 @@ export const syncWithServerCMS = async (callbacks: {
   setFeaturedCarouselSettings?: (fcs: FeaturedCarouselSettings) => void;
   customerId?: string;
 }) => {
-  await initializeSupabaseRuntime();
-  try {
-    console.log('🔄 [Supabase & Backend Sync] Starting fast prioritized parallel sync...');
-
-    // PRIORITY BATCH 1 (Core Store & Catalog): Run in parallel so products, categories, brands, hero and config load immediately
-    const [
-      catsResult,
-      brandsResult,
-      productsResult,
-      heroResult,
-      configResult,
-      pricingTypoResult
-    ] = await Promise.allSettled([
-      fetchCategoriesFromSupabase(),
-      fetchBrandsFromSupabase(),
-      fetchProductsFromSupabase(),
-      fetchHeroSettingsFromSupabase(),
-      fetchSiteSettingFromSupabase<BusinessConfig>(STORAGE_KEYS.CONFIG),
-      fetchSiteSettingFromSupabase<PricingTypographySettings>(STORAGE_KEYS.PRICING_TYPOGRAPHY)
-    ]);
-
-    // 1. Categories
-    if (catsResult.status === 'fulfilled' && catsResult.value && Array.isArray(catsResult.value) && catsResult.value.length > 0) {
-      if (callbacks.setCategories) callbacks.setCategories(catsResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.CATEGORIES, catsResult.value);
-      console.log(`[Sync] Categories loaded into React state: ${catsResult.value.length}`);
+  const applyCategories = (cats: ProductCategory[] | null | undefined) => {
+    if (cats && Array.isArray(cats) && cats.length > 0) {
+      callbacks.setCategories?.(cats);
+      safeSetLocalStorage(STORAGE_KEYS.CATEGORIES, cats);
     } else {
-      const fallbackCats = loadStoredCategories();
-      if (callbacks.setCategories) callbacks.setCategories(fallbackCats);
+      callbacks.setCategories?.(loadStoredCategories());
     }
+  };
 
-    // 2. Brands
-    if (brandsResult.status === 'fulfilled' && brandsResult.value && Array.isArray(brandsResult.value) && brandsResult.value.length > 0) {
-      if (callbacks.setBrands) callbacks.setBrands(brandsResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.BRANDS, brandsResult.value);
-      console.log(`[Sync] Brands loaded into React state: ${brandsResult.value.length}`);
+  const applyBrands = (brs: ProductBrand[] | null | undefined) => {
+    if (brs && Array.isArray(brs) && brs.length > 0) {
+      callbacks.setBrands?.(brs);
+      safeSetLocalStorage(STORAGE_KEYS.BRANDS, brs);
     } else {
-      const fallbackBrands = loadStoredBrands();
-      if (callbacks.setBrands) callbacks.setBrands(fallbackBrands);
+      callbacks.setBrands?.(loadStoredBrands());
     }
+  };
 
-    // 3. Products
-    if (productsResult.status === 'fulfilled' && productsResult.value && Array.isArray(productsResult.value) && productsResult.value.length > 0) {
-      const normalized = productsResult.value.map((p: Product) => ({
+  const applyProducts = (prods: Product[] | null | undefined) => {
+    if (prods && Array.isArray(prods) && prods.length > 0) {
+      const normalized = prods.map((p: Product) => ({
         ...p,
         image: normalizeProductImage(p.image, p.category, p.name),
         images: normalizeProductImages(p.images, p.image, p.category, p.name)
       }));
-      console.log(`[Sync] Products loaded into React state: ${normalized.length}`);
-      if (callbacks.setProducts) callbacks.setProducts(normalized);
-      const sanitized = normalized.map(sanitizeProductForLocalStorage);
-      safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, sanitized);
+      callbacks.setProducts?.(normalized);
+      safeSetLocalStorage(STORAGE_KEYS.PRODUCTS, normalized.map(sanitizeProductForLocalStorage));
     } else {
       const stored = loadStoredProducts();
       if (stored && stored.length > 0) {
-        console.log('[Sync] Using local products cache:', stored.length);
-        if (callbacks.setProducts) callbacks.setProducts(stored);
+        callbacks.setProducts?.(stored);
       }
     }
+  };
 
-    // 4. Hero Settings
-    if (heroResult.status === 'fulfilled' && heroResult.value) {
-      if (callbacks.setHeroSettings) callbacks.setHeroSettings(heroResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.HERO_SETTINGS, heroResult.value);
-      console.log('[Sync] Hero settings loaded into React state');
+  const applyHero = (hero: HeroSettings | null | undefined) => {
+    if (hero) {
+      callbacks.setHeroSettings?.(hero);
+      safeSetLocalStorage(STORAGE_KEYS.HERO_SETTINGS, hero);
     } else {
-      const fallbackHero = loadHeroSettings();
-      if (callbacks.setHeroSettings) callbacks.setHeroSettings(fallbackHero);
+      callbacks.setHeroSettings?.(loadHeroSettings());
     }
+  };
 
-    // 5. Config
-    if (configResult.status === 'fulfilled' && configResult.value && typeof configResult.value === 'object' && Object.keys(configResult.value).length > 0) {
-      const mergedConfig = { ...loadStoredConfig(), ...configResult.value };
-      if (callbacks.setConfig) callbacks.setConfig(mergedConfig);
+  const applyConfig = (cfg: BusinessConfig | null | undefined) => {
+    if (cfg && typeof cfg === 'object' && Object.keys(cfg).length > 0) {
+      const mergedConfig = { ...loadStoredConfig(), ...cfg };
+      callbacks.setConfig?.(mergedConfig);
       safeSetLocalStorage(STORAGE_KEYS.CONFIG, mergedConfig);
     } else {
-      const fallbackConfig = loadStoredConfig();
-      if (callbacks.setConfig) callbacks.setConfig(fallbackConfig);
+      callbacks.setConfig?.(loadStoredConfig());
     }
+  };
 
-    // 6. Pricing Typography
-    if (pricingTypoResult.status === 'fulfilled' && pricingTypoResult.value && typeof pricingTypoResult.value === 'object' && pricingTypoResult.value.color) {
-      if (callbacks.setPricingTypography) callbacks.setPricingTypography(pricingTypoResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.PRICING_TYPOGRAPHY, pricingTypoResult.value);
-      applyPricingTypographyToRoot(pricingTypoResult.value);
+  const applyPricingTypo = (pt: PricingTypographySettings | null | undefined) => {
+    if (pt && typeof pt === 'object' && pt.color) {
+      callbacks.setPricingTypography?.(pt);
+      safeSetLocalStorage(STORAGE_KEYS.PRICING_TYPOGRAPHY, pt);
+      applyPricingTypographyToRoot(pt);
     } else {
-      const fallbackPricingTypo = loadPricingTypographySettings();
-      if (callbacks.setPricingTypography) callbacks.setPricingTypography(fallbackPricingTypo);
-      applyPricingTypographyToRoot(fallbackPricingTypo);
+      const fallback = loadPricingTypographySettings();
+      callbacks.setPricingTypography?.(fallback);
+      applyPricingTypographyToRoot(fallback);
     }
+  };
 
-    // PRIORITY BATCH 2 (Secondary Tools & Admin Settings): Run concurrently in parallel
-    const [
-      ordersResult,
-      citiesResult,
-      announcementResult,
-      themeResult,
-      checkoutResult,
-      deliveryResult,
-      statsResult,
-      contactsResult,
-      galleryResult,
-      plannerResult,
-      estimatorResult,
-      fittingResult,
-      aiResult,
-      smartToolsResult,
-      couponsResult,
-      howToOrderResult,
-      paymentMethodsResult,
-      featuredCarouselResult
-    ] = await Promise.allSettled([
-      fetchOrdersFromSupabase(callbacks.customerId),
-      fetchDeliveryCitiesFromSupabase(),
-      fetchSiteSettingFromSupabase<AnnouncementBarSettings>(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS),
-      fetchSiteSettingFromSupabase<ThemeSettings>(STORAGE_KEYS.THEME_SETTINGS),
-      fetchSiteSettingFromSupabase<CheckoutSettings>(STORAGE_KEYS.CHECKOUT_SETTINGS),
-      fetchSiteSettingFromSupabase<DeliverySettings>(STORAGE_KEYS.DELIVERY_SETTINGS),
-      fetchSiteSettingFromSupabase<StatCounter[]>(STORAGE_KEYS.STATS),
-      fetchSiteSettingFromSupabase<ContactPerson[]>(STORAGE_KEYS.CONTACTS),
-      fetchSiteSettingFromSupabase<GalleryItem[]>(STORAGE_KEYS.GALLERY),
-      fetchSiteSettingFromSupabase<AiDesignerConfig>(STORAGE_KEYS.PLANNER),
-      fetchBuildMaterialEstimatorFromSupabase(),
-      fetchFittingBuilderConfigFromSupabase(),
-      fetchAiAssistantConfigFromSupabase(),
-      fetchSiteSettingFromSupabase<SmartToolsSettings>(STORAGE_KEYS.SMART_TOOLS),
-      fetchSiteSettingFromSupabase<Coupon[]>(STORAGE_KEYS.COUPONS),
-      fetchHowToOrderConfigFromSupabase(),
-      fetchPaymentMethodsFromSupabase(),
-      fetchSiteSettingFromSupabase<FeaturedCarouselSettings>(STORAGE_KEYS.FEATURED_CAROUSEL)
-    ]);
-
-    // Orders
-    if (ordersResult.status === 'fulfilled' && ordersResult.value !== null && callbacks.setOrders) {
-      const local = loadStoredOrders();
-      const orderMap = new Map<string, CustomerOrder>();
-      (local || []).forEach(o => { if (o && o.id) orderMap.set(o.id, o); });
-
-      ordersResult.value.forEach(o => {
-        if (o && o.id) {
-          const existing = orderMap.get(o.id);
-          const isExistingVerified = 
-            existing?.paymentStatus === 'Payment Verified' || 
-            existing?.paymentStatus === 'Payment Confirmed' ||
-            Boolean(existing?.paymentVerifiedAt);
-          const mergedPaymentStatus = (isExistingVerified && o.paymentStatus !== 'Payment Rejected')
-            ? 'Payment Verified'
-            : (o.paymentStatus || existing?.paymentStatus);
-
-          orderMap.set(o.id, { 
-            ...(existing || {}), 
-            ...o,
-            isStorageOptimized: existing?.isStorageOptimized || o.isStorageOptimized,
-            paymentStatus: mergedPaymentStatus,
-            paymentVerifiedAt: isExistingVerified ? (existing?.paymentVerifiedAt || o.paymentVerifiedAt || new Date().toISOString()) : o.paymentVerifiedAt,
-            paymentVerifiedBy: isExistingVerified ? (existing?.paymentVerifiedBy || o.paymentVerifiedBy || 'Admin') : o.paymentVerifiedBy
-          });
-        }
-      });
-
-      const allMerged = Array.from(orderMap.values()).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-
-      if (callbacks.customerId) {
-        const targetClean = callbacks.customerId.trim().toLowerCase();
-        const targetDigits = callbacks.customerId.replace(/\D/g, '');
-
-        const customerFiltered = allMerged.filter(o => {
-          if (!o) return false;
-          const oCustId = (o.customerId || (o as any).customer_id || '').trim().toLowerCase();
-          const oPhone = (o.phoneNumber || (o as any).customer_phone || o.whatsappNumber || '').replace(/\D/g, '');
-          const oId = (o.id || '').trim().toLowerCase();
-          const oNum = (o.orderNumber || (o as any).order_number || '').trim().toLowerCase();
-
-          return (
-            (targetClean && oCustId === targetClean) ||
-            (targetClean && oId === targetClean) ||
-            (targetClean && oNum === targetClean) ||
-            (targetDigits && oPhone && oPhone.includes(targetDigits)) ||
-            (targetDigits && oPhone && targetDigits.includes(oPhone) && oPhone.length >= 7)
-          );
-        });
-
-        // Always include orders from local session cache so freshly placed customer orders are never lost
-        const local = loadStoredOrders();
-        const mergedCustomerOrders = [...customerFiltered];
-        (local || []).forEach(loc => {
-          if (loc && loc.id && !mergedCustomerOrders.some(m => m.id === loc.id)) {
-            mergedCustomerOrders.unshift(loc);
-          }
-        });
-
-        callbacks.setOrders(mergedCustomerOrders);
-      } else {
-        callbacks.setOrders(allMerged);
-        safeSetLocalStorage(STORAGE_KEYS.ORDERS, allMerged);
-      }
-    }
-
-    // Delivery Settings & Cities
-    const currentDeliverySettings = loadDeliverySettings();
-    let updatedDeliverySettings = { ...currentDeliverySettings };
-
-    if (deliveryResult.status === 'fulfilled' && deliveryResult.value && typeof deliveryResult.value === 'object') {
-      const dbDeliverySettings = deliveryResult.value as DeliverySettings;
-      updatedDeliverySettings = {
-        ...updatedDeliverySettings,
-        ...dbDeliverySettings,
-        cities: Array.isArray(dbDeliverySettings.cities) && dbDeliverySettings.cities.length > 0
-          ? dbDeliverySettings.cities
-          : updatedDeliverySettings.cities
-      };
-    }
-
-    if (citiesResult.status === 'fulfilled' && citiesResult.value && citiesResult.value.length > 0) {
-      // Merge cities while preserving city deliveryTiers if present in deliveryResult or current settings
-      const sanitizedCloudCities = sanitizeAndDeduplicateCities(citiesResult.value);
-      const mergedCities = sanitizedCloudCities.map(dbCity => {
-        const existing = updatedDeliverySettings.cities?.find(
-          c => c.cityName?.trim().toLowerCase() === dbCity.cityName?.trim().toLowerCase() || c.id === dbCity.id
-        );
-        return {
-          ...dbCity,
-          deliveryTiers: (dbCity.deliveryTiers && dbCity.deliveryTiers.length > 0)
-            ? dbCity.deliveryTiers
-            : (existing?.deliveryTiers || undefined),
-          province: dbCity.province || existing?.province
-        };
-      });
-      const combined = sanitizeAndDeduplicateCities([
-        ...mergedCities,
-        ...(updatedDeliverySettings.cities || [])
-      ]);
-      updatedDeliverySettings.cities = combined;
-    } else {
-      updatedDeliverySettings.cities = sanitizeAndDeduplicateCities(updatedDeliverySettings.cities || []);
-    }
-
-    if (callbacks.setDeliverySettings) callbacks.setDeliverySettings(updatedDeliverySettings);
-    safeSetLocalStorage(STORAGE_KEYS.DELIVERY_SETTINGS, updatedDeliverySettings);
-    try {
-      window.dispatchEvent(new CustomEvent('zst_delivery_settings_updated', { detail: updatedDeliverySettings }));
-    } catch {}
-
-    // Announcements
-    if (announcementResult.status === 'fulfilled' && announcementResult.value && typeof announcementResult.value === 'object') {
-      if (callbacks.setAnnouncementSettings) callbacks.setAnnouncementSettings(announcementResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, announcementResult.value);
+  const applyAnnouncement = (ann: AnnouncementBarSettings | null | undefined) => {
+    if (ann && typeof ann === 'object') {
+      callbacks.setAnnouncementSettings?.(ann);
+      safeSetLocalStorage(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS, ann);
       try {
-        window.dispatchEvent(new CustomEvent('zst_announcements_updated', { detail: announcementResult.value }));
+        window.dispatchEvent(new CustomEvent('zst_announcements_updated', { detail: ann }));
       } catch {}
     } else {
       const fallbackAnn = loadAnnouncementSettings();
-      if (callbacks.setAnnouncementSettings) callbacks.setAnnouncementSettings(fallbackAnn);
+      callbacks.setAnnouncementSettings?.(fallbackAnn);
       try {
         window.dispatchEvent(new CustomEvent('zst_announcements_updated', { detail: fallbackAnn }));
       } catch {}
     }
+  };
 
-    // Theme
-    if (themeResult.status === 'fulfilled' && themeResult.value && typeof themeResult.value === 'object' && Object.keys(themeResult.value).length > 0) {
-      if (callbacks.setThemeSettings) callbacks.setThemeSettings(themeResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.THEME_SETTINGS, themeResult.value);
+  const applyTheme = (theme: ThemeSettings | null | undefined) => {
+    if (theme && typeof theme === 'object' && Object.keys(theme).length > 0) {
+      callbacks.setThemeSettings?.(theme);
+      safeSetLocalStorage(STORAGE_KEYS.THEME_SETTINGS, theme);
     } else {
-      const fallbackTheme = loadThemeSettings();
-      if (callbacks.setThemeSettings) callbacks.setThemeSettings(fallbackTheme);
+      callbacks.setThemeSettings?.(loadThemeSettings());
     }
+  };
 
-    // Checkout & Coupons & Payment Methods
-    if (checkoutResult.status === 'fulfilled' && checkoutResult.value && typeof checkoutResult.value === 'object' && Object.keys(checkoutResult.value).length > 0) {
-      const mergedCheckout: CheckoutSettings = { ...defaultCheckoutSettings, ...checkoutResult.value };
-      if (callbacks.setCheckoutSettings) callbacks.setCheckoutSettings(mergedCheckout);
-      safeSetLocalStorage(STORAGE_KEYS.CHECKOUT_SETTINGS, mergedCheckout);
-      if (Array.isArray((checkoutResult.value as any).coupons) && (checkoutResult.value as any).coupons.length > 0) {
-        safeSetLocalStorage(STORAGE_KEYS.COUPONS, (checkoutResult.value as any).coupons);
-      }
-      const pms = (checkoutResult.value as any).payment_methods || (checkoutResult.value as any).paymentMethods;
-      if (Array.isArray(pms) && pms.length > 0 && paymentMethodsResult.status !== 'fulfilled') {
-        const normalized = pms.map((item: any, idx: number) => normalizePaymentMethod(item, idx));
-        safeSetLocalStorage(STORAGE_KEYS.PAYMENT_METHODS, normalized);
-        try {
-          window.dispatchEvent(new CustomEvent('zst_payment_methods_updated', { detail: normalized }));
-        } catch {}
-      }
-    } else {
-      const fallbackCheckout = loadCheckoutSettings();
-      if (callbacks.setCheckoutSettings) callbacks.setCheckoutSettings(fallbackCheckout);
-    }
-
-    if (couponsResult.status === 'fulfilled' && Array.isArray(couponsResult.value) && couponsResult.value.length > 0) {
-      safeSetLocalStorage(STORAGE_KEYS.COUPONS, couponsResult.value);
-      console.log(`[Sync] Coupons synced from Supabase: ${couponsResult.value.length}`);
-    }
-
-    // Delivery
-    if (deliveryResult.status === 'fulfilled' && deliveryResult.value && typeof deliveryResult.value === 'object' && Array.isArray((deliveryResult.value as any).cities)) {
-      if (callbacks.setDeliverySettings) callbacks.setDeliverySettings(deliveryResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.DELIVERY_SETTINGS, deliveryResult.value);
-    }
-
-    // Stats
-    if (statsResult.status === 'fulfilled' && Array.isArray(statsResult.value) && statsResult.value.length > 0) {
-      if (callbacks.setStats) callbacks.setStats(statsResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.STATS, statsResult.value);
-    } else {
-      const fallbackStats = loadStoredStats();
-      if (callbacks.setStats) callbacks.setStats(fallbackStats);
-    }
-
-    // Contacts
-    if (contactsResult.status === 'fulfilled' && Array.isArray(contactsResult.value) && contactsResult.value.length > 0) {
-      if (callbacks.setContacts) callbacks.setContacts(contactsResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.CONTACTS, contactsResult.value);
-    } else {
-      const fallbackContacts = loadStoredContacts();
-      if (callbacks.setContacts) callbacks.setContacts(fallbackContacts);
-    }
-
-    // Gallery
-    if (galleryResult.status === 'fulfilled' && Array.isArray(galleryResult.value) && galleryResult.value.length > 0) {
-      if (callbacks.setGallery) callbacks.setGallery(galleryResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.GALLERY, galleryResult.value);
-    } else {
-      const fallbackGallery = loadStoredGallery();
-      if (callbacks.setGallery) callbacks.setGallery(fallbackGallery);
-    }
-
-    // Planner
-    if (plannerResult.status === 'fulfilled' && plannerResult.value && typeof plannerResult.value === 'object') {
-      if (callbacks.setPlannerConfig) callbacks.setPlannerConfig(plannerResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.PLANNER, plannerResult.value);
-    } else {
-      const fallbackPlanner = loadPlannerConfig();
-      if (callbacks.setPlannerConfig) callbacks.setPlannerConfig(fallbackPlanner);
-    }
-
-    // Material Estimator
-    if (estimatorResult.status === 'fulfilled' && estimatorResult.value && typeof estimatorResult.value === 'object') {
-      if (callbacks.setEstimatorConfig) callbacks.setEstimatorConfig(estimatorResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.ESTIMATOR, estimatorResult.value);
-    } else {
-      const fallbackEstimator = loadBuildMaterialEstimatorConfig();
-      if (callbacks.setEstimatorConfig) callbacks.setEstimatorConfig(fallbackEstimator);
-    }
-
-    // Fitting Builder
-    if (fittingResult.status === 'fulfilled' && fittingResult.value && typeof fittingResult.value === 'object' && Array.isArray(fittingResult.value.items) && fittingResult.value.items.length > 0) {
-      if (callbacks.setFittingBuilderConfig) callbacks.setFittingBuilderConfig(fittingResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.FITTING_BUILDER, fittingResult.value);
-    } else {
-      const fallbackFitting = loadFittingBuilderConfig();
-      if (callbacks.setFittingBuilderConfig) callbacks.setFittingBuilderConfig(fallbackFitting);
-    }
-
-    // AI Assistant
-    if (aiResult.status === 'fulfilled' && aiResult.value && typeof aiResult.value === 'object') {
-      if (callbacks.setAiAssistantConfig) callbacks.setAiAssistantConfig(aiResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.AI_ASSISTANT, aiResult.value);
-    } else {
-      const fallbackAi = loadAiAssistantConfig();
-      if (callbacks.setAiAssistantConfig) callbacks.setAiAssistantConfig(fallbackAi);
-    }
-
-    // Smart Tools
-    if (smartToolsResult.status === 'fulfilled' && smartToolsResult.value && typeof smartToolsResult.value === 'object') {
-      if (callbacks.setSmartToolsSettings) callbacks.setSmartToolsSettings(smartToolsResult.value);
-      safeSetLocalStorage(STORAGE_KEYS.SMART_TOOLS, smartToolsResult.value);
-    } else {
-      const fallbackTools = loadSmartToolsSettings();
-      if (callbacks.setSmartToolsSettings) callbacks.setSmartToolsSettings(fallbackTools);
-    }
-
-    // How To Order Guide
-    if (howToOrderResult.status === 'fulfilled' && howToOrderResult.value && Array.isArray(howToOrderResult.value.steps) && howToOrderResult.value.steps.length > 0) {
-      safeSetLocalStorage(STORAGE_KEYS.HOW_TO_ORDER_GUIDE, howToOrderResult.value);
-    }
-
-    // Payment Methods
-    if (paymentMethodsResult.status === 'fulfilled' && Array.isArray(paymentMethodsResult.value) && paymentMethodsResult.value.length > 0) {
-      const normalized = paymentMethodsResult.value.map((item: any, idx: number) => normalizePaymentMethod(item, idx));
-      safeSetLocalStorage(STORAGE_KEYS.PAYMENT_METHODS, normalized);
-      try {
-        window.dispatchEvent(new CustomEvent('zst_payment_methods_updated', { detail: normalized }));
-      } catch {}
-      console.log(`[Sync] Payment methods synced from Supabase: ${normalized.length}`);
-    }
-
-    // Featured Products Carousel
-    if (featuredCarouselResult.status === 'fulfilled' && featuredCarouselResult.value && typeof featuredCarouselResult.value === 'object') {
-      const mergedCarousel: FeaturedCarouselSettings = { ...defaultFeaturedCarouselSettings, ...featuredCarouselResult.value };
-      if (callbacks.setFeaturedCarouselSettings) callbacks.setFeaturedCarouselSettings(mergedCarousel);
+  const applyFeaturedCarousel = (carousel: FeaturedCarouselSettings | null | undefined) => {
+    if (carousel && typeof carousel === 'object') {
+      const mergedCarousel: FeaturedCarouselSettings = { ...defaultFeaturedCarouselSettings, ...carousel };
+      callbacks.setFeaturedCarouselSettings?.(mergedCarousel);
       safeSetLocalStorage(STORAGE_KEYS.FEATURED_CAROUSEL, mergedCarousel);
       try {
         window.dispatchEvent(new CustomEvent('zst_featured_carousel_updated', { detail: mergedCarousel }));
       } catch {}
     } else {
-      const fallbackCarousel = loadFeaturedCarouselSettings();
-      if (callbacks.setFeaturedCarouselSettings) callbacks.setFeaturedCarouselSettings(fallbackCarousel);
+      callbacks.setFeaturedCarouselSettings?.(loadFeaturedCarouselSettings());
+    }
+  };
+
+  const applySmartTools = (tools: SmartToolsSettings | null | undefined) => {
+    if (tools && typeof tools === 'object') {
+      callbacks.setSmartToolsSettings?.(tools);
+      safeSetLocalStorage(STORAGE_KEYS.SMART_TOOLS, tools);
+    } else {
+      callbacks.setSmartToolsSettings?.(loadSmartToolsSettings());
+    }
+  };
+
+  try {
+    // FAST PATH: Single compressed & cached server bootstrap request for all critical above-the-fold data
+    const boot = await fetchBootstrapCatalogFromServer();
+
+    if (boot) {
+      applyHero(boot.heroSettings);
+      applyConfig(boot.config);
+      applyPricingTypo(boot.pricingTypography);
+      applyAnnouncement(boot.announcementSettings);
+      applyTheme(boot.themeSettings);
+      applyFeaturedCarousel(boot.featuredCarouselSettings);
+      applySmartTools(boot.smartToolsSettings);
+      applyCategories(boot.categories);
+      applyBrands(boot.brands);
+      applyProducts(boot.products);
+    } else {
+      // FALLBACK PATH (Static host without /api/bootstrap): Non-blocking independent fetches so hero/categories never wait on products
+      await initializeSupabaseRuntime();
+      await Promise.allSettled([
+        fetchHeroSettingsFromSupabase().then(applyHero),
+        fetchSiteSettingFromSupabase<BusinessConfig>(STORAGE_KEYS.CONFIG).then(applyConfig),
+        fetchSiteSettingFromSupabase<PricingTypographySettings>(STORAGE_KEYS.PRICING_TYPOGRAPHY).then(applyPricingTypo),
+        fetchCategoriesFromSupabase().then(applyCategories),
+        fetchBrandsFromSupabase().then(applyBrands),
+        fetchProductsFromSupabase().then(applyProducts),
+        fetchSiteSettingFromSupabase<AnnouncementBarSettings>(STORAGE_KEYS.ANNOUNCEMENT_SETTINGS).then(applyAnnouncement),
+        fetchSiteSettingFromSupabase<ThemeSettings>(STORAGE_KEYS.THEME_SETTINGS).then(applyTheme),
+        fetchSiteSettingFromSupabase<FeaturedCarouselSettings>(STORAGE_KEYS.FEATURED_CAROUSEL).then(applyFeaturedCarousel),
+        fetchSiteSettingFromSupabase<SmartToolsSettings>(STORAGE_KEYS.SMART_TOOLS).then(applySmartTools)
+      ]);
     }
 
-    console.log('✅ [Database & Backend Sync] Fast parallel synchronization complete!');
+    // SECONDARY BATCH 2: Defer below-the-fold sections & secondary tool configs until browser is idle
+    const runSecondarySync = async () => {
+      try {
+        // Only fetch orders during homepage startup if user is logged-in Admin or a returning customer with local orders/phone
+        const localOrders = loadStoredOrders();
+        let hasCustomerPhone = false;
+        try {
+          const prof = localStorage.getItem('zft_current_customer_profile');
+          if (prof) {
+            const parsed = JSON.parse(prof);
+            hasCustomerPhone = Boolean(parsed?.phoneNumber && String(parsed.phoneNumber).trim().length >= 7);
+          }
+        } catch {}
+        const shouldFetchOrders = getIsAdminLoggedIn() || localOrders.length > 0 || hasCustomerPhone;
+
+        const [
+          ordersResult,
+          citiesResult,
+          checkoutResult,
+          deliveryResult,
+          statsResult,
+          contactsResult,
+          galleryResult,
+          plannerResult,
+          estimatorResult,
+          fittingResult,
+          aiResult,
+          couponsResult,
+          howToOrderResult,
+          paymentMethodsResult
+        ] = await Promise.allSettled([
+          shouldFetchOrders ? fetchOrdersFromSupabase(callbacks.customerId) : Promise.resolve(null),
+          fetchDeliveryCitiesFromSupabase(),
+          fetchSiteSettingFromSupabase<CheckoutSettings>(STORAGE_KEYS.CHECKOUT_SETTINGS),
+          fetchSiteSettingFromSupabase<DeliverySettings>(STORAGE_KEYS.DELIVERY_SETTINGS),
+          fetchSiteSettingFromSupabase<StatCounter[]>(STORAGE_KEYS.STATS),
+          fetchSiteSettingFromSupabase<ContactPerson[]>(STORAGE_KEYS.CONTACTS),
+          fetchSiteSettingFromSupabase<GalleryItem[]>(STORAGE_KEYS.GALLERY),
+          fetchSiteSettingFromSupabase<AiDesignerConfig>(STORAGE_KEYS.PLANNER),
+          fetchBuildMaterialEstimatorFromSupabase(),
+          fetchFittingBuilderConfigFromSupabase(),
+          fetchAiAssistantConfigFromSupabase(),
+          fetchSiteSettingFromSupabase<Coupon[]>(STORAGE_KEYS.COUPONS),
+          fetchHowToOrderConfigFromSupabase(),
+          fetchPaymentMethodsFromSupabase()
+        ]);
+
+        // Orders
+        if (ordersResult.status === 'fulfilled' && ordersResult.value !== null && callbacks.setOrders) {
+          const orderMap = new Map<string, CustomerOrder>();
+          (localOrders || []).forEach(o => { if (o && o.id) orderMap.set(o.id, o); });
+
+          ordersResult.value.forEach(o => {
+            if (o && o.id) {
+              const existing = orderMap.get(o.id);
+              const isExistingVerified =
+                existing?.paymentStatus === 'Payment Verified' ||
+                existing?.paymentStatus === 'Payment Confirmed' ||
+                Boolean(existing?.paymentVerifiedAt);
+              const mergedPaymentStatus = (isExistingVerified && o.paymentStatus !== 'Payment Rejected')
+                ? 'Payment Verified'
+                : (o.paymentStatus || existing?.paymentStatus);
+
+              orderMap.set(o.id, {
+                ...(existing || {}),
+                ...o,
+                isStorageOptimized: existing?.isStorageOptimized || o.isStorageOptimized,
+                paymentStatus: mergedPaymentStatus,
+                paymentVerifiedAt: isExistingVerified ? (existing?.paymentVerifiedAt || o.paymentVerifiedAt || new Date().toISOString()) : o.paymentVerifiedAt,
+                paymentVerifiedBy: isExistingVerified ? (existing?.paymentVerifiedBy || o.paymentVerifiedBy || 'Admin') : o.paymentVerifiedBy
+              });
+            }
+          });
+
+          const allMerged = Array.from(orderMap.values()).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+          if (callbacks.customerId && !getIsAdminLoggedIn()) {
+            const targetClean = callbacks.customerId.trim().toLowerCase();
+            const targetDigits = callbacks.customerId.replace(/\D/g, '');
+            const customerFiltered = allMerged.filter(o => {
+              if (!o) return false;
+              const oCustId = (o.customerId || (o as any).customer_id || '').trim().toLowerCase();
+              const oPhone = (o.phoneNumber || (o as any).customer_phone || o.whatsappNumber || '').replace(/\D/g, '');
+              const oId = (o.id || '').trim().toLowerCase();
+              const oNum = (o.orderNumber || (o as any).order_number || '').trim().toLowerCase();
+              return (
+                (targetClean && oCustId === targetClean) ||
+                (targetClean && oId === targetClean) ||
+                (targetClean && oNum === targetClean) ||
+                (targetDigits && oPhone && oPhone.includes(targetDigits)) ||
+                (targetDigits && oPhone && targetDigits.includes(oPhone) && oPhone.length >= 7)
+              );
+            });
+            const mergedCustomerOrders = [...customerFiltered];
+            (localOrders || []).forEach(loc => {
+              if (loc && loc.id && !mergedCustomerOrders.some(m => m.id === loc.id)) {
+                mergedCustomerOrders.unshift(loc);
+              }
+            });
+            callbacks.setOrders(mergedCustomerOrders);
+          } else {
+            callbacks.setOrders(allMerged);
+            safeSetLocalStorage(STORAGE_KEYS.ORDERS, allMerged);
+          }
+        }
+
+        // Delivery Settings & Cities
+        const currentDeliverySettings = loadDeliverySettings();
+        let updatedDeliverySettings = { ...currentDeliverySettings };
+
+        if (deliveryResult.status === 'fulfilled' && deliveryResult.value && typeof deliveryResult.value === 'object') {
+          const dbDeliverySettings = deliveryResult.value as DeliverySettings;
+          updatedDeliverySettings = {
+            ...updatedDeliverySettings,
+            ...dbDeliverySettings,
+            cities: Array.isArray(dbDeliverySettings.cities) && dbDeliverySettings.cities.length > 0
+              ? dbDeliverySettings.cities
+              : updatedDeliverySettings.cities
+          };
+        }
+
+        if (citiesResult.status === 'fulfilled' && citiesResult.value && citiesResult.value.length > 0) {
+          const sanitizedCloudCities = sanitizeAndDeduplicateCities(citiesResult.value);
+          const mergedCities = sanitizedCloudCities.map(dbCity => {
+            const existing = updatedDeliverySettings.cities?.find(
+              c => c.cityName?.trim().toLowerCase() === dbCity.cityName?.trim().toLowerCase() || c.id === dbCity.id
+            );
+            return {
+              ...dbCity,
+              deliveryTiers: (dbCity.deliveryTiers && dbCity.deliveryTiers.length > 0)
+                ? dbCity.deliveryTiers
+                : (existing?.deliveryTiers || undefined),
+              province: dbCity.province || existing?.province
+            };
+          });
+          const combined = sanitizeAndDeduplicateCities([
+            ...mergedCities,
+            ...(updatedDeliverySettings.cities || [])
+          ]);
+          updatedDeliverySettings.cities = combined;
+        } else {
+          updatedDeliverySettings.cities = sanitizeAndDeduplicateCities(updatedDeliverySettings.cities || []);
+        }
+
+        if (callbacks.setDeliverySettings) callbacks.setDeliverySettings(updatedDeliverySettings);
+        safeSetLocalStorage(STORAGE_KEYS.DELIVERY_SETTINGS, updatedDeliverySettings);
+        try {
+          window.dispatchEvent(new CustomEvent('zst_delivery_settings_updated', { detail: updatedDeliverySettings }));
+        } catch {}
+
+        // Checkout & Coupons & Payment Methods
+        if (checkoutResult.status === 'fulfilled' && checkoutResult.value && typeof checkoutResult.value === 'object' && Object.keys(checkoutResult.value).length > 0) {
+          const mergedCheckout: CheckoutSettings = { ...defaultCheckoutSettings, ...checkoutResult.value };
+          if (callbacks.setCheckoutSettings) callbacks.setCheckoutSettings(mergedCheckout);
+          safeSetLocalStorage(STORAGE_KEYS.CHECKOUT_SETTINGS, mergedCheckout);
+          if (Array.isArray((checkoutResult.value as any).coupons) && (checkoutResult.value as any).coupons.length > 0) {
+            safeSetLocalStorage(STORAGE_KEYS.COUPONS, (checkoutResult.value as any).coupons);
+          }
+          const pms = (checkoutResult.value as any).payment_methods || (checkoutResult.value as any).paymentMethods;
+          if (Array.isArray(pms) && pms.length > 0 && paymentMethodsResult.status !== 'fulfilled') {
+            const normalized = pms.map((item: any, idx: number) => normalizePaymentMethod(item, idx));
+            safeSetLocalStorage(STORAGE_KEYS.PAYMENT_METHODS, normalized);
+            try {
+              window.dispatchEvent(new CustomEvent('zst_payment_methods_updated', { detail: normalized }));
+            } catch {}
+          }
+        } else {
+          callbacks.setCheckoutSettings?.(loadCheckoutSettings());
+        }
+
+        if (couponsResult.status === 'fulfilled' && Array.isArray(couponsResult.value) && couponsResult.value.length > 0) {
+          safeSetLocalStorage(STORAGE_KEYS.COUPONS, couponsResult.value);
+        }
+
+        // Stats
+        if (statsResult.status === 'fulfilled' && Array.isArray(statsResult.value) && statsResult.value.length > 0) {
+          callbacks.setStats?.(statsResult.value);
+          safeSetLocalStorage(STORAGE_KEYS.STATS, statsResult.value);
+        } else {
+          callbacks.setStats?.(loadStoredStats());
+        }
+
+        // Contacts
+        if (contactsResult.status === 'fulfilled' && Array.isArray(contactsResult.value) && contactsResult.value.length > 0) {
+          callbacks.setContacts?.(contactsResult.value);
+          safeSetLocalStorage(STORAGE_KEYS.CONTACTS, contactsResult.value);
+        } else {
+          callbacks.setContacts?.(loadStoredContacts());
+        }
+
+        // Gallery
+        if (galleryResult.status === 'fulfilled' && Array.isArray(galleryResult.value) && galleryResult.value.length > 0) {
+          callbacks.setGallery?.(galleryResult.value);
+          safeSetLocalStorage(STORAGE_KEYS.GALLERY, galleryResult.value);
+        } else {
+          callbacks.setGallery?.(loadStoredGallery());
+        }
+
+        // Planner
+        if (plannerResult.status === 'fulfilled' && plannerResult.value && typeof plannerResult.value === 'object') {
+          callbacks.setPlannerConfig?.(plannerResult.value);
+          safeSetLocalStorage(STORAGE_KEYS.PLANNER, plannerResult.value);
+        } else {
+          callbacks.setPlannerConfig?.(loadPlannerConfig());
+        }
+
+        // Material Estimator
+        if (estimatorResult.status === 'fulfilled' && estimatorResult.value && typeof estimatorResult.value === 'object') {
+          callbacks.setEstimatorConfig?.(estimatorResult.value);
+          safeSetLocalStorage(STORAGE_KEYS.ESTIMATOR, estimatorResult.value);
+        } else {
+          callbacks.setEstimatorConfig?.(loadBuildMaterialEstimatorConfig());
+        }
+
+        // Fitting Builder
+        if (fittingResult.status === 'fulfilled' && fittingResult.value && typeof fittingResult.value === 'object' && Array.isArray(fittingResult.value.items) && fittingResult.value.items.length > 0) {
+          callbacks.setFittingBuilderConfig?.(fittingResult.value);
+          safeSetLocalStorage(STORAGE_KEYS.FITTING_BUILDER, fittingResult.value);
+        } else {
+          callbacks.setFittingBuilderConfig?.(loadFittingBuilderConfig());
+        }
+
+        // AI Assistant
+        if (aiResult.status === 'fulfilled' && aiResult.value && typeof aiResult.value === 'object') {
+          callbacks.setAiAssistantConfig?.(aiResult.value);
+          safeSetLocalStorage(STORAGE_KEYS.AI_ASSISTANT, aiResult.value);
+        } else {
+          callbacks.setAiAssistantConfig?.(loadAiAssistantConfig());
+        }
+
+        // How To Order Guide
+        if (howToOrderResult.status === 'fulfilled' && howToOrderResult.value && Array.isArray(howToOrderResult.value.steps) && howToOrderResult.value.steps.length > 0) {
+          safeSetLocalStorage(STORAGE_KEYS.HOW_TO_ORDER_GUIDE, howToOrderResult.value);
+        }
+
+        // Payment Methods
+        if (paymentMethodsResult.status === 'fulfilled' && Array.isArray(paymentMethodsResult.value) && paymentMethodsResult.value.length > 0) {
+          const normalized = paymentMethodsResult.value.map((item: any, idx: number) => normalizePaymentMethod(item, idx));
+          safeSetLocalStorage(STORAGE_KEYS.PAYMENT_METHODS, normalized);
+          try {
+            window.dispatchEvent(new CustomEvent('zst_payment_methods_updated', { detail: normalized }));
+          } catch {}
+        }
+      } catch (secondaryErr) {
+        console.warn('[Sync] Secondary deferred sync notice:', secondaryErr);
+      }
+    };
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(() => { runSecondarySync(); }, { timeout: 600 });
+    } else {
+      setTimeout(() => { runSecondarySync(); }, 80);
+    }
+
     return;
   } catch (err) {
     console.error('[Database & Backend Sync] Sync error, falling back to local cache:', err);
   }
 
-  // Fallback / standard sync with LocalStorage if Supabase client is not configured
+  // Fallback / standard sync with LocalStorage if backend & Supabase client fail
   try {
     if (callbacks.setConfig) callbacks.setConfig(loadStoredConfig());
     if (callbacks.setProducts) callbacks.setProducts(loadStoredProducts());

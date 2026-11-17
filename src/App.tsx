@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { 
   customerReviews, 
   faqItems 
@@ -50,8 +50,6 @@ import {
   setActiveTheme
 } from './utils/storage';
 import { AiAssistantConfig, ContactPerson, ThemeSettings } from './types';
-import { ThemeSwitcherModal } from './components/ThemeSwitcherModal';
-import { FloatingAiChat } from './components/FloatingAiChat';
 import { 
   trackPageView, 
   trackProductView, 
@@ -72,8 +70,6 @@ import { Navbar } from './components/Navbar';
 import { HeroSection } from './components/HeroSection';
 import { FeatureBar } from './components/FeatureBar';
 import { SmartToolsSection } from './components/SmartToolsSection';
-import { SmartToolsModal } from './components/SmartToolsModal';
-import { SmartConstructionBuilderModal } from './components/SmartConstructionBuilderModal';
 import { SmartConstructionBuilderEntryCard } from './components/SmartConstructionBuilderEntryCard';
 import { AboutSection } from './components/AboutSection';
 import { CategoriesSection } from './components/CategoriesSection';
@@ -88,40 +84,46 @@ import { FaqSection } from './components/FaqSection';
 import { ContactSection } from './components/ContactSection';
 import { FloatingWhatsApp } from './components/FloatingWhatsApp';
 import { Footer } from './components/Footer';
-import { QuickViewModal } from './components/QuickViewModal';
-import { BrandDetailsModal } from './components/BrandDetailsModal';
-import { AiConsultantModal } from './components/AiConsultantModal';
-import { BusinessConfigModal } from './components/BusinessConfigModal';
-import { AdvancedSearchModal } from './components/AdvancedSearchModal';
-import { OrderTrackingModal } from './components/OrderTrackingModal';
-import { CustomerAccountModal } from './components/CustomerAccountModal';
 import { loadCustomerProfile, saveCustomerProfile } from './utils/customerStorage';
 import { supabase, initializeSupabaseRuntime } from './lib/supabase';
-import { AdminLoginModal } from './components/AdminLoginModal';
-import { AdminProductModal } from './components/AdminProductModal';
-import { AdminDashboard } from './components/AdminDashboard';
-import { CartDrawer } from './components/CartDrawer';
+import { fetchOrdersFromSupabase } from './services/supabaseService';
 import { FloatingCartBadge } from './components/FloatingCartBadge';
-import { OrderCheckoutModal } from './components/OrderCheckoutModal';
-import { CinematicIntro } from './components/CinematicIntro';
 import { LuxuryCursorEffect } from './components/LuxuryCursorEffect';
-import { DeliveryCheckerModal } from './components/DeliveryCheckerModal';
-import { DeliveryAreasPage } from './components/DeliveryAreasPage';
 import { MobileCategoryScroll } from './components/MobileCategoryScroll';
 import { MobileBottomNav } from './components/MobileBottomNav';
 
-// Multi-Page E-commerce Pages
-import { StorePage } from './pages/StorePage';
-import { CategoriesPage } from './pages/CategoriesPage';
-import { CategoryDetailPage } from './pages/CategoryDetailPage';
-import { ProductDetailPage } from './pages/ProductDetailPage';
-import { BrandsPage } from './pages/BrandsPage';
-import { BrandDetailPage } from './pages/BrandDetailPage';
-import { SmartToolsPage } from './pages/SmartToolsPage';
-import { DeliveryPage } from './pages/DeliveryPage';
-import { AboutPage } from './pages/AboutPage';
-import { ContactPage } from './pages/ContactPage';
-import { NotFoundPage } from './pages/NotFoundPage';
+// Code-split Heavy Modals & Overlays (loaded only on interaction/idle)
+const ThemeSwitcherModal = lazy(() => import('./components/ThemeSwitcherModal').then(m => ({ default: m.ThemeSwitcherModal })));
+const FloatingAiChat = lazy(() => import('./components/FloatingAiChat').then(m => ({ default: m.FloatingAiChat })));
+const SmartToolsModal = lazy(() => import('./components/SmartToolsModal').then(m => ({ default: m.SmartToolsModal })));
+const SmartConstructionBuilderModal = lazy(() => import('./components/SmartConstructionBuilderModal').then(m => ({ default: m.SmartConstructionBuilderModal })));
+const QuickViewModal = lazy(() => import('./components/QuickViewModal').then(m => ({ default: m.QuickViewModal })));
+const BrandDetailsModal = lazy(() => import('./components/BrandDetailsModal').then(m => ({ default: m.BrandDetailsModal })));
+const AiConsultantModal = lazy(() => import('./components/AiConsultantModal').then(m => ({ default: m.AiConsultantModal })));
+const BusinessConfigModal = lazy(() => import('./components/BusinessConfigModal').then(m => ({ default: m.BusinessConfigModal })));
+const AdvancedSearchModal = lazy(() => import('./components/AdvancedSearchModal').then(m => ({ default: m.AdvancedSearchModal })));
+const CustomerAccountModal = lazy(() => import('./components/CustomerAccountModal').then(m => ({ default: m.CustomerAccountModal })));
+const AdminLoginModal = lazy(() => import('./components/AdminLoginModal').then(m => ({ default: m.AdminLoginModal })));
+const AdminProductModal = lazy(() => import('./components/AdminProductModal').then(m => ({ default: m.AdminProductModal })));
+const AdminDashboard = lazy(() => import('./components/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const CartDrawer = lazy(() => import('./components/CartDrawer').then(m => ({ default: m.CartDrawer })));
+const OrderCheckoutModal = lazy(() => import('./components/OrderCheckoutModal').then(m => ({ default: m.OrderCheckoutModal })));
+const CinematicIntro = lazy(() => import('./components/CinematicIntro').then(m => ({ default: m.CinematicIntro })));
+const DeliveryCheckerModal = lazy(() => import('./components/DeliveryCheckerModal').then(m => ({ default: m.DeliveryCheckerModal })));
+
+// Code-split Multi-Page E-commerce Routes
+const StorePage = lazy(() => import('./pages/StorePage').then(m => ({ default: m.StorePage })));
+const CategoriesPage = lazy(() => import('./pages/CategoriesPage').then(m => ({ default: m.CategoriesPage })));
+const CategoryDetailPage = lazy(() => import('./pages/CategoryDetailPage').then(m => ({ default: m.CategoryDetailPage })));
+const ProductDetailPage = lazy(() => import('./pages/ProductDetailPage').then(m => ({ default: m.ProductDetailPage })));
+const BrandsPage = lazy(() => import('./pages/BrandsPage').then(m => ({ default: m.BrandsPage })));
+const BrandDetailPage = lazy(() => import('./pages/BrandDetailPage').then(m => ({ default: m.BrandDetailPage })));
+const SmartToolsPage = lazy(() => import('./pages/SmartToolsPage').then(m => ({ default: m.SmartToolsPage })));
+const DeliveryPage = lazy(() => import('./pages/DeliveryPage').then(m => ({ default: m.DeliveryPage })));
+const AboutPage = lazy(() => import('./pages/AboutPage').then(m => ({ default: m.AboutPage })));
+const ContactPage = lazy(() => import('./pages/ContactPage').then(m => ({ default: m.ContactPage })));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
+
 import { 
   findProductBySlug, 
   findCategoryBySlug, 
@@ -133,9 +135,22 @@ import {
 } from './utils/slugUtils';
 import { updateSeoMetadata } from './utils/seoUtils';
 
+const RoutePageSkeleton = () => (
+  <div className="min-h-[60vh] max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-pulse space-y-6">
+    <div className="h-8 w-56 bg-slate-200 rounded-xl" />
+    <div className="h-44 w-full bg-slate-200 rounded-2xl" />
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} className="h-64 bg-slate-200 rounded-2xl" />
+      ))}
+    </div>
+  </div>
+);
+
 export default function App() {
-  // Showroom Cinematic opening presentation (plays once on page load, can be replayed from footer)
-  const [showIntro, setShowIntro] = useState<boolean>(true);
+  // Showroom Cinematic opening presentation (opt-in replay from footer so first paint is never blocked)
+  const [showIntro, setShowIntro] = useState<boolean>(false);
+  const [showFloatingChat, setShowFloatingChat] = useState<boolean>(false);
 
   const handleIntroComplete = () => {
     try {
@@ -470,12 +485,19 @@ export default function App() {
     };
   }, []);
 
-  // When order tracking modal is opened, refresh stored orders
+  // When order tracking modal is opened, lazily sync fresh orders from server/Supabase
   useEffect(() => {
     if (orderTrackingOpen) {
       setCustomerOrders(loadStoredOrders());
+      fetchOrdersFromSupabase(customerProfile?.customerId)
+        .then((liveOrders) => {
+          if (liveOrders && liveOrders.length > 0) {
+            setCustomerOrders(liveOrders);
+          }
+        })
+        .catch(() => {});
     }
-  }, [orderTrackingOpen]);
+  }, [orderTrackingOpen, customerProfile?.customerId]);
 
   // Diagnostic tracking for React categories state hydration
   useEffect(() => {
@@ -675,7 +697,7 @@ export default function App() {
     };
   }, [products, brands]);
 
-  // Sync with server CMS data on mount
+  // Sync with server CMS data on mount + defer FloatingAiChat until after initial paint
   useEffect(() => {
     startLiveVisitorTracking();
     trackPageView(window.location.pathname);
@@ -698,6 +720,16 @@ export default function App() {
       setOrders: setCustomerOrders,
       customerId: customerProfile?.customerId
     });
+
+    if (typeof window === 'undefined') return;
+    const mountChat = () => setShowFloatingChat(true);
+    let idleId: any = null;
+    if ('requestIdleCallback' in window) {
+      idleId = (window as any).requestIdleCallback(mountChat, { timeout: 1500 });
+      return () => (window as any).cancelIdleCallback?.(idleId);
+    }
+    const timer = globalThis.setTimeout(mountChat, 1000);
+    return () => globalThis.clearTimeout(timer);
   }, [customerProfile?.customerId]);
 
   // Keyboard shortcut Ctrl+Shift+A or Cmd+Shift+A to trigger Admin Login discreetly
@@ -1533,9 +1565,11 @@ export default function App() {
       {/* Luxury Interactive Cursor Effect */}
       <LuxuryCursorEffect />
 
-      {/* Cinematic Intro Opening */}
+      {/* Cinematic Intro Opening (opt-in replay only) */}
       {showIntro && (
-        <CinematicIntro onComplete={handleIntroComplete} />
+        <Suspense fallback={null}>
+          <CinematicIntro onComplete={handleIntroComplete} />
+        </Suspense>
       )}
 
       {/* Local Business JSON-LD Schema for SEO */}
@@ -1624,27 +1658,33 @@ export default function App() {
       />
 
       {/* Dynamic Multi-Page Router View */}
-      {renderMainContent()}
+      <Suspense fallback={<RoutePageSkeleton />}>
+        {renderMainContent()}
+      </Suspense>
 
       {/* Sticky Floating WhatsApp */}
       <FloatingWhatsApp config={config} />
 
-      {/* Floating Ultra-Premium AI Sales Assistant */}
-      <FloatingAiChat
-        products={products}
-        categories={categories}
-        brands={brands}
-        config={config}
-        aiAssistantConfig={aiAssistantConfig}
-        onViewProduct={(prod) => handleQuickViewProduct(prod)}
-        onAddToCart={handleAddToCart}
-        onSelectCategory={(catId) => {
-          handleSelectCategory(catId);
-        }}
-        onOpenPlanner={() => {
-          handleOpenSmartTool('bathroom-planner');
-        }}
-      />
+      {/* Floating Ultra-Premium AI Sales Assistant (deferred cleanly after first paint) */}
+      {showFloatingChat && (
+        <Suspense fallback={null}>
+          <FloatingAiChat
+            products={products}
+            categories={categories}
+            brands={brands}
+            config={config}
+            aiAssistantConfig={aiAssistantConfig}
+            onViewProduct={(prod) => handleQuickViewProduct(prod)}
+            onAddToCart={handleAddToCart}
+            onSelectCategory={(catId) => {
+              handleSelectCategory(catId);
+            }}
+            onOpenPlanner={() => {
+              handleOpenSmartTool('bathroom-planner');
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Footer */}
       <Footer
@@ -1674,282 +1714,332 @@ export default function App() {
       />
 
       {/* Cart Drawer */}
-      <CartDrawer
-        isOpen={cartOpen}
-        cartItems={cartItems}
-        config={config}
-        checkoutSettings={checkoutSettings}
-        onClose={handleCloseCart}
-        onUpdateQuantity={handleUpdateCartQty}
-        onRemoveItem={handleRemoveFromCart}
-        onClearCart={handleClearCart}
-        onProceedToCheckout={handleOpenCheckout}
-      />
+      {cartOpen && (
+        <Suspense fallback={null}>
+          <CartDrawer
+            isOpen={cartOpen}
+            cartItems={cartItems}
+            config={config}
+            checkoutSettings={checkoutSettings}
+            onClose={handleCloseCart}
+            onUpdateQuantity={handleUpdateCartQty}
+            onRemoveItem={handleRemoveFromCart}
+            onClearCart={handleClearCart}
+            onProceedToCheckout={handleOpenCheckout}
+          />
+        </Suspense>
+      )}
 
       {/* Order Checkout Modal */}
-      <OrderCheckoutModal
-        isOpen={checkoutModalOpen}
-        cartItems={cartItems}
-        directItem={directCheckoutItem}
-        config={config}
-        checkoutSettings={checkoutSettings}
-        onClose={handleCloseCheckout}
-        onReturnHome={handleReturnHomeAfterOrder}
-        onOrderPlaced={async (newOrder) => {
-          const res = await addOrderToStorage(newOrder);
-          if (!res.success) {
-            console.error(`Could not save order: ${res.error || 'Database error'}`);
-            return res;
-          }
-          
-          // If this was a normal cart checkout, clear cart; if it was Buy Now, leave normal cart untouched!
-          if (!directCheckoutItem) {
-            setCartItems([]);
-            saveStoredCart([]);
-          } else {
-            setDirectCheckoutItem(null);
-          }
+      {checkoutModalOpen && (
+        <Suspense fallback={null}>
+          <OrderCheckoutModal
+            isOpen={checkoutModalOpen}
+            cartItems={cartItems}
+            directItem={directCheckoutItem}
+            config={config}
+            checkoutSettings={checkoutSettings}
+            onClose={handleCloseCheckout}
+            onReturnHome={handleReturnHomeAfterOrder}
+            onOrderPlaced={async (newOrder) => {
+              const res = await addOrderToStorage(newOrder);
+              if (!res.success) {
+                console.error(`Could not save order: ${res.error || 'Database error'}`);
+                return res;
+              }
+              
+              // If this was a normal cart checkout, clear cart; if it was Buy Now, leave normal cart untouched!
+              if (!directCheckoutItem) {
+                setCartItems([]);
+                saveStoredCart([]);
+              } else {
+                setDirectCheckoutItem(null);
+              }
 
-          const currentOrders = loadStoredOrders();
-          setCustomerOrders(currentOrders);
+              const currentOrders = loadStoredOrders();
+              setCustomerOrders(currentOrders);
 
-          // Update customer profile if basic fields missing
-          const updatedProf = { ...customerProfile };
-          if (!updatedProf.fullName && newOrder.customerName) updatedProf.fullName = newOrder.customerName;
-          if (!updatedProf.phoneNumber && newOrder.phoneNumber) updatedProf.phoneNumber = newOrder.phoneNumber;
-          if (!updatedProf.city && newOrder.city) updatedProf.city = newOrder.city;
-          if (!updatedProf.areaLocality && newOrder.areaLocality) updatedProf.areaLocality = newOrder.areaLocality;
-          if (!updatedProf.completeAddress && newOrder.deliveryAddress) updatedProf.completeAddress = newOrder.deliveryAddress;
-          setCustomerProfile(updatedProf);
-          saveCustomerProfile(updatedProf);
+              // Update customer profile if basic fields missing
+              const updatedProf = { ...customerProfile };
+              if (!updatedProf.fullName && newOrder.customerName) updatedProf.fullName = newOrder.customerName;
+              if (!updatedProf.phoneNumber && newOrder.phoneNumber) updatedProf.phoneNumber = newOrder.phoneNumber;
+              if (!updatedProf.city && newOrder.city) updatedProf.city = newOrder.city;
+              if (!updatedProf.areaLocality && newOrder.areaLocality) updatedProf.areaLocality = newOrder.areaLocality;
+              if (!updatedProf.completeAddress && newOrder.deliveryAddress) updatedProf.completeAddress = newOrder.deliveryAddress;
+              setCustomerProfile(updatedProf);
+              saveCustomerProfile(updatedProf);
 
-          return res;
-        }}
-      />
+              return res;
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Modals */}
       {selectedProduct && (
-        <QuickViewModal
-          product={selectedProduct}
-          config={config}
-          allProducts={products}
-          isAdmin={isAdmin}
-          onEditProduct={(prod) => handleOpenEditProduct(prod)}
-          onDeleteProduct={handleDeleteProduct}
-          onSelectProduct={(prod) => setSelectedProduct(prod)}
-          onAddToCart={(prod, qty, color, size, quality, variant, shade) => {
-            handleAddToCart(prod, qty, color, size, quality, variant, shade);
-          }}
-          onBuyNow={(prod, qty, color, size, quality, variant, shade, variantObj) => {
-            handleBuyNow(prod, qty, color, size, quality, variant, shade, variantObj);
-          }}
-          onClose={handleCloseProductQuickView}
-          onNavigate={navigateTo}
-          onViewFullDetails={handleViewProductDetailsPage}
-        />
+        <Suspense fallback={null}>
+          <QuickViewModal
+            product={selectedProduct}
+            config={config}
+            allProducts={products}
+            isAdmin={isAdmin}
+            onEditProduct={(prod) => handleOpenEditProduct(prod)}
+            onDeleteProduct={handleDeleteProduct}
+            onSelectProduct={(prod) => setSelectedProduct(prod)}
+            onAddToCart={(prod, qty, color, size, quality, variant, shade) => {
+              handleAddToCart(prod, qty, color, size, quality, variant, shade);
+            }}
+            onBuyNow={(prod, qty, color, size, quality, variant, shade, variantObj) => {
+              handleBuyNow(prod, qty, color, size, quality, variant, shade, variantObj);
+            }}
+            onClose={handleCloseProductQuickView}
+            onNavigate={navigateTo}
+            onViewFullDetails={handleViewProductDetailsPage}
+          />
+        </Suspense>
       )}
 
       {selectedBrand && (
-        <BrandDetailsModal
-          brand={selectedBrand}
-          products={products}
-          onClose={handleCloseBrand}
-          onSelectProduct={(prod) => {
-            setSelectedBrand(null);
-            handleQuickViewProduct(prod);
-          }}
-        />
+        <Suspense fallback={null}>
+          <BrandDetailsModal
+            brand={selectedBrand}
+            products={products}
+            onClose={handleCloseBrand}
+            onSelectProduct={(prod) => {
+              setSelectedBrand(null);
+              handleQuickViewProduct(prod);
+            }}
+          />
+        </Suspense>
       )}
 
       {aiModalOpen && (
-        <AiConsultantModal
-          config={config}
-          onClose={handleCloseAiModal}
-        />
+        <Suspense fallback={null}>
+          <AiConsultantModal
+            config={config}
+            onClose={handleCloseAiModal}
+          />
+        </Suspense>
       )}
 
       {configModalOpen && isAdmin && (
-        <BusinessConfigModal
-          config={config}
-          onSave={handleSaveConfigState}
-          onClose={() => setConfigModalOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <BusinessConfigModal
+            config={config}
+            onSave={handleSaveConfigState}
+            onClose={() => setConfigModalOpen(false)}
+          />
+        </Suspense>
       )}
 
       {/* Advanced Search Modal */}
-      <AdvancedSearchModal
-        isOpen={searchModalOpen}
-        products={products}
-        categories={categories}
-        brands={brands}
-        onSelectProduct={(prod) => {
-          setSearchModalOpen(false);
-          handleQuickViewProduct(prod);
-        }}
-        onSelectCategory={(cat) => {
-          setSearchModalOpen(false);
-          const catId = typeof cat === 'string' ? cat : (cat as any)?.id || '';
-          handleSelectCategory(catId);
-        }}
-        onClose={handleCloseSearch}
-      />
+      {searchModalOpen && (
+        <Suspense fallback={null}>
+          <AdvancedSearchModal
+            isOpen={searchModalOpen}
+            products={products}
+            categories={categories}
+            brands={brands}
+            onSelectProduct={(prod) => {
+              setSearchModalOpen(false);
+              handleQuickViewProduct(prod);
+            }}
+            onSelectCategory={(cat) => {
+              setSearchModalOpen(false);
+              const catId = typeof cat === 'string' ? cat : (cat as any)?.id || '';
+              handleSelectCategory(catId);
+            }}
+            onClose={handleCloseSearch}
+          />
+        </Suspense>
+      )}
 
       {/* Order Tracking & Customer Portal Modal */}
-      <CustomerAccountModal
-        isOpen={orderTrackingOpen}
-        onClose={handleCloseOrderTracking}
-        profile={customerProfile}
-        orders={customerOrders}
-        config={config}
-        onUpdateProfile={(updated) => {
-          setCustomerProfile(updated);
-          saveCustomerProfile(updated);
-        }}
-      />
+      {orderTrackingOpen && (
+        <Suspense fallback={null}>
+          <CustomerAccountModal
+            isOpen={orderTrackingOpen}
+            onClose={handleCloseOrderTracking}
+            profile={customerProfile}
+            orders={customerOrders}
+            config={config}
+            onUpdateProfile={(updated) => {
+              setCustomerProfile(updated);
+              saveCustomerProfile(updated);
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Admin Login Modal */}
-      <AdminLoginModal
-        isOpen={adminLoginOpen}
-        isAdmin={isAdmin}
-        onLoginSuccess={handleAdminLoginSuccess}
-        onLogout={handleAdminLogout}
-        onClose={handleCloseAdminLogin}
-        onOpenDashboard={() => {
-          setAdminLoginOpen(false);
-          handleOpenAdminDashboard();
-        }}
-      />
+      {adminLoginOpen && (
+        <Suspense fallback={null}>
+          <AdminLoginModal
+            isOpen={adminLoginOpen}
+            isAdmin={isAdmin}
+            onLoginSuccess={handleAdminLoginSuccess}
+            onLogout={handleAdminLogout}
+            onClose={handleCloseAdminLogin}
+            onOpenDashboard={() => {
+              setAdminLoginOpen(false);
+              handleOpenAdminDashboard();
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Full Admin Content Management System (CMS) Dashboard */}
       {adminDashboardOpen && isAdmin && (
-        <AdminDashboard
-          products={products}
-          categories={categories}
-          brands={brands}
-          stats={stats}
-          config={config}
-          gallery={gallery}
-          contacts={contacts}
-          heroSettings={heroSettings}
-          smartToolsSettings={smartToolsSettings}
-          fittingBuilderConfig={fittingBuilderConfig}
-          featuredCarouselSettings={featuredCarouselSettings}
-          onSaveFeaturedCarouselSettings={(fcs) => {
-            setFeaturedCarouselSettings(fcs);
-          }}
-          onSaveProducts={handleSaveProductsState}
-          onSaveCategories={handleSaveCategoriesState}
-          onSaveBrands={handleSaveBrandsState}
-          onSaveStats={handleSaveStatsState}
-          onSaveConfig={handleSaveConfigState}
-          onSaveGallery={handleSaveGalleryState}
-          onSaveContacts={handleSaveContactsState}
-          onSaveHeroSettings={async (hs) => {
-            const res = await saveHeroSettings(hs);
-            if (res && res.success) {
-              setHeroSettings(hs);
-            }
-            return res;
-          }}
-          onSaveSmartToolsSettings={async (st) => {
-            const res = await saveSmartToolsSettings(st);
-            if (res && res.success) {
-              setSmartToolsSettings(st);
-            }
-            return res;
-          }}
-          onSaveFittingBuilderConfig={async (fc) => {
-            setFittingBuilderConfig(fc);
-            const res = await saveFittingBuilderConfig(fc);
-            return res;
-          }}
-          onLogout={handleAdminLogout}
-          onClose={handleCloseAdminDashboard}
-        />
+        <Suspense fallback={null}>
+          <AdminDashboard
+            products={products}
+            categories={categories}
+            brands={brands}
+            stats={stats}
+            config={config}
+            gallery={gallery}
+            contacts={contacts}
+            heroSettings={heroSettings}
+            smartToolsSettings={smartToolsSettings}
+            fittingBuilderConfig={fittingBuilderConfig}
+            featuredCarouselSettings={featuredCarouselSettings}
+            onSaveFeaturedCarouselSettings={(fcs) => {
+              setFeaturedCarouselSettings(fcs);
+            }}
+            onSaveProducts={handleSaveProductsState}
+            onSaveCategories={handleSaveCategoriesState}
+            onSaveBrands={handleSaveBrandsState}
+            onSaveStats={handleSaveStatsState}
+            onSaveConfig={handleSaveConfigState}
+            onSaveGallery={handleSaveGalleryState}
+            onSaveContacts={handleSaveContactsState}
+            onSaveHeroSettings={async (hs) => {
+              const res = await saveHeroSettings(hs);
+              if (res && res.success) {
+                setHeroSettings(hs);
+              }
+              return res;
+            }}
+            onSaveSmartToolsSettings={async (st) => {
+              const res = await saveSmartToolsSettings(st);
+              if (res && res.success) {
+                setSmartToolsSettings(st);
+              }
+              return res;
+            }}
+            onSaveFittingBuilderConfig={async (fc) => {
+              setFittingBuilderConfig(fc);
+              const res = await saveFittingBuilderConfig(fc);
+              return res;
+            }}
+            onLogout={handleAdminLogout}
+            onClose={handleCloseAdminDashboard}
+          />
+        </Suspense>
       )}
 
       {/* Quick Admin Product Create / Edit Modal from storefront */}
       {adminProductModalOpen && isAdmin && (
-        <AdminProductModal
-          product={editingProduct}
-          categories={categories}
-          brands={brands}
-          allProducts={products}
-          onSave={handleSaveProduct}
-          onDelete={handleDeleteProduct}
-          onClose={() => {
-            setAdminProductModalOpen(false);
-            setEditingProduct(null);
-          }}
-        />
+        <Suspense fallback={null}>
+          <AdminProductModal
+            product={editingProduct}
+            categories={categories}
+            brands={brands}
+            allProducts={products}
+            onSave={handleSaveProduct}
+            onDelete={handleDeleteProduct}
+            onClose={() => {
+              setAdminProductModalOpen(false);
+              setEditingProduct(null);
+            }}
+          />
+        </Suspense>
       )}
+
       {/* Theme Selection Modal */}
-      <ThemeSwitcherModal
-        isOpen={themeModalOpen}
-        onClose={handleCloseThemeModal}
-        themeSettings={themeSettings}
-        activeThemeId={activeTheme}
-        onSelectTheme={handleSelectTheme}
-      />
+      {themeModalOpen && (
+        <Suspense fallback={null}>
+          <ThemeSwitcherModal
+            isOpen={themeModalOpen}
+            onClose={handleCloseThemeModal}
+            themeSettings={themeSettings}
+            activeThemeId={activeTheme}
+            onSelectTheme={handleSelectTheme}
+          />
+        </Suspense>
+      )}
 
       {/* 🔧 SMART CONSTRUCTION & FITTING BUILDER MODAL */}
-      <SmartConstructionBuilderModal
-        isOpen={isConstructionBuilderOpen}
-        onClose={handleCloseConstructionBuilder}
-        config={fittingBuilderConfig}
-        businessConfig={config}
-        products={products}
-        onAddToCart={handleAddToCart}
-        onAddPackageToCart={(items) => {
-          items.forEach(item => {
-            handleAddToCart(
-              item.product,
-              item.quantity,
-              undefined,
-              undefined,
-              undefined,
-              item.selectedVariantName
-            );
-          });
-        }}
-        onViewProduct={(p) => handleQuickViewProduct(p)}
-      />
+      {isConstructionBuilderOpen && (
+        <Suspense fallback={null}>
+          <SmartConstructionBuilderModal
+            isOpen={isConstructionBuilderOpen}
+            onClose={handleCloseConstructionBuilder}
+            config={fittingBuilderConfig}
+            businessConfig={config}
+            products={products}
+            onAddToCart={handleAddToCart}
+            onAddPackageToCart={(items) => {
+              items.forEach(item => {
+                handleAddToCart(
+                  item.product,
+                  item.quantity,
+                  undefined,
+                  undefined,
+                  undefined,
+                  item.selectedVariantName
+                );
+              });
+            }}
+            onViewProduct={(p) => handleQuickViewProduct(p)}
+          />
+        </Suspense>
+      )}
 
       {/* Smart Tools Modal */}
-      <SmartToolsModal
-        toolId={activeToolId}
-        products={products}
-        config={config}
-        estimatorConfig={estimatorConfig}
-        plannerConfig={plannerConfig}
-        smartToolsSettings={smartToolsSettings}
-        fittingBuilderConfig={fittingBuilderConfig}
-        onClose={handleCloseSmartTool}
-        onSelectTool={(id) => setActiveToolId(id)}
-        onOpenQuickView={(prod) => handleQuickViewProduct(prod)}
-        onAddToCart={handleAddToCart}
-        onBuyNow={(prod, qty, color) => {
-          handleCloseSmartTool();
-          handleBuyNow(prod, qty, color);
-        }}
-        onAddPackageToCart={(items) => {
-          items.forEach(item => {
-            handleAddToCart(
-              item.product,
-              item.quantity,
-              undefined,
-              undefined,
-              undefined,
-              item.selectedVariantName
-            );
-          });
-        }}
-      />
+      {activeToolId !== null && (
+        <Suspense fallback={null}>
+          <SmartToolsModal
+            toolId={activeToolId}
+            products={products}
+            config={config}
+            estimatorConfig={estimatorConfig}
+            plannerConfig={plannerConfig}
+            smartToolsSettings={smartToolsSettings}
+            fittingBuilderConfig={fittingBuilderConfig}
+            onClose={handleCloseSmartTool}
+            onSelectTool={(id) => setActiveToolId(id)}
+            onOpenQuickView={(prod) => handleQuickViewProduct(prod)}
+            onAddToCart={handleAddToCart}
+            onBuyNow={(prod, qty, color) => {
+              handleCloseSmartTool();
+              handleBuyNow(prod, qty, color);
+            }}
+            onAddPackageToCart={(items) => {
+              items.forEach(item => {
+                handleAddToCart(
+                  item.product,
+                  item.quantity,
+                  undefined,
+                  undefined,
+                  undefined,
+                  item.selectedVariantName
+                );
+              });
+            }}
+          />
+        </Suspense>
+      )}
+
       {/* Delivery Checker Modal Across Pakistan */}
-      <DeliveryCheckerModal
-        isOpen={deliveryCheckerOpen}
-        onClose={handleCloseDeliveryChecker}
-      />
+      {deliveryCheckerOpen && (
+        <Suspense fallback={null}>
+          <DeliveryCheckerModal
+            isOpen={deliveryCheckerOpen}
+            onClose={handleCloseDeliveryChecker}
+          />
+        </Suspense>
+      )}
 
       {/* Mobile-Only Bottom Navigation Bar (E-Commerce App UX) */}
       <MobileBottomNav

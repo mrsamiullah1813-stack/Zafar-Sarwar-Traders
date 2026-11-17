@@ -4,6 +4,7 @@ import path from "path";
 import crypto from "crypto";
 import fs from "fs";
 import fsPromises from "fs/promises";
+import zlib from "zlib";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { handleTtsGet, handleTtsPost, handleTtsVoicesGet } from "./server/aiVoiceService.ts";
@@ -112,6 +113,119 @@ async function startServer() {
 
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  // =========================================================
+  // HTTP RESPONSE COMPRESSION (Brotli / Gzip) FOR FAST LOADS
+  // Compresses API JSON, HTML, JS, CSS, SVG (>= 1KB) without buffering SSE or media streams
+  // =========================================================
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (
+      req.method === "HEAD" ||
+      req.headers.range ||
+      req.path === "/api/admin/orders/stream"
+    ) {
+      return next();
+    }
+
+    const acceptEncoding = String(req.headers["accept-encoding"] || "").toLowerCase();
+    const encoding: "br" | "gzip" | null = acceptEncoding.includes("br")
+      ? "br"
+      : acceptEncoding.includes("gzip")
+      ? "gzip"
+      : null;
+
+    if (!encoding) return next();
+
+    const origWrite = res.write.bind(res) as any;
+    const origEnd = res.end.bind(res) as any;
+    const chunks: Buffer[] = [];
+    let totalBytes = 0;
+    let decided = false;
+    let passthrough = false;
+
+    const shouldCompress = (): boolean => {
+      if (res.headersSent) return false;
+      if (res.getHeader("Content-Encoding")) return false;
+      if (res.statusCode === 204 || res.statusCode === 304) return false;
+      const ct = String(res.getHeader("Content-Type") || "");
+      if (!ct) return false;
+      if (/text\/event-stream/i.test(ct)) return false;
+      return /application\/json|application\/javascript|text\/|application\/xml|image\/svg\+xml/i.test(ct);
+    };
+
+    const flushRaw = () => {
+      passthrough = true;
+      for (const c of chunks) {
+        origWrite(c);
+      }
+      chunks.length = 0;
+    };
+
+    (res as any).write = (chunk: any, enc?: any, cb?: any) => {
+      if (passthrough) return origWrite(chunk, enc, cb);
+      if (!decided) {
+        if (res.headersSent) {
+          passthrough = true;
+          return origWrite(chunk, enc, cb);
+        }
+        if (res.getHeader("Content-Type")) {
+          decided = true;
+          if (!shouldCompress()) {
+            passthrough = true;
+            return origWrite(chunk, enc, cb);
+          }
+        }
+      }
+      if (chunk) {
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, typeof enc === "string" ? (enc as BufferEncoding) : "utf8");
+        totalBytes += buf.length;
+        if (totalBytes > 24 * 1024 * 1024) {
+          flushRaw();
+          return origWrite(chunk, enc, cb);
+        }
+        chunks.push(buf);
+      }
+      if (typeof enc === "function") enc();
+      else if (typeof cb === "function") cb();
+      return true;
+    };
+
+    (res as any).end = (chunk?: any, enc?: any, cb?: any) => {
+      if (passthrough) return origEnd(chunk, enc, cb);
+      if (chunk) {
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, typeof enc === "string" ? (enc as BufferEncoding) : "utf8");
+        totalBytes += buf.length;
+        chunks.push(buf);
+      }
+
+      if (!shouldCompress() || totalBytes < 1024) {
+        const combined = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks);
+        chunks.length = 0;
+        if (combined.length > 0 && !res.headersSent) {
+          res.setHeader("Content-Length", combined.length);
+        }
+        return origEnd(combined.length > 0 ? combined : undefined, typeof enc === "function" ? enc : cb);
+      }
+
+      const combined = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks);
+      chunks.length = 0;
+      try {
+        const compressed =
+          encoding === "br"
+            ? zlib.brotliCompressSync(combined, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } })
+            : zlib.gzipSync(combined, { level: 6 });
+
+        res.setHeader("Content-Encoding", encoding);
+        res.setHeader("Vary", "Accept-Encoding");
+        res.setHeader("Content-Length", compressed.length);
+        return origEnd(compressed, typeof enc === "function" ? enc : cb);
+      } catch {
+        return origEnd(combined, typeof enc === "function" ? enc : cb);
+      }
+    };
+
+    next();
+  });
 
   // =========================================================
   // CANONICAL DOMAIN & ZERO-LOOP 301 REDIRECTION MIDDLEWARE
@@ -249,9 +363,9 @@ async function startServer() {
     })();
   }
 
-  app.use("/uploads", express.static(UPLOADS_DIR));
-  app.use("/uploads", express.static(PUBLIC_UPLOADS_DIR));
-  app.use("/uploads", express.static(DIST_UPLOADS_DIR));
+  app.use("/uploads", express.static(UPLOADS_DIR, { maxAge: "30d", etag: true }));
+  app.use("/uploads", express.static(PUBLIC_UPLOADS_DIR, { maxAge: "30d", etag: true }));
+  app.use("/uploads", express.static(DIST_UPLOADS_DIR, { maxAge: "30d", etag: true }));
   
   // Fallback for missing local uploads: fetch and cache on local disk from Supabase storage if available
   app.get("/uploads/:filename", async (req, res) => {
@@ -288,8 +402,8 @@ async function startServer() {
 
     return res.status(404).end();
   });
-  app.use("/assets", express.static(path.join(process.cwd(), "public", "assets")));
-  app.use("/src/assets", express.static(path.join(process.cwd(), "src", "assets")));
+  app.use("/assets", express.static(path.join(process.cwd(), "public", "assets"), { maxAge: "7d", etag: true }));
+  app.use("/src/assets", express.static(path.join(process.cwd(), "src", "assets"), { maxAge: "7d", etag: true }));
 
   // =========================================================
   // PERSISTENT CMS DATA BACKEND DISK & MEMORY STORE
@@ -1055,21 +1169,454 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
     return { success: false, error: lastError?.message || "Database insert failed after schema negotiation" };
   }
 
-  app.get("/api/db/categories", async (req, res) => {
-    try {
-      if (dbClient) {
-        const { data, error } = await dbClient.from("categories").select("*").order("display_order", { ascending: true });
-        if (!error && Array.isArray(data) && data.length > 0) {
-          return res.json({ success: true, data });
+  // =========================================================
+  // HIGH-SPEED CATALOG CACHE & INLINE BASE64 MEDIA EXTERNALIZER
+  // Eliminates ~23 MB redundant JSON bloat while keeping DB schema & Admin edits 100% intact
+  // =========================================================
+  interface InlineMediaEntry {
+    buffer: Buffer;
+    contentType: string;
+    dataUri: string;
+    etag: string;
+  }
+  const inlineMediaRegistry = new Map<string, InlineMediaEntry>();
+
+  function mimeToExt(mime: string): string {
+    const m = mime.toLowerCase();
+    if (m.includes("png")) return "png";
+    if (m.includes("webp")) return "webp";
+    if (m.includes("gif")) return "gif";
+    if (m.includes("svg")) return "svg";
+    if (m.includes("avif")) return "avif";
+    return "jpg";
+  }
+
+  function registerInlineDataUri(val: any): any {
+    if (typeof val !== "string" || !val.startsWith("data:image/")) return val;
+    const match = val.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/s);
+    if (!match) return val;
+    const contentType = match[1].toLowerCase();
+    const b64 = match[2];
+    const hash = crypto.createHash("sha1").update(val).digest("hex").slice(0, 16);
+    const ext = mimeToExt(contentType);
+    const key = `${hash}.${ext}`;
+
+    if (!inlineMediaRegistry.has(key)) {
+      try {
+        const buffer = Buffer.from(b64, "base64");
+        inlineMediaRegistry.set(key, {
+          buffer,
+          contentType,
+          dataUri: val,
+          etag: `"${hash}"`,
+        });
+      } catch {
+        return val;
+      }
+    }
+    return `/api/media/inline/${key}`;
+  }
+
+  function restoreInlineDataUris(value: any): any {
+    if (typeof value === "string") {
+      if (value.startsWith("/api/media/inline/")) {
+        const key = value.slice("/api/media/inline/".length).split("?")[0];
+        const entry = inlineMediaRegistry.get(key);
+        if (entry) return entry.dataUri;
+      }
+      return value;
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => restoreInlineDataUris(item));
+    }
+    if (value && typeof value === "object") {
+      const out: Record<string, any> = {};
+      for (const [k, v] of Object.entries(value)) {
+        out[k] = restoreInlineDataUris(v);
+      }
+      return out;
+    }
+    return value;
+  }
+
+  function slimCategoryForRead(cat: any) {
+    if (!cat || typeof cat !== "object") return cat;
+    const out = { ...cat };
+    if (out.image) out.image = registerInlineDataUri(out.image);
+    if (out.image_url) out.image_url = registerInlineDataUri(out.image_url);
+    if (out.icon_image) out.icon_image = registerInlineDataUri(out.icon_image);
+    if (out.banner_image) out.banner_image = registerInlineDataUri(out.banner_image);
+    if (out.bannerImage) out.bannerImage = registerInlineDataUri(out.bannerImage);
+    return out;
+  }
+
+  function slimBrandForRead(brand: any) {
+    if (!brand || typeof brand !== "object") return brand;
+    const out = { ...brand };
+    if (out.logo) out.logo = registerInlineDataUri(out.logo);
+    if (out.banner_image) out.banner_image = registerInlineDataUri(out.banner_image);
+    if (out.bannerImage) out.bannerImage = registerInlineDataUri(out.bannerImage);
+    return out;
+  }
+
+  function slimProductForRead(row: any) {
+    if (!row || typeof row !== "object") return row;
+    const out: any = { ...row };
+    const primary = registerInlineDataUri(
+      out.image || out.main_image || out.image_url || ""
+    );
+    out.image = primary;
+    delete out.main_image;
+    delete out.image_url;
+
+    const rawGallery = Array.isArray(out.images) && out.images.length > 0
+      ? out.images
+      : (Array.isArray(out.gallery) && out.gallery.length > 0
+        ? out.gallery
+        : (Array.isArray(out.gallery_images) && out.gallery_images.length > 0
+          ? out.gallery_images
+          : []));
+    out.images = rawGallery.map((img: any) => registerInlineDataUri(img));
+    delete out.gallery;
+    delete out.gallery_images;
+
+    if (out.specifications && typeof out.specifications === "object") {
+      const specs: any = { ...out.specifications };
+      delete specs._image;
+      delete specs._main_image;
+      delete specs._gallery_images;
+
+      if (specs._variants_config && Array.isArray(specs._variants_config.variants)) {
+        specs._variants_config = {
+          ...specs._variants_config,
+          variants: specs._variants_config.variants.map((v: any) =>
+            v && typeof v === "object" && v.image ? { ...v, image: registerInlineDataUri(v.image) } : v
+          ),
+        };
+        delete specs._variants_list;
+      } else if (Array.isArray(specs._variants_list)) {
+        specs._variants_list = specs._variants_list.map((v: any) =>
+          v && typeof v === "object" && v.image ? { ...v, image: registerInlineDataUri(v.image) } : v
+        );
+      }
+
+      if (specs._paint_shades_config && typeof specs._paint_shades_config === "object") {
+        specs._paint_shades_config = {
+          ...specs._paint_shades_config,
+          shadeSheetUrl: specs._paint_shades_config.shadeSheetUrl
+            ? registerInlineDataUri(specs._paint_shades_config.shadeSheetUrl)
+            : specs._paint_shades_config.shadeSheetUrl,
+          shades: Array.isArray(specs._paint_shades_config.shades)
+            ? specs._paint_shades_config.shades.map((s: any) =>
+                s && typeof s === "object" && s.image ? { ...s, image: registerInlineDataUri(s.image) } : s
+              )
+            : [],
+        };
+        delete specs._shades_list;
+        delete specs._shade_sheet_url;
+      } else {
+        if (specs._shade_sheet_url) specs._shade_sheet_url = registerInlineDataUri(specs._shade_sheet_url);
+        if (Array.isArray(specs._shades_list)) {
+          specs._shades_list = specs._shades_list.map((s: any) =>
+            s && typeof s === "object" && s.image ? { ...s, image: registerInlineDataUri(s.image) } : s
+          );
         }
       }
-      if (Array.isArray(cmsDataStore["zst_categories_v1"]) && cmsDataStore["zst_categories_v1"].length > 0) {
-        return res.json({ success: true, fallback: "cms", data: cmsDataStore["zst_categories_v1"] });
+
+      out.specifications = specs;
+    }
+
+    if (Array.isArray(out.variantsList)) {
+      out.variantsList = out.variantsList.map((v: any) =>
+        v && typeof v === "object" && v.image ? { ...v, image: registerInlineDataUri(v.image) } : v
+      );
+    }
+    if (out.variantsConfig?.variants && Array.isArray(out.variantsConfig.variants)) {
+      out.variantsConfig = {
+        ...out.variantsConfig,
+        variants: out.variantsConfig.variants.map((v: any) =>
+          v && typeof v === "object" && v.image ? { ...v, image: registerInlineDataUri(v.image) } : v
+        ),
+      };
+    }
+
+    return out;
+  }
+
+  interface CacheEntry<T> {
+    data: T;
+    etag: string;
+    expiresAt: number;
+  }
+  const PUBLIC_CACHE_TTL_MS = 60_000;
+  const publicCache = new Map<string, CacheEntry<any>>();
+  const publicInFlight = new Map<string, Promise<any>>();
+
+  function setPublicCache(key: string, data: any): CacheEntry<any> {
+    const serialized = JSON.stringify(data);
+    const etag = `"${crypto.createHash("sha1").update(serialized).digest("hex").slice(0, 16)}"`;
+    const entry = { data, etag, expiresAt: Date.now() + PUBLIC_CACHE_TTL_MS };
+    publicCache.set(key, entry);
+    return entry;
+  }
+
+  function invalidatePublicCache(scope?: string) {
+    if (!scope || scope === "all") {
+      publicCache.clear();
+      return;
+    }
+    publicCache.delete(scope);
+    publicCache.delete("bootstrap");
+    if (scope.startsWith("site-settings:")) {
+      publicCache.delete("bootstrap");
+    }
+  }
+
+  async function getCachedOrCompute<T>(cacheKey: string, loader: () => Promise<T>): Promise<CacheEntry<T>> {
+    const cached = publicCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached;
+    }
+    const existingPromise = publicInFlight.get(cacheKey);
+    if (existingPromise) {
+      return existingPromise;
+    }
+    const promise = (async () => {
+      try {
+        const result = await loader();
+        return setPublicCache(cacheKey, result);
+      } finally {
+        publicInFlight.delete(cacheKey);
       }
-      return res.json({ success: true, data: [] });
+    })();
+    publicInFlight.set(cacheKey, promise);
+    return promise;
+  }
+
+  async function loadCategoriesSlim(): Promise<{ data: any[]; fallback?: string }> {
+    if (dbClient) {
+      const { data, error } = await dbClient.from("categories").select("*").order("display_order", { ascending: true });
+      if (!error && Array.isArray(data) && data.length > 0) {
+        return { data: data.map(slimCategoryForRead) };
+      }
+    }
+    if (Array.isArray(cmsDataStore["zst_categories_v1"]) && cmsDataStore["zst_categories_v1"].length > 0) {
+      return { fallback: "cms", data: cmsDataStore["zst_categories_v1"].map(slimCategoryForRead) };
+    }
+    return { data: [] };
+  }
+
+  async function loadBrandsSlim(): Promise<{ data: any[]; fallback?: string }> {
+    if (dbClient) {
+      const { data, error } = await dbClient.from("brands").select("*").order("display_order", { ascending: true });
+      if (!error && Array.isArray(data) && data.length > 0) {
+        return { data: data.map(slimBrandForRead) };
+      }
+    }
+    if (Array.isArray(cmsDataStore["zst_brands_v1"]) && cmsDataStore["zst_brands_v1"].length > 0) {
+      return { fallback: "cms", data: cmsDataStore["zst_brands_v1"].map(slimBrandForRead) };
+    }
+    return { data: [] };
+  }
+
+  async function loadProductsSlim(): Promise<{ data: any[]; fallback?: string }> {
+    if (dbClient) {
+      const { data, error } = await dbClient
+        .from("products")
+        .select("*")
+        .order("display_order", { ascending: true })
+        .order("created_at", { ascending: false });
+      if (!error && Array.isArray(data) && data.length > 0) {
+        return { data: data.map(slimProductForRead) };
+      }
+    }
+    if (Array.isArray(cmsDataStore["zst_products_v1"]) && cmsDataStore["zst_products_v1"].length > 0) {
+      return { fallback: "cms", data: cmsDataStore["zst_products_v1"].map(slimProductForRead) };
+    }
+    return { data: [] };
+  }
+
+  async function loadHeroSettingsFast(): Promise<any> {
+    let heroData: any = null;
+    if (dbClient) {
+      const { data, error } = await dbClient.from("hero_settings").select("*").eq("id", "default").maybeSingle();
+      if (!error && data) {
+        heroData = data;
+      }
+    }
+    const cmsHero = cmsDataStore?.zst_hero_settings_v1 || cmsDataStore?.zst_hero_settings;
+    const cmsBanners = (cmsHero && Array.isArray(cmsHero.banners) && cmsHero.banners.length > 0)
+      ? cmsHero.banners
+      : cmsDataStore?.zst_hero_banners;
+
+    if (heroData) {
+      if (cmsBanners && Array.isArray(cmsBanners) && cmsBanners.length > 0) {
+        heroData.banners = cmsBanners;
+      } else if (Array.isArray(heroData.draft_slides) && heroData.draft_slides.length > 0) {
+        heroData.banners = heroData.draft_slides;
+      }
+      return heroData;
+    }
+    return cmsHero || null;
+  }
+
+  async function loadSiteSettingFast(key: string): Promise<any> {
+    if (dbClient) {
+      const { data: kvData, error: kvErr } = await dbClient.from("site_settings").select("value").eq("key", key).maybeSingle();
+      if (!kvErr && kvData && kvData.value !== undefined && kvData.value !== null) {
+        return kvData.value;
+      }
+      const k = key.toLowerCase();
+      if (k.includes("pricing") || k.includes("typography")) {
+        const { data: themeData } = await dbClient.from("site_settings").select("theme_settings").eq("id", "config").maybeSingle();
+        const pTypo = themeData?.theme_settings?.pricingTypography || themeData?.theme_settings?.pricing_typography;
+        if (pTypo) return pTypo;
+      } else if (k.includes("payment")) {
+        const { data: chkData } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
+        const pm = chkData?.checkout_settings?.payment_methods || chkData?.checkout_settings?.paymentMethods;
+        if (pm && Array.isArray(pm)) return pm;
+      } else if (k.includes("coupon") || k.includes("promo")) {
+        const { data: chkData } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
+        const coupons = chkData?.checkout_settings?.coupons || chkData?.checkout_settings?.promo_codes;
+        if (coupons && Array.isArray(coupons)) return coupons;
+      } else if (k.includes("smart_tools") || k.includes("smart-tools") || k.includes("smarttools")) {
+        const { data: planData } = await dbClient.from("site_settings").select("planner_config").eq("id", "config").maybeSingle();
+        if (planData?.planner_config?.smartTools) return planData.planner_config.smartTools;
+      } else if (k.includes("how_to_order") || k.includes("order_guide")) {
+        const { data: chkData } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
+        const guide = chkData?.checkout_settings?.howToOrderGuide || chkData?.checkout_settings?.how_to_order_guide;
+        if (guide && guide.steps) return guide;
+      } else if (k.includes("fitting")) {
+        const { data: planData } = await dbClient.from("site_settings").select("planner_config").eq("id", "config").maybeSingle();
+        if (planData?.planner_config?.fittingBuilder) return planData.planner_config.fittingBuilder;
+      } else {
+        let colName: string | null = null;
+        if (k.includes("announcement")) colName = "announcements";
+        else if (k.includes("theme")) colName = "theme_settings";
+        else if (k.includes("ai") || k.includes("assistant")) colName = "ai_assistant";
+        else if (k.includes("contact")) colName = "contact_info";
+        else if (k.includes("stat")) colName = "stats";
+        else if (k.includes("delivery")) colName = "delivery_settings";
+        else if (k.includes("checkout")) colName = "checkout_settings";
+        else if (k.includes("planner") || k.includes("designer")) colName = "planner_config";
+        if (colName) {
+          const { data: colData } = await dbClient.from("site_settings").select(colName).eq("id", "config").maybeSingle();
+          if (colData && (colData as any)[colName] !== undefined && (colData as any)[colName] !== null) {
+            return (colData as any)[colName];
+          }
+        }
+      }
+    }
+    if (cmsDataStore && cmsDataStore[key] !== undefined && cmsDataStore[key] !== null) {
+      return cmsDataStore[key];
+    }
+    return null;
+  }
+
+  let warmCatalogPromise: Promise<void> | null = null;
+  function warmPublicCaches() {
+    if (warmCatalogPromise) return warmCatalogPromise;
+    warmCatalogPromise = (async () => {
+      try {
+        await Promise.allSettled([
+          getCachedOrCompute("categories", loadCategoriesSlim),
+          getCachedOrCompute("brands", loadBrandsSlim),
+          getCachedOrCompute("products", loadProductsSlim),
+          getCachedOrCompute("hero-settings", loadHeroSettingsFast),
+        ]);
+      } finally {
+        warmCatalogPromise = null;
+      }
+    })();
+    return warmCatalogPromise;
+  }
+  setTimeout(() => { warmPublicCaches(); }, 150);
+
+  // Serve extracted inline media images with immutable HTTP cache headers
+  app.get("/api/media/inline/:mediaKey", async (req, res) => {
+    const cleanKey = path.basename(String(req.params.mediaKey || "")).split("?")[0];
+    let entry = inlineMediaRegistry.get(cleanKey);
+    if (!entry) {
+      await warmPublicCaches();
+      entry = inlineMediaRegistry.get(cleanKey);
+    }
+    if (!entry) {
+      return res.status(404).end();
+    }
+    if (req.headers["if-none-match"] === entry.etag) {
+      return res.status(304).end();
+    }
+    res.setHeader("Content-Type", entry.contentType);
+    res.setHeader("ETag", entry.etag);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("Content-Length", entry.buffer.length);
+    return res.send(entry.buffer);
+  });
+
+  // Combined fast homepage bootstrap endpoint (1 round-trip instead of 15+)
+  app.get("/api/bootstrap", async (req, res) => {
+    try {
+      const entry = await getCachedOrCompute("bootstrap", async () => {
+        const [
+          catsEntry,
+          brandsEntry,
+          productsEntry,
+          heroEntry,
+          configData,
+          pricingTypoData,
+          themeData,
+          annData,
+          carouselData,
+          smartToolsData,
+        ] = await Promise.all([
+          getCachedOrCompute("categories", loadCategoriesSlim),
+          getCachedOrCompute("brands", loadBrandsSlim),
+          getCachedOrCompute("products", loadProductsSlim),
+          getCachedOrCompute("hero-settings", loadHeroSettingsFast),
+          getCachedOrCompute("site-settings:zst_business_config_v1", () => loadSiteSettingFast("zst_business_config_v1")),
+          getCachedOrCompute("site-settings:zst_pricing_typography_v1", () => loadSiteSettingFast("zst_pricing_typography_v1")),
+          getCachedOrCompute("site-settings:zst_theme_settings_v1", () => loadSiteSettingFast("zst_theme_settings_v1")),
+          getCachedOrCompute("site-settings:zst_announcement_settings_v1", () => loadSiteSettingFast("zst_announcement_settings_v1")),
+          getCachedOrCompute("site-settings:zst_featured_carousel_v1", () => loadSiteSettingFast("zst_featured_carousel_v1")),
+          getCachedOrCompute("site-settings:zst_smart_tools_v1", () => loadSiteSettingFast("zst_smart_tools_v1")),
+        ]);
+
+        return {
+          success: true,
+          categories: catsEntry.data.data,
+          brands: brandsEntry.data.data,
+          products: productsEntry.data.data,
+          heroSettings: heroEntry.data,
+          config: configData.data,
+          pricingTypography: pricingTypoData.data,
+          themeSettings: themeData.data,
+          announcementSettings: annData.data,
+          featuredCarouselSettings: carouselData.data,
+          smartToolsSettings: smartToolsData.data,
+        };
+      });
+
+      if (req.headers["if-none-match"] === entry.etag) {
+        return res.status(304).end();
+      }
+      res.setHeader("ETag", entry.etag);
+      res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+      return res.json(entry.data);
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
+  app.get("/api/db/categories", async (req, res) => {
+    try {
+      const entry = await getCachedOrCompute("categories", loadCategoriesSlim);
+      if (req.headers["if-none-match"] === entry.etag) return res.status(304).end();
+      res.setHeader("ETag", entry.etag);
+      res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+      return res.json({ success: true, ...(entry.data.fallback ? { fallback: entry.data.fallback } : {}), data: entry.data.data });
     } catch (err: any) {
       if (Array.isArray(cmsDataStore["zst_categories_v1"])) {
-        return res.json({ success: true, fallback: "cms", data: cmsDataStore["zst_categories_v1"] });
+        return res.json({ success: true, fallback: "cms", data: cmsDataStore["zst_categories_v1"].map(slimCategoryForRead) });
       }
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
@@ -1078,12 +1625,13 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
   app.post("/api/db/categories/upsert", requireAdminAuth, async (req, res) => {
     try {
       const { categories, category } = req.body;
-      const list = Array.isArray(categories) ? categories : (category ? [category] : (req.body.id ? [req.body] : []));
+      const rawList = Array.isArray(categories) ? categories : (category ? [category] : (req.body.id ? [req.body] : []));
+      const list = restoreInlineDataUris(rawList);
       if (list.length === 0) return res.json({ success: true });
 
       // Always persist to server CMS disk store first
       if (Array.isArray(categories)) {
-        cmsDataStore["zst_categories_v1"] = categories;
+        cmsDataStore["zst_categories_v1"] = list;
       } else {
         const existing = Array.isArray(cmsDataStore["zst_categories_v1"]) ? [...cmsDataStore["zst_categories_v1"]] : [];
         for (const item of list) {
@@ -1094,6 +1642,7 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
         cmsDataStore["zst_categories_v1"] = existing;
       }
       await persistDataStoreToDisk();
+      invalidatePublicCache("categories");
 
       if (!dbClient) return res.json({ success: true, persistedLocally: true });
 
@@ -1149,6 +1698,7 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
         cmsDataStore["zst_categories_v1"] = cmsDataStore["zst_categories_v1"].filter((c: any) => String(c.id) !== String(id));
         await persistDataStoreToDisk();
       }
+      invalidatePublicCache("categories");
       if (dbClient) {
         const { error } = await dbClient.from("categories").delete().eq("id", id);
         if (error) console.warn("[Supabase API] Category delete notice (deleted locally):", error.message);
@@ -1161,19 +1711,14 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
 
   app.get("/api/db/brands", async (req, res) => {
     try {
-      if (dbClient) {
-        const { data, error } = await dbClient.from("brands").select("*").order("display_order", { ascending: true });
-        if (!error && Array.isArray(data) && data.length > 0) {
-          return res.json({ success: true, data });
-        }
-      }
-      if (Array.isArray(cmsDataStore["zst_brands_v1"]) && cmsDataStore["zst_brands_v1"].length > 0) {
-        return res.json({ success: true, fallback: "cms", data: cmsDataStore["zst_brands_v1"] });
-      }
-      return res.json({ success: true, data: [] });
+      const entry = await getCachedOrCompute("brands", loadBrandsSlim);
+      if (req.headers["if-none-match"] === entry.etag) return res.status(304).end();
+      res.setHeader("ETag", entry.etag);
+      res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+      return res.json({ success: true, ...(entry.data.fallback ? { fallback: entry.data.fallback } : {}), data: entry.data.data });
     } catch (err: any) {
       if (Array.isArray(cmsDataStore["zst_brands_v1"])) {
-        return res.json({ success: true, fallback: "cms", data: cmsDataStore["zst_brands_v1"] });
+        return res.json({ success: true, fallback: "cms", data: cmsDataStore["zst_brands_v1"].map(slimBrandForRead) });
       }
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
@@ -1182,11 +1727,12 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
   app.post("/api/db/brands/upsert", requireAdminAuth, async (req, res) => {
     try {
       const { brands, brand } = req.body;
-      const list = Array.isArray(brands) ? brands : (brand ? [brand] : (req.body.id ? [req.body] : []));
+      const rawList = Array.isArray(brands) ? brands : (brand ? [brand] : (req.body.id ? [req.body] : []));
+      const list = restoreInlineDataUris(rawList);
       if (list.length === 0) return res.json({ success: true });
 
       if (Array.isArray(brands)) {
-        cmsDataStore["zst_brands_v1"] = brands;
+        cmsDataStore["zst_brands_v1"] = list;
       } else {
         const existing = Array.isArray(cmsDataStore["zst_brands_v1"]) ? [...cmsDataStore["zst_brands_v1"]] : [];
         for (const item of list) {
@@ -1197,6 +1743,7 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
         cmsDataStore["zst_brands_v1"] = existing;
       }
       await persistDataStoreToDisk();
+      invalidatePublicCache("brands");
 
       if (!dbClient) return res.json({ success: true, persistedLocally: true });
 
@@ -1248,6 +1795,7 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
         cmsDataStore["zst_brands_v1"] = cmsDataStore["zst_brands_v1"].filter((b: any) => String(b.id) !== String(id));
         await persistDataStoreToDisk();
       }
+      invalidatePublicCache("brands");
       if (dbClient) {
         const { error } = await dbClient.from("brands").delete().eq("id", id);
         if (error) console.warn("[Supabase API] Brand delete notice (deleted locally):", error.message);
@@ -1409,19 +1957,32 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
 
   app.get("/api/db/products", async (req, res) => {
     try {
-      if (dbClient) {
-        const { data, error } = await dbClient.from("products").select("*").order("display_order", { ascending: true }).order("created_at", { ascending: false });
-        if (!error && Array.isArray(data) && data.length > 0) {
-          return res.json({ success: true, configured: true, data });
+      if (req.query.full === "1") {
+        if (dbClient) {
+          const { data, error } = await dbClient.from("products").select("*").order("display_order", { ascending: true }).order("created_at", { ascending: false });
+          if (!error && Array.isArray(data) && data.length > 0) {
+            return res.json({ success: true, configured: true, data });
+          }
         }
+        if (Array.isArray(cmsDataStore["zst_products_v1"]) && cmsDataStore["zst_products_v1"].length > 0) {
+          return res.json({ success: true, configured: true, fallback: "cms", data: cmsDataStore["zst_products_v1"] });
+        }
+        return res.json({ success: true, configured: Boolean(dbClient), data: [] });
       }
-      if (Array.isArray(cmsDataStore["zst_products_v1"]) && cmsDataStore["zst_products_v1"].length > 0) {
-        return res.json({ success: true, configured: true, fallback: "cms", data: cmsDataStore["zst_products_v1"] });
-      }
-      return res.json({ success: true, configured: Boolean(dbClient), data: [] });
+
+      const entry = await getCachedOrCompute("products", loadProductsSlim);
+      if (req.headers["if-none-match"] === entry.etag) return res.status(304).end();
+      res.setHeader("ETag", entry.etag);
+      res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+      return res.json({
+        success: true,
+        configured: true,
+        ...(entry.data.fallback ? { fallback: entry.data.fallback } : {}),
+        data: entry.data.data,
+      });
     } catch (err: any) {
       if (Array.isArray(cmsDataStore["zst_products_v1"])) {
-        return res.json({ success: true, configured: true, fallback: "cms", data: cmsDataStore["zst_products_v1"] });
+        return res.json({ success: true, configured: true, fallback: "cms", data: cmsDataStore["zst_products_v1"].map(slimProductForRead) });
       }
       return res.status(500).json({ success: false, configured: true, error: err?.message || String(err) });
     }
@@ -1430,12 +1991,13 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
   app.post("/api/db/products/upsert", requireAdminAuth, async (req, res) => {
     try {
       const { products } = req.body;
-      const list = Array.isArray(products) ? products : (req.body.product ? [req.body.product] : []);
+      const rawList = Array.isArray(products) ? products : (req.body.product ? [req.body.product] : []);
+      const list = restoreInlineDataUris(rawList);
       if (list.length === 0) return res.json({ success: true });
 
       // Always persist to server CMS disk store first so updates never fail even if Supabase is restricted
       if (Array.isArray(products) && products.length > 1) {
-        cmsDataStore["zst_products_v1"] = products;
+        cmsDataStore["zst_products_v1"] = list;
       } else {
         const existing = Array.isArray(cmsDataStore["zst_products_v1"]) ? [...cmsDataStore["zst_products_v1"]] : [];
         for (const item of list) {
@@ -1447,6 +2009,7 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
       }
       await persistDataStoreToDisk();
       aiCatalogCache = null;
+      invalidatePublicCache("products");
 
       if (!dbClient) return res.json({ success: true, persistedLocally: true });
 
@@ -1493,6 +2056,7 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
         await persistDataStoreToDisk();
       }
       aiCatalogCache = null;
+      invalidatePublicCache("products");
       if (dbClient) {
         const { error } = await dbClient.from("products").delete().eq("id", id);
         if (error) console.warn("[Supabase API] Product delete notice (deleted locally):", error.message);
@@ -2126,34 +2690,11 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
   // HERO SETTINGS DB Proxy
   app.get("/api/db/hero-settings", async (req, res) => {
     try {
-      let heroData: any = null;
-      if (dbClient) {
-        const { data, error } = await dbClient.from("hero_settings").select("*").eq("id", "default").maybeSingle();
-        if (!error && data) {
-          heroData = data;
-        }
-      }
-
-      // Check cmsDataStore or site_settings for banners
-      const cmsHero = cmsDataStore?.zst_hero_settings_v1 || cmsDataStore?.zst_hero_settings;
-      const cmsBanners = (cmsHero && Array.isArray(cmsHero.banners) && cmsHero.banners.length > 0)
-        ? cmsHero.banners
-        : cmsDataStore?.zst_hero_banners;
-
-      if (heroData) {
-        if (cmsBanners && Array.isArray(cmsBanners) && cmsBanners.length > 0) {
-          heroData.banners = cmsBanners;
-        } else if (Array.isArray(heroData.draft_slides) && heroData.draft_slides.length > 0) {
-          heroData.banners = heroData.draft_slides;
-        }
-        return res.json({ success: true, data: heroData });
-      }
-
-      if (cmsHero) {
-        return res.json({ success: true, data: cmsHero });
-      }
-
-      return res.json({ success: true, data: null });
+      const entry = await getCachedOrCompute("hero-settings", loadHeroSettingsFast);
+      if (req.headers["if-none-match"] === entry.etag) return res.status(304).end();
+      res.setHeader("ETag", entry.etag);
+      res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+      return res.json({ success: true, data: entry.data });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
@@ -2171,6 +2712,7 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
         cmsDataStore.zst_hero_banners = settings.banners;
       }
       await persistDataStoreToDisk();
+      invalidatePublicCache("hero-settings");
 
       if (dbClient) {
         const payload = {
@@ -3651,75 +4193,11 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
   app.get("/api/db/site-settings/:key", async (req, res) => {
     try {
       const { key } = req.params;
-      if (dbClient) {
-        // 1. Try key-value table
-        const { data: kvData, error: kvErr } = await dbClient.from("site_settings").select("value").eq("key", key).maybeSingle();
-        if (!kvErr && kvData && kvData.value !== undefined && kvData.value !== null) {
-          return res.json({ success: true, data: kvData.value });
-        }
-
-        // 2. Try single row config with named column (id = 'config')
-        const k = key.toLowerCase();
-        if (k.includes("pricing") || k.includes("typography")) {
-          const { data: themeData } = await dbClient.from("site_settings").select("theme_settings").eq("id", "config").maybeSingle();
-          const pTypo = themeData?.theme_settings?.pricingTypography || themeData?.theme_settings?.pricing_typography;
-          if (pTypo) {
-            return res.json({ success: true, data: pTypo });
-          }
-        } else if (k.includes("payment")) {
-          const { data: chkData } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
-          const pm = chkData?.checkout_settings?.payment_methods || chkData?.checkout_settings?.paymentMethods;
-          if (pm && Array.isArray(pm)) {
-            return res.json({ success: true, data: pm });
-          }
-        } else if (k.includes("coupon") || k.includes("promo")) {
-          const { data: chkData } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
-          const coupons = chkData?.checkout_settings?.coupons || chkData?.checkout_settings?.promo_codes;
-          if (coupons && Array.isArray(coupons)) {
-            return res.json({ success: true, data: coupons });
-          }
-        } else if (k.includes("smart_tools") || k.includes("smart-tools") || k.includes("smarttools")) {
-          const { data: planData } = await dbClient.from("site_settings").select("planner_config").eq("id", "config").maybeSingle();
-          if (planData?.planner_config?.smartTools) {
-            return res.json({ success: true, data: planData.planner_config.smartTools });
-          }
-        } else if (k.includes("how_to_order") || k.includes("order_guide")) {
-          const { data: chkData } = await dbClient.from("site_settings").select("checkout_settings").eq("id", "config").maybeSingle();
-          const guide = chkData?.checkout_settings?.howToOrderGuide || chkData?.checkout_settings?.how_to_order_guide;
-          if (guide && guide.steps) {
-            return res.json({ success: true, data: guide });
-          }
-        } else if (k.includes("fitting")) {
-          const { data: planData } = await dbClient.from("site_settings").select("planner_config").eq("id", "config").maybeSingle();
-          if (planData?.planner_config?.fittingBuilder) {
-            return res.json({ success: true, data: planData.planner_config.fittingBuilder });
-          }
-        } else {
-          let colName = null;
-          if (k.includes("announcement")) colName = "announcements";
-          else if (k.includes("theme")) colName = "theme_settings";
-          else if (k.includes("ai") || k.includes("assistant")) colName = "ai_assistant";
-          else if (k.includes("contact")) colName = "contact_info";
-          else if (k.includes("stat")) colName = "stats";
-          else if (k.includes("delivery")) colName = "delivery_settings";
-          else if (k.includes("checkout")) colName = "checkout_settings";
-          else if (k.includes("planner") || k.includes("designer")) colName = "planner_config";
-
-          if (colName) {
-            const { data: colData } = await dbClient.from("site_settings").select(colName).eq("id", "config").maybeSingle();
-            if (colData && (colData as any)[colName] !== undefined && (colData as any)[colName] !== null) {
-              return res.json({ success: true, data: (colData as any)[colName] });
-            }
-          }
-        }
-      }
-
-      // Check cmsDataStore fallback if present
-      if (cmsDataStore && cmsDataStore[key] !== undefined && cmsDataStore[key] !== null) {
-        return res.json({ success: true, data: cmsDataStore[key] });
-      }
-
-      return res.json({ success: true, data: null });
+      const entry = await getCachedOrCompute(`site-settings:${key}`, () => loadSiteSettingFast(key));
+      if (req.headers["if-none-match"] === entry.etag) return res.status(304).end();
+      res.setHeader("ETag", entry.etag);
+      res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+      return res.json({ success: true, data: entry.data });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || String(err) });
     }
@@ -3733,6 +4211,7 @@ Sitemap: ${canonicalOrigin}/sitemap.xml
       // Always save to server-side memory & disk store as immediate durable guarantee
       cmsDataStore[key] = value;
       await persistDataStoreToDisk();
+      invalidatePublicCache(`site-settings:${key}`);
 
       if (!dbClient) {
         return res.json({ success: true, notice: "Saved locally (Supabase client not initialized)" });
@@ -7871,6 +8350,7 @@ Please analyze this space and provide complete, coordinated color palettes stric
         }
         await persistDataStoreToDisk();
         invalidateAiCatalogCache();
+        invalidatePublicCache("all");
       }
       return res.json({ success: true, error: null, key });
     } catch (e: any) {
@@ -7909,6 +8389,7 @@ Please analyze this space and provide complete, coordinated color palettes stric
         }
         await persistDataStoreToDisk();
         invalidateAiCatalogCache();
+        invalidatePublicCache("all");
       }
       return res.json({ success: true, error: null, keys: Object.keys(cmsDataStore) });
     } catch (e: any) {
@@ -7973,10 +8454,23 @@ Please analyze this space and provide complete, coordinated color palettes stric
 
     const distPath = candidateDistPaths.find((p) => fs.existsSync(path.join(p, "index.html"))) || path.resolve(process.cwd(), "dist");
 
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, {
+      setHeaders: (res, filePath) => {
+        if (filePath.includes(`${path.sep}assets${path.sep}`) && !filePath.endsWith(".html")) {
+          if (/\.[0-9a-f]{8,}\./i.test(path.basename(filePath)) || /-[A-Za-z0-9_-]{6,}\.(js|css)$/.test(path.basename(filePath))) {
+            res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          } else {
+            res.setHeader("Cache-Control", "public, max-age=86400");
+          }
+        } else if (filePath.endsWith(".html")) {
+          res.setHeader("Cache-Control", "no-cache");
+        }
+      }
+    }));
     app.get("*", (req, res) => {
       const indexPath = path.join(distPath, "index.html");
       if (fs.existsSync(indexPath)) {
+        res.setHeader("Cache-Control", "no-cache");
         res.sendFile(indexPath);
       } else {
         res.status(200).send("<!doctype html><html><head><meta charset='UTF-8'/><title>Zafar Sarwar Traders</title></head><body><div id='root'></div><script>window.location.reload();</script></body></html>");

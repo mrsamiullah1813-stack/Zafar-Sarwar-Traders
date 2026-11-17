@@ -83,15 +83,18 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
     return () => clearInterval(timer);
   }, [autoPlay, isPaused, rotationDuration, totalBanners, handleNext]);
 
-  // Preload next image for instant transition
+  // Defer preloading next banner slide so the primary LCP slide gets 100% network priority
   useEffect(() => {
     if (totalBanners <= 1) return;
     const nextIdx = (currentIndex + 1) % totalBanners;
     const nextBanner = activeBanners[nextIdx];
-    if (nextBanner?.imageUrl) {
+    if (!nextBanner?.imageUrl) return;
+    const preload = () => {
       const img = new Image();
       img.src = nextBanner.imageUrl;
-    }
+    };
+    const timer = window.setTimeout(preload, currentIndex === 0 ? 1500 : 300);
+    return () => window.clearTimeout(timer);
   }, [currentIndex, activeBanners, totalBanners]);
 
   // Keyboard navigation
@@ -281,6 +284,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                   alt={currentBanner?.title || 'Promotional Banner'}
                   className="w-full h-full object-cover object-center transition-transform duration-700 sm:group-hover:scale-[1.01]"
                   loading={currentIndex === 0 ? 'eager' : 'lazy'}
+                  fetchPriority={currentIndex === 0 ? 'high' : 'auto'}
                   decoding="async"
                   onError={(e) => handleImageError(e)}
                 />
