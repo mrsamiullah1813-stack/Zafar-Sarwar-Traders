@@ -100,29 +100,123 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
+const CLIENT_STORAGE_HEALTH_TTL_MS = 30_000;
+let cachedStorageHealth: { data: StorageHealthResponse; expiresAt: number } | null = null;
+let inFlightStorageHealth: Promise<StorageHealthResponse> | null = null;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function parseRetryAfterMs(res: Response, attempt: number): number {
+  const retryAfter = res.headers.get('retry-after');
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (!Number.isNaN(seconds) && seconds > 0) {
+      return Math.min(seconds * 1000, 10_000);
+    }
+  }
+  return Math.min(1200 * Math.pow(2, attempt), 6000);
+}
+
+/**
+ * Clear client cache after storage mutations (cleanup / quota update)
+ */
+export function clearStorageHealthClientCache(): void {
+  cachedStorageHealth = null;
+}
+
 /**
  * Fetch real Supabase Storage usage and health statistics from Admin backend API
+ * Includes in-flight request coalescing, short-lived caching, and HTTP 429 retry/backoff.
  */
-export async function fetchStorageHealth(): Promise<StorageHealthResponse> {
-  const headers = await getAuthHeaders();
+export async function fetchStorageHealth(forceRefresh = false): Promise<StorageHealthResponse> {
+  if (!forceRefresh && cachedStorageHealth && Date.now() < cachedStorageHealth.expiresAt) {
+    return cachedStorageHealth.data;
+  }
 
-  const res = await fetch('/api/admin/storage-health', {
-    method: 'GET',
-    headers
+  if (inFlightStorageHealth && !forceRefresh) {
+    return inFlightStorageHealth;
+  }
+
+  const runFetch = async (): Promise<StorageHealthResponse> => {
+    const headers = await getAuthHeaders();
+    const url = forceRefresh ? '/api/admin/storage-health?force=1' : '/api/admin/storage-health';
+    const maxAttempts = 3;
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const res = await fetch(url, {
+          method: 'GET',
+          headers
+        });
+
+        // Handle reverse-proxy / upstream rate limiting cleanly with retry/backoff
+        if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
+          const waitMs = parseRetryAfterMs(res, attempt);
+          const bodySnippet = (await res.text().catch(() => '')).trim().slice(0, 120);
+          lastError = new Error(
+            res.status === 429
+              ? `Storage health temporarily rate-limited (HTTP 429${bodySnippet ? `: ${bodySnippet}` : ''}).`
+              : `Storage health service temporarily unavailable (HTTP ${res.status}).`
+          );
+
+          if (attempt < maxAttempts - 1) {
+            await sleep(waitMs);
+            continue;
+          }
+
+          // If we already have prior telemetry in memory, keep displaying it rather than crashing the view
+          if (cachedStorageHealth?.data) {
+            return cachedStorageHealth.data;
+          }
+          throw lastError;
+        }
+
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          const text = await res.text();
+          throw new Error(`Server returned non-JSON response (HTTP ${res.status}): ${text.slice(0, 120)}`);
+        }
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || `Failed to fetch storage health (HTTP ${res.status})`);
+        }
+
+        cachedStorageHealth = {
+          data,
+          expiresAt: Date.now() + CLIENT_STORAGE_HEALTH_TTL_MS
+        };
+        return data;
+      } catch (err: any) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        const isTransient =
+          lastError.message.includes('HTTP 429') ||
+          lastError.message.includes('Failed to fetch') ||
+          lastError.message.includes('NetworkError');
+
+        if (isTransient && attempt < maxAttempts - 1) {
+          await sleep(1200 * (attempt + 1));
+          continue;
+        }
+
+        if (cachedStorageHealth?.data && isTransient) {
+          return cachedStorageHealth.data;
+        }
+        throw lastError;
+      }
+    }
+
+    throw lastError || new Error('Unable to retrieve Supabase storage health.');
+  };
+
+  inFlightStorageHealth = runFetch().finally(() => {
+    inFlightStorageHealth = null;
   });
 
-  const contentType = res.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    const text = await res.text();
-    throw new Error(`Server returned non-JSON response (HTTP ${res.status}): ${text.slice(0, 120)}`);
-  }
-
-  const data = await res.json();
-  if (!res.ok || !data.success) {
-    throw new Error(data.error || `Failed to fetch storage health (HTTP ${res.status})`);
-  }
-
-  return data;
+  return inFlightStorageHealth;
 }
 
 /**
@@ -152,6 +246,10 @@ export async function deleteStorageFile(
     body: JSON.stringify({ bucket, storagePath, orderId })
   });
 
+  if (res.status === 429) {
+    throw new Error('Request temporarily rate-limited (HTTP 429). Please wait a few seconds and try again.');
+  }
+
   const contentType = res.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
     const text = await res.text();
@@ -163,6 +261,7 @@ export async function deleteStorageFile(
     throw new Error(data.error || `Cleanup request failed with HTTP ${res.status}`);
   }
 
+  clearStorageHealthClientCache();
   return data;
 }
 
@@ -180,6 +279,10 @@ export async function deleteStorageFilesBatch(
     body: JSON.stringify({ files })
   });
 
+  if (res.status === 429) {
+    throw new Error('Request temporarily rate-limited (HTTP 429). Please wait a few seconds and try again.');
+  }
+
   const contentType = res.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
     const text = await res.text();
@@ -191,6 +294,7 @@ export async function deleteStorageFilesBatch(
     throw new Error(data.error || `Batch cleanup request failed with HTTP ${res.status}`);
   }
 
+  clearStorageHealthClientCache();
   return data;
 }
 
@@ -209,6 +313,10 @@ export async function updateStorageQuotaPlan(
     body: JSON.stringify({ quotaMb, planName })
   });
 
+  if (res.status === 429) {
+    throw new Error('Request temporarily rate-limited (HTTP 429). Please wait a few seconds and try again.');
+  }
+
   const contentType = res.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
     const text = await res.text();
@@ -220,5 +328,6 @@ export async function updateStorageQuotaPlan(
     throw new Error(data.error || `Failed to update storage plan (HTTP ${res.status})`);
   }
 
+  clearStorageHealthClientCache();
   return data;
 }

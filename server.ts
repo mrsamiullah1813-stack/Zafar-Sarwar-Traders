@@ -5409,6 +5409,14 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
   // =========================================================
   // REAL SUPABASE STORAGE USAGE & HEALTH MONITOR (ADMIN ONLY)
   // =========================================================
+  const STORAGE_HEALTH_CACHE_TTL_MS = 45_000;
+  let storageHealthCache: { payload: any; expiresAt: number } | null = null;
+  let storageHealthInFlight: Promise<any> | null = null;
+
+  function invalidateStorageHealthCache() {
+    storageHealthCache = null;
+  }
+
   app.get("/api/admin/storage-health", requireAdminAuth, async (req, res) => {
     if (!dbClient) {
       return res.status(503).json({
@@ -5418,322 +5426,309 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
       });
     }
 
+    const forceRefresh = req.query.force === "1" || req.query.refresh === "1";
+
+    if (!forceRefresh && storageHealthCache && Date.now() < storageHealthCache.expiresAt) {
+      return res.json(storageHealthCache.payload);
+    }
+
     try {
-      // 1. Fetch real bucket list from Supabase Storage
-      const { data: buckets, error: bucketError } = await dbClient.storage.listBuckets();
-      if (bucketError) {
-        return res.status(500).json({
-          success: false,
-          error: `Failed to retrieve Supabase buckets: ${bucketError.message}`,
-          status: "Critical"
-        });
-      }
+      if (!storageHealthInFlight) {
+        storageHealthInFlight = (async () => {
+          // 1. Fetch real bucket list from Supabase Storage
+          const { data: buckets, error: bucketError } = await dbClient.storage.listBuckets();
+          if (bucketError) {
+            const err: any = new Error(`Failed to retrieve Supabase buckets: ${bucketError.message}`);
+            err.statusCode = 500;
+            throw err;
+          }
 
-      if (!buckets || !Array.isArray(buckets)) {
-        return res.json({
-          success: true,
-          status: "Healthy",
-          totalUsedBytes: 0,
-          totalFileCount: 0,
-          buckets: [],
-          largestFiles: [],
-          recentUploads: [],
-          cleanupCandidates: [],
-          quotaInfo: {
-            available: false,
-            message: "Storage quota information unavailable through the current connection"
-          },
-          lastCheckedAt: new Date().toISOString()
-        });
-      }
+          if (!buckets || !Array.isArray(buckets)) {
+            const emptyPayload = {
+              success: true,
+              status: "Healthy",
+              connected: true,
+              totalUsedBytes: 0,
+              totalUsedFormatted: "0 B",
+              totalFileCount: 0,
+              bucketCount: 0,
+              buckets: [],
+              largestFiles: [],
+              recentUploads: [],
+              cleanupCandidates: [],
+              quotaInfo: {
+                available: false,
+                message: "Storage quota information unavailable through the current connection"
+              },
+              serverTime: new Date().toISOString(),
+              lastCheckedAt: new Date().toISOString()
+            };
+            storageHealthCache = { payload: emptyPayload, expiresAt: Date.now() + STORAGE_HEALTH_CACHE_TTL_MS };
+            return emptyPayload;
+          }
 
-      let totalBytes = 0;
-      let totalFileCount = 0;
-      const allObjects: Array<{
-        bucket: string;
-        name: string;
-        path: string;
-        size: number;
-        mimetype: string;
-        created_at: string | null;
-        updated_at: string | null;
-        publicUrl: string | null;
-      }> = [];
+          type StorageObj = {
+            bucket: string;
+            name: string;
+            path: string;
+            size: number;
+            mimetype: string;
+            created_at: string | null;
+            updated_at: string | null;
+            publicUrl: string | null;
+          };
 
-      const bucketStats: Array<{
-        id: string;
-        name: string;
-        isPublic: boolean;
-        fileSizeLimit: number | null;
-        fileCount: number;
-        usedBytes: number;
-        usedFormatted: string;
-        percentageOfTotal: number;
-      }> = [];
+          const allObjects: StorageObj[] = [];
 
-      // 2. Traverse all buckets and collect real file metadata
-      for (const b of buckets) {
-        let bucketFiles: typeof allObjects = [];
+          // 2. Traverse all buckets concurrently and collect real file metadata
+          const bucketStats = await Promise.all(buckets.map(async (b) => {
+            const bucketFiles: StorageObj[] = [];
 
-        async function traverseBucket(prefix = "") {
-          let offset = 0;
-          const limit = 100;
-          let keepGoing = true;
+            async function traverseBucket(prefix = "") {
+              let offset = 0;
+              const limit = 100;
+              let keepGoing = true;
 
-          while (keepGoing) {
-            try {
-              const { data, error } = await dbClient!.storage
-                .from(b.name)
-                .list(prefix, { limit, offset, sortBy: { column: "name", order: "asc" } });
+              while (keepGoing) {
+                try {
+                  const { data, error } = await dbClient!.storage
+                    .from(b.name)
+                    .list(prefix, { limit, offset, sortBy: { column: "name", order: "asc" } });
 
-              if (error || !data || data.length === 0) {
-                break;
-              }
+                  if (error || !data || data.length === 0) {
+                    break;
+                  }
 
-              for (const item of data) {
-                const itemPath = prefix ? `${prefix}/${item.name}` : item.name;
-                // If it's a folder (id is null or no metadata)
-                if (item.id === null && !item.metadata) {
-                  await traverseBucket(itemPath);
-                } else {
-                  const size = Number(item.metadata?.size || (item as any).size || 0);
-                  const { data: pubData } = dbClient!.storage.from(b.name).getPublicUrl(itemPath);
-                  const obj = {
-                    bucket: b.name,
-                    name: item.name,
-                    path: itemPath,
-                    size,
-                    mimetype: item.metadata?.mimetype || (item as any).mimetype || "unknown",
-                    created_at: item.created_at || item.updated_at || null,
-                    updated_at: item.updated_at || item.created_at || null,
-                    publicUrl: pubData?.publicUrl || null
-                  };
-                  bucketFiles.push(obj);
-                  allObjects.push(obj);
+                  for (const item of data) {
+                    const itemPath = prefix ? `${prefix}/${item.name}` : item.name;
+                    if (item.id === null && !item.metadata) {
+                      await traverseBucket(itemPath);
+                    } else {
+                      const size = Number(item.metadata?.size || (item as any).size || 0);
+                      const { data: pubData } = dbClient!.storage.from(b.name).getPublicUrl(itemPath);
+                      const obj: StorageObj = {
+                        bucket: b.name,
+                        name: item.name,
+                        path: itemPath,
+                        size,
+                        mimetype: item.metadata?.mimetype || (item as any).mimetype || "unknown",
+                        created_at: item.created_at || item.updated_at || null,
+                        updated_at: item.updated_at || item.created_at || null,
+                        publicUrl: pubData?.publicUrl || null
+                      };
+                      bucketFiles.push(obj);
+                      allObjects.push(obj);
+                    }
+                  }
+
+                  if (data.length < limit) {
+                    keepGoing = false;
+                  } else {
+                    offset += limit;
+                  }
+                } catch (traversalErr) {
+                  console.warn(`[Storage Monitor] Bucket "${b.name}" path "${prefix}" traversal notice:`, traversalErr);
+                  break;
                 }
               }
-
-              if (data.length < limit) {
-                keepGoing = false;
-              } else {
-                offset += limit;
-              }
-            } catch (traversalErr) {
-              console.warn(`[Storage Monitor] Bucket "${b.name}" path "${prefix}" traversal notice:`, traversalErr);
-              break;
             }
+
+            await traverseBucket("");
+
+            const bucketUsedBytes = bucketFiles.reduce((acc, curr) => acc + curr.size, 0);
+
+            let formattedSize = "0 B";
+            if (bucketUsedBytes > 0) {
+              const k = 1024;
+              const sizes = ["B", "KB", "MB", "GB", "TB"];
+              const i = Math.floor(Math.log(bucketUsedBytes) / Math.log(k));
+              formattedSize = `${parseFloat((bucketUsedBytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+            }
+
+            return {
+              id: b.id || b.name,
+              name: b.name,
+              isPublic: Boolean(b.public),
+              fileSizeLimit: b.file_size_limit || null,
+              fileCount: bucketFiles.length,
+              usedBytes: bucketUsedBytes,
+              usedFormatted: formattedSize,
+              percentageOfTotal: 0
+            };
+          }));
+
+          const totalBytes = bucketStats.reduce((sum, b) => sum + b.usedBytes, 0);
+          const totalFileCount = bucketStats.reduce((sum, b) => sum + b.fileCount, 0);
+
+          bucketStats.forEach(b => {
+            b.percentageOfTotal = totalBytes > 0 ? Number(((b.usedBytes / totalBytes) * 100).toFixed(1)) : 0;
+          });
+
+          bucketStats.sort((a, b) => b.usedBytes - a.usedBytes);
+
+          const formatBytes = (bytes: number): string => {
+            if (bytes <= 0) return "0 B";
+            const k = 1024;
+            const sizes = ["B", "KB", "MB", "GB", "TB"];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+          };
+
+          // 3. Top largest files
+          const largestFiles = [...allObjects]
+            .sort((a, b) => b.size - a.size)
+            .slice(0, 15)
+            .map(f => ({
+              ...f,
+              formattedSize: formatBytes(f.size)
+            }));
+
+          // 4. Recent uploads sorted chronologically
+          const recentUploads = [...allObjects]
+            .sort((a, b) => {
+              const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+              const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+              return timeB - timeA;
+            })
+            .slice(0, 15)
+            .map(f => ({
+              ...f,
+              formattedSize: formatBytes(f.size)
+            }));
+
+          // 5. Detect Safe Cleanup Candidates (Payment receipts strictly belonging to "Delivered" orders)
+          const cleanupCandidates: Array<{
+            orderId: string;
+            orderNumber: string;
+            customerName: string;
+            orderStatus: string;
+            paymentStatus: string;
+            fileName: string;
+            fileUrl: string;
+            bucket: string;
+            storagePath: string;
+            size: number;
+            formattedSize: string;
+            uploadedAt: string | null;
+          }> = [];
+
+          try {
+            const { data: dbOrders } = await dbClient.from("orders").select("*").eq("status", "Delivered");
+            const rawCmsOrders = Array.isArray(cmsDataStore["zst_orders"]) ? cmsDataStore["zst_orders"] : [];
+            const rawCmsOrdersV1 = Array.isArray(cmsDataStore["zst_orders_v1"]) ? cmsDataStore["zst_orders_v1"] : [];
+            const allDelivered = [
+              ...(dbOrders || []),
+              ...rawCmsOrders.filter((o: any) => o.status === "Delivered"),
+              ...rawCmsOrdersV1.filter((o: any) => o.status === "Delivered")
+            ];
+
+            const seenOrders = new Set<string>();
+            for (const o of allDelivered) {
+              const oId = String(o.id || o.orderNumber || o.tracking_number || "");
+              if (!oId || seenOrders.has(oId)) continue;
+              seenOrders.add(oId);
+
+              const proofUrl = o.paymentProofUrl || o.payment_proof_url;
+              const proofName = o.paymentProofFileName || o.payment_proof_file_name;
+
+              if (proofUrl && typeof proofUrl === "string") {
+                const matchedObj = allObjects.find(obj => {
+                  if (proofName && (obj.name === proofName || obj.path.includes(proofName))) return true;
+                  if (obj.publicUrl && proofUrl.includes(obj.path)) return true;
+                  const urlClean = proofUrl.split("?")[0];
+                  return urlClean.endsWith(obj.name);
+                });
+
+                if (matchedObj) {
+                  cleanupCandidates.push({
+                    orderId: oId,
+                    orderNumber: o.orderNumber || o.order_number || o.tracking_number || oId,
+                    customerName: o.customerName || o.customer_name || "Customer",
+                    orderStatus: "Delivered",
+                    paymentStatus: o.paymentStatus || o.payment_status || "Payment Verified",
+                    fileName: matchedObj.name,
+                    fileUrl: matchedObj.publicUrl || proofUrl,
+                    bucket: matchedObj.bucket,
+                    storagePath: matchedObj.path,
+                    size: matchedObj.size,
+                    formattedSize: formatBytes(matchedObj.size),
+                    uploadedAt: matchedObj.created_at || o.payment_proof_uploaded_at || o.paymentProofUploadedAt || null
+                  });
+                }
+              }
+            }
+          } catch (cleanupScanErr) {
+            console.warn("[Storage Monitor] Cleanup candidate scan notice:", cleanupScanErr);
           }
-        }
 
-        await traverseBucket("");
+          const configuredQuotaMb = Number(cmsDataStore["zst_storage_quota_mb"]) || (process.env.SUPABASE_STORAGE_LIMIT_MB ? Number(process.env.SUPABASE_STORAGE_LIMIT_MB) : 1024);
+          const configuredPlanName = (cmsDataStore["zst_storage_plan_name"] as string) || (configuredQuotaMb >= 102400 ? "Supabase Pro Tier (100 GB)" : (configuredQuotaMb >= 10240 ? `Custom Plan (${(configuredQuotaMb / 1024).toFixed(0)} GB)` : "Supabase Free Tier (1 GB)"));
+          const totalCapacityBytes = configuredQuotaMb * 1024 * 1024;
+          const totalUsedBytes = totalBytes;
+          const remainingBytes = Math.max(0, totalCapacityBytes - totalUsedBytes);
 
-        const bucketUsedBytes = bucketFiles.reduce((acc, curr) => acc + curr.size, 0);
-        totalBytes += bucketUsedBytes;
-        totalFileCount += bucketFiles.length;
+          const usagePercentage = Number(Math.min(100, (totalUsedBytes / totalCapacityBytes) * 100).toFixed(2));
+          const remainingPercentage = Number(Math.max(0, 100 - usagePercentage).toFixed(2));
 
-        // Format bucket used size
-        let formattedSize = "0 B";
-        if (bucketUsedBytes > 0) {
-          const k = 1024;
-          const sizes = ["B", "KB", "MB", "GB", "TB"];
-          const i = Math.floor(Math.log(bucketUsedBytes) / Math.log(k));
-          formattedSize = `${parseFloat((bucketUsedBytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-        }
+          let storageStatus: "Healthy" | "Warning" | "Critical" = "Healthy";
+          if (usagePercentage >= 95) {
+            storageStatus = "Critical";
+          } else if (usagePercentage >= 80) {
+            storageStatus = "Warning";
+          }
 
-        bucketStats.push({
-          id: b.id || b.name,
-          name: b.name,
-          isPublic: Boolean(b.public),
-          fileSizeLimit: b.file_size_limit || null,
-          fileCount: bucketFiles.length,
-          usedBytes: bucketUsedBytes,
-          usedFormatted: formattedSize,
-          percentageOfTotal: 0
+          const payload = {
+            success: true,
+            status: storageStatus,
+            connected: true,
+            totalUsedBytes,
+            totalUsedFormatted: formatBytes(totalUsedBytes),
+            totalCapacityBytes,
+            totalCapacityFormatted: formatBytes(totalCapacityBytes),
+            remainingBytes,
+            remainingFormatted: formatBytes(remainingBytes),
+            usagePercentage,
+            remainingPercentage,
+            totalFileCount,
+            bucketCount: buckets.length,
+            buckets: bucketStats,
+            largestFiles,
+            recentUploads,
+            cleanupCandidates,
+            quotaInfo: {
+              available: true,
+              planName: configuredPlanName,
+              quotaMb: configuredQuotaMb,
+              totalCapacityBytes,
+              totalCapacityFormatted: formatBytes(totalCapacityBytes),
+              totalUsedBytes,
+              totalUsedFormatted: formatBytes(totalUsedBytes),
+              remainingBytes,
+              remainingFormatted: formatBytes(remainingBytes),
+              usagePercentage,
+              remainingPercentage,
+              message: `Plan capacity: ${formatBytes(totalCapacityBytes)} | Used: ${formatBytes(totalUsedBytes)} (${usagePercentage}%) | Available Left: ${formatBytes(remainingBytes)} (${remainingPercentage}%)`
+            },
+            serverTime: new Date().toISOString(),
+            lastCheckedAt: new Date().toISOString()
+          };
+
+          storageHealthCache = {
+            payload,
+            expiresAt: Date.now() + STORAGE_HEALTH_CACHE_TTL_MS
+          };
+          return payload;
+        })().finally(() => {
+          storageHealthInFlight = null;
         });
       }
 
-      // Calculate percentage distribution among buckets
-      bucketStats.forEach(b => {
-        b.percentageOfTotal = totalBytes > 0 ? Number(((b.usedBytes / totalBytes) * 100).toFixed(1)) : 0;
-      });
-
-      // Sort buckets by used size descending
-      bucketStats.sort((a, b) => b.usedBytes - a.usedBytes);
-
-      // 3. Top largest files
-      const sortedBySize = [...allObjects].sort((a, b) => b.size - a.size);
-      const largestFiles = sortedBySize.slice(0, 15).map(f => {
-        let formatted = "0 B";
-        if (f.size > 0) {
-          const k = 1024;
-          const sizes = ["B", "KB", "MB", "GB", "TB"];
-          const i = Math.floor(Math.log(f.size) / Math.log(k));
-          formatted = `${parseFloat((f.size / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-        }
-        return {
-          ...f,
-          formattedSize: formatted
-        };
-      });
-
-      // 4. Recent uploads sorted chronologically
-      const sortedByDate = [...allObjects].sort((a, b) => {
-        const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return timeB - timeA;
-      });
-      const recentUploads = sortedByDate.slice(0, 15).map(f => {
-        let formatted = "0 B";
-        if (f.size > 0) {
-          const k = 1024;
-          const sizes = ["B", "KB", "MB", "GB", "TB"];
-          const i = Math.floor(Math.log(f.size) / Math.log(k));
-          formatted = `${parseFloat((f.size / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-        }
-        return {
-          ...f,
-          formattedSize: formatted
-        };
-      });
-
-      // 5. Detect Safe Cleanup Candidates (Payment receipts strictly belonging to "Delivered" orders)
-      const cleanupCandidates: Array<{
-        orderId: string;
-        orderNumber: string;
-        customerName: string;
-        orderStatus: string;
-        paymentStatus: string;
-        fileName: string;
-        fileUrl: string;
-        bucket: string;
-        storagePath: string;
-        size: number;
-        formattedSize: string;
-        uploadedAt: string | null;
-      }> = [];
-
-      try {
-        // Check both Supabase orders and CMS stores for delivered orders
-        const { data: dbOrders } = await dbClient.from("orders").select("*").eq("status", "Delivered");
-        const rawCmsOrders = Array.isArray(cmsDataStore["zst_orders"]) ? cmsDataStore["zst_orders"] : [];
-        const rawCmsOrdersV1 = Array.isArray(cmsDataStore["zst_orders_v1"]) ? cmsDataStore["zst_orders_v1"] : [];
-        const allDelivered = [
-          ...(dbOrders || []),
-          ...rawCmsOrders.filter((o: any) => o.status === "Delivered"),
-          ...rawCmsOrdersV1.filter((o: any) => o.status === "Delivered")
-        ];
-
-        const seenOrders = new Set<string>();
-        for (const o of allDelivered) {
-          const oId = String(o.id || o.orderNumber || o.tracking_number || "");
-          if (!oId || seenOrders.has(oId)) continue;
-          seenOrders.add(oId);
-
-          const proofUrl = o.paymentProofUrl || o.payment_proof_url;
-          const proofName = o.paymentProofFileName || o.payment_proof_file_name;
-
-          if (proofUrl && typeof proofUrl === "string") {
-            // Find corresponding object in storage
-            let matchedObj = allObjects.find(obj => {
-              if (proofName && (obj.name === proofName || obj.path.includes(proofName))) return true;
-              if (obj.publicUrl && proofUrl.includes(obj.path)) return true;
-              const urlClean = proofUrl.split("?")[0];
-              return urlClean.endsWith(obj.name);
-            });
-
-            if (matchedObj) {
-              let formatted = "0 B";
-              if (matchedObj.size > 0) {
-                const k = 1024;
-                const sizes = ["B", "KB", "MB", "GB", "TB"];
-                const i = Math.floor(Math.log(matchedObj.size) / Math.log(k));
-                formatted = `${parseFloat((matchedObj.size / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-              }
-
-              cleanupCandidates.push({
-                orderId: oId,
-                orderNumber: o.orderNumber || o.order_number || o.tracking_number || oId,
-                customerName: o.customerName || o.customer_name || "Customer",
-                orderStatus: "Delivered",
-                paymentStatus: o.paymentStatus || o.payment_status || "Payment Verified",
-                fileName: matchedObj.name,
-                fileUrl: matchedObj.publicUrl || proofUrl,
-                bucket: matchedObj.bucket,
-                storagePath: matchedObj.path,
-                size: matchedObj.size,
-                formattedSize: formatted,
-                uploadedAt: matchedObj.created_at || o.payment_proof_uploaded_at || o.paymentProofUploadedAt || null
-              });
-            }
-          }
-        }
-      } catch (cleanupScanErr) {
-        console.warn("[Storage Monitor] Cleanup candidate scan notice:", cleanupScanErr);
-      }
-
-      // Calculate Storage Quota, Used, and Left Storage
-      const configuredQuotaMb = Number(cmsDataStore["zst_storage_quota_mb"]) || (process.env.SUPABASE_STORAGE_LIMIT_MB ? Number(process.env.SUPABASE_STORAGE_LIMIT_MB) : 1024); // Default 1024 MB = 1 GB (Supabase Free Plan)
-      const configuredPlanName = (cmsDataStore["zst_storage_plan_name"] as string) || (configuredQuotaMb >= 102400 ? "Supabase Pro Tier (100 GB)" : (configuredQuotaMb >= 10240 ? `Custom Plan (${(configuredQuotaMb/1024).toFixed(0)} GB)` : "Supabase Free Tier (1 GB)"));
-      const totalCapacityBytes = configuredQuotaMb * 1024 * 1024;
-      const totalUsedBytes = totalBytes;
-      const remainingBytes = Math.max(0, totalCapacityBytes - totalUsedBytes);
-
-      const formatBytes = (bytes: number): string => {
-        if (bytes <= 0) return "0 B";
-        const k = 1024;
-        const sizes = ["B", "KB", "MB", "GB", "TB"];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-      };
-
-      const usagePercentage = Number(Math.min(100, (totalUsedBytes / totalCapacityBytes) * 100).toFixed(2));
-      const remainingPercentage = Number(Math.max(0, 100 - usagePercentage).toFixed(2));
-
-      let storageStatus: "Healthy" | "Warning" | "Critical" = "Healthy";
-      if (usagePercentage >= 95) {
-        storageStatus = "Critical";
-      } else if (usagePercentage >= 80) {
-        storageStatus = "Warning";
-      }
-
-      return res.json({
-        success: true,
-        status: storageStatus,
-        connected: true,
-        totalUsedBytes,
-        totalUsedFormatted: formatBytes(totalUsedBytes),
-        totalCapacityBytes,
-        totalCapacityFormatted: formatBytes(totalCapacityBytes),
-        remainingBytes,
-        remainingFormatted: formatBytes(remainingBytes),
-        usagePercentage,
-        remainingPercentage,
-        totalFileCount,
-        bucketCount: buckets.length,
-        buckets: bucketStats,
-        largestFiles,
-        recentUploads,
-        cleanupCandidates,
-        quotaInfo: {
-          available: true,
-          planName: configuredPlanName,
-          quotaMb: configuredQuotaMb,
-          totalCapacityBytes,
-          totalCapacityFormatted: formatBytes(totalCapacityBytes),
-          totalUsedBytes,
-          totalUsedFormatted: formatBytes(totalUsedBytes),
-          remainingBytes,
-          remainingFormatted: formatBytes(remainingBytes),
-          usagePercentage,
-          remainingPercentage,
-          message: `Plan capacity: ${formatBytes(totalCapacityBytes)} | Used: ${formatBytes(totalUsedBytes)} (${usagePercentage}%) | Available Left: ${formatBytes(remainingBytes)} (${remainingPercentage}%)`
-        },
-        serverTime: new Date().toISOString(),
-        lastCheckedAt: new Date().toISOString()
-      });
+      const payload = await storageHealthInFlight;
+      return res.json(payload);
     } catch (err: any) {
       console.error("[Storage Monitor] Error calculating storage health:", err);
-      return res.status(500).json({
+      const statusCode = Number(err?.statusCode) || 500;
+      return res.status(statusCode).json({
         success: false,
         error: err?.message || String(err),
         status: "Critical"
@@ -5757,6 +5752,7 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
         cmsDataStore["zst_storage_plan_name"] = numQuota >= 102400 ? "Supabase Pro Tier (100 GB)" : (numQuota >= 1024 ? `${(numQuota / 1024).toFixed(0)} GB Plan` : `${numQuota} MB Plan`);
       }
       await persistDataStoreToDisk();
+      invalidateStorageHealthCache();
 
       return res.json({
         success: true,
@@ -5812,6 +5808,7 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
       }
 
       console.log(`[Storage Cleanup] Successfully processed proof/file "${storagePath}" from bucket "${bucket}"`);
+      invalidateStorageHealthCache();
 
       return res.json({
         success: true,
@@ -5883,6 +5880,7 @@ ${order.transactionReference ? `🔢 *Txn / Reference ID:* ${order.transactionRe
       }
 
       await persistDataStoreToDisk();
+      invalidateStorageHealthCache();
 
       const successCount = results.filter(r => r.success).length;
       return res.json({

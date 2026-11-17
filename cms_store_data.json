@@ -4256,13 +4256,54 @@
     }
   },
   "zst_analytics_v2": {
-    "totalPageViews": 0,
-    "totalWebsiteClicks": 0,
+    "totalPageViews": 3,
+    "totalWebsiteClicks": 4,
     "totalProductClicks": 0,
-    "uniqueVisitors": 0,
-    "uniqueVisitorMap": {},
-    "dailyVisitorMap": {},
-    "pageViews": [],
+    "uniqueVisitors": 1,
+    "uniqueVisitorMap": {
+      "v_mwd6u0zd_14qdqp": {
+        "firstSeen": 1794630764775,
+        "lastSeen": 1794633660707,
+        "date": "2026-11-14"
+      }
+    },
+    "dailyVisitorMap": {
+      "2026-11-14": [
+        "v_mwd6u0zd_14qdqp"
+      ]
+    },
+    "pageViews": [
+      {
+        "id": "pv-1794630764775-4ln7",
+        "visitorId": "v_mwd6u0zd_14qdqp",
+        "path": "/",
+        "timestamp": 1794630764775,
+        "date": "2026-11-14",
+        "device": "Desktop",
+        "browser": "Chrome",
+        "source": "Direct"
+      },
+      {
+        "id": "pv-1794630764779-flez",
+        "visitorId": "v_mwd6u0zd_14qdqp",
+        "path": "/",
+        "timestamp": 1794630764779,
+        "date": "2026-11-14",
+        "device": "Desktop",
+        "browser": "Chrome",
+        "source": "Direct"
+      },
+      {
+        "id": "pv-1794630764789-03we",
+        "visitorId": "v_mwd6u0zd_14qdqp",
+        "path": "/",
+        "timestamp": 1794630764789,
+        "date": "2026-11-14",
+        "device": "Desktop",
+        "browser": "Chrome",
+        "source": "Direct"
+      }
+    ],
     "productViews": {},
     "searchKeywords": {},
     "categoryClicks": {},
@@ -4274,23 +4315,73 @@
     },
     "deviceCounts": {
       "Mobile": 0,
-      "Desktop": 0,
+      "Desktop": 3,
       "Tablet": 0
     },
     "browserCounts": {
-      "Chrome": 0,
+      "Chrome": 3,
       "Safari": 0,
       "Edge": 0,
       "Firefox": 0,
       "Other": 0
     },
     "sourceCounts": {
-      "Direct": 0,
+      "Direct": 3,
       "Google Search": 0,
       "WhatsApp / Referral": 0,
       "Social Media": 0
     },
-    "recentEvents": []
+    "recentEvents": [
+      {
+        "id": "ev-1794633660707-i8ne",
+        "type": "page_click",
+        "label": "/",
+        "details": "Desktop • Chrome",
+        "timestamp": "2026-11-14T05:21:00.707Z"
+      },
+      {
+        "id": "ev-1794633655750-ahjt",
+        "type": "page_click",
+        "label": "/",
+        "details": "Desktop • Chrome",
+        "timestamp": "2026-11-14T05:20:55.750Z"
+      },
+      {
+        "id": "ev-1794633648254-2qax",
+        "type": "page_click",
+        "label": "/",
+        "details": "Desktop • Chrome",
+        "timestamp": "2026-11-14T05:20:48.254Z"
+      },
+      {
+        "id": "ev-1794633642573-5yyf",
+        "type": "page_click",
+        "label": "/",
+        "details": "Desktop • Chrome",
+        "timestamp": "2026-11-14T05:20:42.573Z"
+      },
+      {
+        "id": "ev-1794630764789-r0nq",
+        "type": "pageview",
+        "label": "/",
+        "details": "Desktop • Chrome",
+        "timestamp": "2026-11-14T04:32:44.789Z"
+      },
+      {
+        "id": "ev-1794630764779-a6cz",
+        "type": "pageview",
+        "label": "/",
+        "details": "Desktop • Chrome",
+        "timestamp": "2026-11-14T04:32:44.779Z"
+      },
+      {
+        "id": "ev-1794630764775-dzfp",
+        "type": "pageview",
+        "label": "/",
+        "details": "Desktop • Chrome",
+        "timestamp": "2026-11-14T04:32:44.775Z"
+      }
+    ]
   },
   "zst_products_v1": [
     {

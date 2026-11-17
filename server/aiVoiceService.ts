@@ -264,7 +264,7 @@ function formatProsody(rate?: number, pitch?: number, volume?: number) {
  * Secondary fallback: Google Translate TTS audio buffer
  */
 async function generateFallbackTts(text: string, lang: string): Promise<Buffer> {
-  const sanitizedText = text.slice(0, 300);
+  const sanitizedText = text.slice(0, 200);
   const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${encodeURIComponent(lang)}&client=tw-ob&q=${encodeURIComponent(sanitizedText)}`;
 
   const res = await fetch(url, {
@@ -281,6 +281,13 @@ async function generateFallbackTts(text: string, lang: string): Promise<Buffer> 
 
   const arrayBuf = await res.arrayBuffer();
   return Buffer.from(arrayBuf);
+}
+
+function escapeSsmlText(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /**
@@ -302,19 +309,24 @@ export async function synthesizeNeuralSpeech(params: {
 
   const effectiveVoice = resolveEffectiveVoice(params.voice, text);
   const prosody = formatProsody(params.rate, params.pitch, params.volume);
-  const cacheKey = `${effectiveVoice}_${prosody.rate}_${prosody.pitch}_${text}`;
+  const cacheKey = `${effectiveVoice}_${prosody.rate}_${prosody.pitch}_${prosody.volume}_${text}`;
 
   // Check in-memory cache
   if (audioBufferCache.has(cacheKey)) {
     return audioBufferCache.get(cacheKey)!;
   }
 
+  let tts: InstanceType<typeof import("msedge-tts").MsEdgeTTS> | null = null;
   try {
     const { MsEdgeTTS, OUTPUT_FORMAT } = await import("msedge-tts");
-    const tts = new MsEdgeTTS();
+    tts = new MsEdgeTTS({
+      connectionTimeoutMs: 6000,
+      synthesisTimeoutMs: 10000
+    });
     await tts.setMetadata(effectiveVoice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
 
-    const { audioStream } = tts.toStream(text, {
+    const safeSsmlInput = escapeSsmlText(text);
+    const { audioStream } = tts.toStream(safeSsmlInput, {
       rate: prosody.rate,
       pitch: prosody.pitch,
       volume: prosody.volume
@@ -324,8 +336,8 @@ export async function synthesizeNeuralSpeech(params: {
 
     const audioBuffer = await new Promise<Buffer>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
-        reject(new Error("Edge TTS generation timed out after 6 seconds"));
-      }, 6000);
+        reject(new Error("Edge TTS generation timed out after 8 seconds"));
+      }, 8000);
 
       audioStream.on("data", (chunk: Buffer) => chunks.push(chunk));
       audioStream.on("end", () => {
@@ -354,6 +366,10 @@ export async function synthesizeNeuralSpeech(params: {
     const fallbackBuffer = await generateFallbackTts(text, fallbackLang);
     setCache(cacheKey, fallbackBuffer);
     return fallbackBuffer;
+  } finally {
+    try {
+      tts?.close();
+    } catch {}
   }
 }
 

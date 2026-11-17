@@ -79,7 +79,7 @@ export const AdminStorageHealth: React.FC<AdminStorageHealthProps> = ({ onShowTo
     setError(null);
 
     try {
-      const res = await fetchStorageHealth();
+      const res = await fetchStorageHealth(showRefreshSpinner);
       setData(res);
       if (res.quotaInfo?.quotaMb) {
         setCustomQuotaGb(parseFloat((res.quotaInfo.quotaMb / 1024).toFixed(2)));
@@ -88,8 +88,13 @@ export const AdminStorageHealth: React.FC<AdminStorageHealthProps> = ({ onShowTo
         onShowToast('Storage health telemetry updated successfully');
       }
     } catch (err: any) {
-      console.error('Failed to load storage health:', err);
-      setError(err.message || 'Unable to retrieve Supabase storage health.');
+      const message = err?.message || 'Unable to retrieve Supabase storage health.';
+      console.warn('Storage health fetch notice:', message);
+      if (data && onShowToast) {
+        onShowToast(message);
+      } else {
+        setError(message);
+      }
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -97,7 +102,7 @@ export const AdminStorageHealth: React.FC<AdminStorageHealthProps> = ({ onShowTo
   };
 
   useEffect(() => {
-    loadData();
+    loadData(false);
   }, []);
 
   // Filtered largest files
